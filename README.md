@@ -1,46 +1,209 @@
-# pstack-cli
+# pstack CLI
 
-Command-line interface for Prompt Stack - runtime and database management.
+Package manager for Prompt Stack workflows. Search, install, and execute stacks from the command line.
 
 ## Installation
 
 ```bash
-npm install -g pstack-cli
+npm install -g @prompt-stack/cli
+```
+
+Verify installation:
+
+```bash
+pstack --version
+```
+
+## Quick Start
+
+Search for stacks:
+
+```bash
+pstack search youtube
+```
+
+Install a stack:
+
+```bash
+pstack install youtube-summarizer
+```
+
+Run a stack:
+
+```bash
+pstack run youtube-summarizer --url "https://youtube.com/watch?v=dQw4w9WgXcQ"
 ```
 
 ## Commands
 
-### Runtime Management
+### Search and Discovery
 
 ```bash
-pstack list              # List all available runtimes
-pstack install <runtime> # Install a runtime
-pstack check <runtime>   # Check if runtime is installed
-pstack run <runtime>     # Run a command with a runtime
+pstack search <query>          # Search registry for stacks, prompts, runtimes
+pstack search --all            # List all available packages
+pstack info <package>          # Show package manifest, inputs, outputs
 ```
 
-### Database Commands
+### Installation
 
 ```bash
-pstack db init           # Initialize the database
-pstack db import         # Import sessions
-pstack db search         # Search conversations
-pstack db stats          # Show statistics
+pstack install <package>       # Install a package (stack, prompt, or runtime)
+pstack list                    # Show installed packages
+pstack remove <package>        # Uninstall a package
+pstack update [package]        # Update all or a specific package
 ```
 
-### Stack Commands (requires Prompt Stack app)
+### Execution
 
 ```bash
-pstack stack list        # List available stacks
-pstack stack run <name>  # Run a stack
+pstack run <stack>             # Execute a stack with defaults
+pstack run <stack> --input '{...}'  # Execute with JSON inputs
+pstack run <stack> --cwd /path # Execute in specific directory
 ```
 
-## Supported Runtimes
+### Database
 
-**Core:** node, python, deno, bun
-**Agents:** claude, codex, gemini, copilot, ollama
-**Tools:** git, ffmpeg, imagemagick, pandoc, chromium, jq, yq, sqlite, psql, httpie, tesseract, ytdlp, ripgrep
-**Cloud:** supabase, vercel, netlify, wrangler, railway, flyio
+```bash
+pstack db init                 # Initialize local database
+pstack db search <query>       # Search execution history
+pstack db sessions             # List all sessions
+pstack db stats                # Show usage statistics and costs
+```
+
+### Secrets Management
+
+```bash
+pstack secrets set <name>      # Add a secret
+pstack secrets list            # Show configured secrets (masked)
+pstack secrets remove <name>   # Remove a secret
+```
+
+### System
+
+```bash
+pstack doctor                  # Check installation health
+pstack which <runtime>         # Show path to installed runtime
+pstack --help                  # Show help
+pstack --version               # Show version
+```
+
+## Environment
+
+Create a `.pstackrc` in your home directory for defaults:
+
+```bash
+# ~/.pstackrc
+export PSTACK_AGENT="claude"           # Default AI agent
+export PSTACK_REGISTRY="https://..."   # Custom registry URL
+export PSTACK_CACHE_TTL=86400          # Registry cache duration (seconds)
+```
+
+Secrets are stored in:
+
+```
+~/.prompt-stack/secrets.json           # Encrypted or plaintext (power user managed)
+```
+
+## Examples
+
+### Example 1: Summarize a YouTube Video
+
+```bash
+pstack install youtube-summarizer
+pstack run youtube-summarizer --url "https://youtube.com/watch?v=..."
+```
+
+Output is saved to `~/.prompt-stack/artifacts/`.
+
+### Example 2: Review Code with Multiple Models
+
+```bash
+pstack install code-reviewer
+pstack run code-reviewer --file "./src/main.ts" --compare-models
+```
+
+Results show Claude vs Codex vs Gemini analysis side-by-side.
+
+### Example 3: Search Execution History
+
+```bash
+pstack db search "processed yesterday"
+```
+
+Returns all runs from the past day with metadata.
+
+## Architecture
+
+The CLI is a thin wrapper around `@prompt-stack/core`:
+
+- **@prompt-stack/core**: Resolver, installer, registry client
+- **@prompt-stack/runner**: Execution engine
+- **@prompt-stack/manifest**: Stack/prompt manifest parsing
+
+All logic is shared with Prompt Stack Studio, ensuring consistency.
+
+## Configuration
+
+Default paths:
+
+```
+~/.prompt-stack/
+├── packages/          # Installed stacks, prompts, runtimes
+├── db/                # SQLite databases
+├── cache/             # Registry cache
+├── secrets.json       # Encrypted secrets
+└── locks/             # Version lockfiles
+```
+
+## Exit Codes
+
+- `0`: Success
+- `1`: General error (invalid input, missing package, execution failure)
+- `2`: Configuration error (missing secrets, invalid manifest)
+- `127`: Runtime not found
+
+## Troubleshooting
+
+### Command Not Found
+
+If `pstack` is not in PATH:
+
+```bash
+# Manually add to shell config
+echo 'export PATH="$HOME/.prompt-stack/bin:$PATH"' >> ~/.zshrc
+source ~/.zshrc
+```
+
+### Missing Secrets
+
+Before running, ensure required secrets are set:
+
+```bash
+pstack secrets set OPENAI_API_KEY
+pstack secrets set ANTHROPIC_API_KEY
+```
+
+### Check System Health
+
+```bash
+pstack doctor
+
+# Output:
+# ✓ CLI installed: ~/.prompt-stack/bin/pstack
+# ✓ PATH configured: ~/.zshrc
+# ✓ Database: ~/.prompt-stack/db/pstack.db
+# ✗ Missing secret: OPENAI_API_KEY
+```
+
+## Contributing
+
+To contribute:
+
+1. Fork the repository
+2. Create a feature branch
+3. Submit a pull request
+
+See [CONTRIBUTING.md](../CONTRIBUTING.md) for details.
 
 ## License
 
