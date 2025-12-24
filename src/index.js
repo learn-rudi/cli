@@ -28,6 +28,7 @@ import { cmdRemove } from './commands/remove.js';
 import { cmdSecrets } from './commands/secrets.js';
 import { cmdDb } from './commands/db.js';
 import { cmdDoctor } from './commands/doctor.js';
+import { cmdUpdate } from './commands/update.js';
 
 const VERSION = '2.0.0';
 
@@ -86,6 +87,11 @@ async function main() {
       case 'doctor':
       case 'check':
         await cmdDoctor(args, flags);
+        break;
+
+      case 'update':
+      case 'upgrade':
+        await cmdUpdate(args, flags);
         break;
 
       case 'help':

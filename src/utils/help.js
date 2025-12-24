@@ -19,13 +19,13 @@ USAGE
   pstack <command> [options]
 
 COMMANDS
-  search <query>        Search for stacks and prompts
+  search <query>        Search for stacks, prompts, and runtimes
   search --all          List all available packages in registry
   install <pkg>         Install a package (stack, prompt, or runtime)
-  run <stack> [args]    Run a stack with optional arguments
-  list [kind]           List installed packages (stacks, prompts, runtimes)
   remove <pkg>          Remove an installed package
   update [pkg]          Update packages (or all if no pkg specified)
+  run <stack> [args]    Run a stack with optional arguments
+  list [kind]           List installed packages (stacks, prompts, runtimes)
 
   secrets set <name>    Set a secret
   secrets list          List configured secrets (masked)
