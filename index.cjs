@@ -87,7 +87,20 @@ function getPackagePath(id) {
 }
 function isPackageInstalled(id) {
   const packagePath = getPackagePath(id);
-  return import_fs.default.existsSync(packagePath);
+  if (!import_fs.default.existsSync(packagePath)) {
+    return false;
+  }
+  const [kind, name] = parsePackageId(id);
+  if (kind === "agent") {
+    const binPath = import_path.default.join(packagePath, "node_modules", ".bin", name);
+    return import_fs.default.existsSync(binPath);
+  }
+  try {
+    const contents = import_fs.default.readdirSync(packagePath);
+    return contents.length > 0;
+  } catch {
+    return false;
+  }
 }
 function getInstalledPackages(kind) {
   const dir = {
@@ -15076,22 +15089,25 @@ async function installSinglePackage(pkg, options = {}) {
     onProgress?.({ phase: "downloading", package: pkg.id });
     try {
       await downloadPackage(pkg, installPath, { onProgress });
-      import_fs4.default.writeFileSync(
-        import_path4.default.join(installPath, "manifest.json"),
-        JSON.stringify({
-          id: pkg.id,
-          kind: pkg.kind,
-          name: pkg.name,
-          version: pkg.version,
-          description: pkg.description,
-          runtime: pkg.runtime,
-          entry: pkg.entry || "create_pdf.py",
-          // default entry point
-          requires: pkg.requires,
-          installedAt: (/* @__PURE__ */ new Date()).toISOString(),
-          source: "registry"
-        }, null, 2)
-      );
+      const manifestPath = import_path4.default.join(installPath, "manifest.json");
+      if (!import_fs4.default.existsSync(manifestPath)) {
+        import_fs4.default.writeFileSync(
+          manifestPath,
+          JSON.stringify({
+            id: pkg.id,
+            kind: pkg.kind,
+            name: pkg.name,
+            version: pkg.version,
+            description: pkg.description,
+            runtime: pkg.runtime,
+            entry: pkg.entry || "create_pdf.py",
+            // default entry point
+            requires: pkg.requires,
+            installedAt: (/* @__PURE__ */ new Date()).toISOString(),
+            source: "registry"
+          }, null, 2)
+        );
+      }
       onProgress?.({ phase: "installed", package: pkg.id });
       return { success: true, id: pkg.id, path: installPath };
     } catch (error) {
