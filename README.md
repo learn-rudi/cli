@@ -5,7 +5,7 @@ Package manager for MCP stacks. Install tools that work with Claude, Codex, and 
 ## Install
 
 ```bash
-npm i -g @prompt-stack/prompt-stack
+npm i -g @prompt-stack/cli
 ```
 
 ## Quick Start
