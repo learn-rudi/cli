@@ -1,6 +1,6 @@
 {
   "name": "@prompt-stack/cli",
-  "version": "2.0.0",
+  "version": "2.0.1",
   "description": "Prompt Stack CLI - Install and manage MCP stacks, runtimes, and tools",
   "type": "module",
   "main": "dist/index.cjs",
