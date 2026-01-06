@@ -1,15 +1,29 @@
 /**
  * Remove command - uninstall packages
+ *
+ * Usage:
+ *   pstack remove <package>         Remove a specific package
+ *   pstack remove --all             Remove all packages
+ *   pstack remove stacks --all      Remove all stacks
+ *   pstack remove tools --all       Remove all tools
  */
 
-import { uninstallPackage, isPackageInstalled } from '@prompt-stack/core';
+import { uninstallPackage, isPackageInstalled, listInstalled } from '@prompt-stack/core';
 import { unregisterMcpAll } from '../utils/mcp-registry.js';
 
 export async function cmdRemove(args, flags) {
+  // Handle bulk removal (--all flag)
+  if (flags.all) {
+    return await removeBulk(args[0], flags);
+  }
+
+  // Single package removal
   const pkgId = args[0];
 
   if (!pkgId) {
     console.error('Usage: pstack remove <package>');
+    console.error('       pstack remove --all             (remove all packages)');
+    console.error('       pstack remove stacks --all      (remove all stacks)');
     console.error('Example: pstack remove pdf-creator');
     process.exit(1);
   }
@@ -48,6 +62,86 @@ export async function cmdRemove(args, flags) {
 
   } catch (error) {
     console.error(`Remove failed: ${error.message}`);
+    process.exit(1);
+  }
+}
+
+/**
+ * Bulk removal - remove all packages of a certain kind or all packages
+ */
+async function removeBulk(kind, flags) {
+  // Normalize kind
+  if (kind) {
+    if (kind === 'stacks') kind = 'stack';
+    if (kind === 'prompts') kind = 'prompt';
+    if (kind === 'runtimes') kind = 'runtime';
+    if (kind === 'tools') kind = 'tool';
+    if (kind === 'agents') kind = 'agent';
+
+    if (!['stack', 'prompt', 'runtime', 'tool', 'agent'].includes(kind)) {
+      console.error(`Invalid kind: ${kind}`);
+      console.error(`Valid kinds: stack, prompt, runtime, tool, agent`);
+      process.exit(1);
+    }
+  }
+
+  try {
+    // Get list of packages to remove
+    const packages = await listInstalled(kind);
+
+    if (packages.length === 0) {
+      console.log(kind ? `No ${kind}s installed.` : 'No packages installed.');
+      return;
+    }
+
+    // Show what will be removed
+    console.log(kind ? `\nFound ${packages.length} ${kind}(s) to remove:` : `\nFound ${packages.length} package(s) to remove:`);
+    for (const pkg of packages) {
+      console.log(`  - ${pkg.id}`);
+    }
+
+    // Confirm unless --force
+    if (!flags.force && !flags.y) {
+      console.log(`\nRun with --force to confirm removal.`);
+      process.exit(0);
+    }
+
+    console.log(`\nRemoving packages...`);
+
+    let succeeded = 0;
+    let failed = 0;
+
+    for (const pkg of packages) {
+      try {
+        const result = await uninstallPackage(pkg.id);
+
+        if (result.success) {
+          // Unregister MCP from agent configs (Claude, Codex, Gemini)
+          if (pkg.kind === 'stack') {
+            const stackId = pkg.id.replace(/^stack:/, '');
+            await unregisterMcpAll(stackId);
+          }
+
+          console.log(`  ✓ Removed ${pkg.id}`);
+          succeeded++;
+        } else {
+          console.error(`  ✗ Failed to remove ${pkg.id}: ${result.error}`);
+          failed++;
+        }
+      } catch (error) {
+        console.error(`  ✗ Failed to remove ${pkg.id}: ${error.message}`);
+        failed++;
+      }
+    }
+
+    console.log(`\nRemoval complete: ${succeeded} succeeded, ${failed} failed`);
+
+    if (failed > 0) {
+      process.exit(1);
+    }
+
+  } catch (error) {
+    console.error(`Bulk removal failed: ${error.message}`);
     process.exit(1);
   }
 }

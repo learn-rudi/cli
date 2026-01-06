@@ -16828,9 +16828,14 @@ Total: ${total} package(s)`);
 
 // src/commands/remove.js
 async function cmdRemove(args, flags) {
+  if (flags.all) {
+    return await removeBulk(args[0], flags);
+  }
   const pkgId = args[0];
   if (!pkgId) {
     console.error("Usage: pstack remove <package>");
+    console.error("       pstack remove --all             (remove all packages)");
+    console.error("       pstack remove stacks --all      (remove all stacks)");
     console.error("Example: pstack remove pdf-creator");
     process.exit(1);
   }
@@ -16857,6 +16862,69 @@ async function cmdRemove(args, flags) {
     }
   } catch (error) {
     console.error(`Remove failed: ${error.message}`);
+    process.exit(1);
+  }
+}
+async function removeBulk(kind, flags) {
+  if (kind) {
+    if (kind === "stacks") kind = "stack";
+    if (kind === "prompts") kind = "prompt";
+    if (kind === "runtimes") kind = "runtime";
+    if (kind === "tools") kind = "tool";
+    if (kind === "agents") kind = "agent";
+    if (!["stack", "prompt", "runtime", "tool", "agent"].includes(kind)) {
+      console.error(`Invalid kind: ${kind}`);
+      console.error(`Valid kinds: stack, prompt, runtime, tool, agent`);
+      process.exit(1);
+    }
+  }
+  try {
+    const packages = await listInstalled(kind);
+    if (packages.length === 0) {
+      console.log(kind ? `No ${kind}s installed.` : "No packages installed.");
+      return;
+    }
+    console.log(kind ? `
+Found ${packages.length} ${kind}(s) to remove:` : `
+Found ${packages.length} package(s) to remove:`);
+    for (const pkg of packages) {
+      console.log(`  - ${pkg.id}`);
+    }
+    if (!flags.force && !flags.y) {
+      console.log(`
+Run with --force to confirm removal.`);
+      process.exit(0);
+    }
+    console.log(`
+Removing packages...`);
+    let succeeded = 0;
+    let failed = 0;
+    for (const pkg of packages) {
+      try {
+        const result = await uninstallPackage(pkg.id);
+        if (result.success) {
+          if (pkg.kind === "stack") {
+            const stackId = pkg.id.replace(/^stack:/, "");
+            await unregisterMcpAll(stackId);
+          }
+          console.log(`  \u2713 Removed ${pkg.id}`);
+          succeeded++;
+        } else {
+          console.error(`  \u2717 Failed to remove ${pkg.id}: ${result.error}`);
+          failed++;
+        }
+      } catch (error) {
+        console.error(`  \u2717 Failed to remove ${pkg.id}: ${error.message}`);
+        failed++;
+      }
+    }
+    console.log(`
+Removal complete: ${succeeded} succeeded, ${failed} failed`);
+    if (failed > 0) {
+      process.exit(1);
+    }
+  } catch (error) {
+    console.error(`Bulk removal failed: ${error.message}`);
     process.exit(1);
   }
 }
