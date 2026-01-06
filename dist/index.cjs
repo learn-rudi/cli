@@ -18570,6 +18570,21 @@ async function checkAuth(stackPath, runtime) {
       authFiles.push(`${runtime}/token.json`);
       configured = true;
     } catch {
+      const accountsPath = path14.join(runtimePath, "accounts");
+      try {
+        const accounts = await fs16.readdir(accountsPath);
+        for (const account of accounts) {
+          if (account.startsWith(".")) continue;
+          const accountTokenPath = path14.join(accountsPath, account, "token.json");
+          try {
+            await fs16.access(accountTokenPath);
+            authFiles.push(`${runtime}/accounts/${account}/token.json`);
+            configured = true;
+          } catch {
+          }
+        }
+      } catch {
+      }
     }
   }
   const envPath = path14.join(stackPath, ".env");
@@ -18724,6 +18739,7 @@ Installed stacks:`);
     if (authInfo.runtime === "node") {
       const distAuth = path15.join(cwd, "..", "dist", "auth.js");
       let useBuiltInPort = false;
+      let tempAuthScript = null;
       try {
         await fs17.access(distAuth);
         const distContent = await fs17.readFile(distAuth, "utf-8");
@@ -18737,13 +18753,13 @@ Installed stacks:`);
       if (!useBuiltInPort) {
         const authContent = await fs17.readFile(authInfo.authScript, "utf-8");
         const tempExt = authInfo.useTsx ? ".ts" : ".mjs";
-        const tempAuthScript2 = path15.join(cwd, "..", `auth-temp${tempExt}`);
+        tempAuthScript = path15.join(cwd, "..", `auth-temp${tempExt}`);
         const modifiedContent = authContent.replace(/localhost:3456/g, `localhost:${port}`).replace(/server\.listen\(3456/g, `server.listen(${port}`);
-        await fs17.writeFile(tempAuthScript2, modifiedContent);
+        await fs17.writeFile(tempAuthScript, modifiedContent);
         if (authInfo.useTsx) {
-          cmd = `npx tsx ${tempAuthScript2}${accountEmail ? ` ${accountEmail}` : ""}`;
+          cmd = `npx tsx ${tempAuthScript}${accountEmail ? ` ${accountEmail}` : ""}`;
         } else {
-          cmd = `node ${tempAuthScript2}${accountEmail ? ` ${accountEmail}` : ""}`;
+          cmd = `node ${tempAuthScript}${accountEmail ? ` ${accountEmail}` : ""}`;
         }
       }
       console.log("Starting OAuth flow...");
@@ -18753,11 +18769,15 @@ Installed stacks:`);
           cwd,
           stdio: "inherit"
         });
-        await fs17.unlink(tempAuthScript);
-      } catch (error) {
-        try {
+        if (tempAuthScript) {
           await fs17.unlink(tempAuthScript);
-        } catch {
+        }
+      } catch (error) {
+        if (tempAuthScript) {
+          try {
+            await fs17.unlink(tempAuthScript);
+          } catch {
+          }
         }
         throw error;
       }

@@ -185,7 +185,25 @@ async function checkAuth(stackPath, runtime) {
       authFiles.push(`${runtime}/token.json`);
       configured = true;
     } catch {
-      // No token.json
+      // No direct token.json, check for accounts-based structure
+      const accountsPath = path.join(runtimePath, 'accounts');
+      try {
+        const accounts = await fs.readdir(accountsPath);
+        // Check if any account has a token.json
+        for (const account of accounts) {
+          if (account.startsWith('.')) continue;
+          const accountTokenPath = path.join(accountsPath, account, 'token.json');
+          try {
+            await fs.access(accountTokenPath);
+            authFiles.push(`${runtime}/accounts/${account}/token.json`);
+            configured = true;
+          } catch {
+            // No token for this account
+          }
+        }
+      } catch {
+        // No accounts directory
+      }
     }
   }
 

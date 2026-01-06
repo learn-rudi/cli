@@ -157,6 +157,7 @@ export async function cmdAuth(args, flags) {
       // Try to use the compiled dist/auth.js if available (already has port detection built-in)
       const distAuth = path.join(cwd, '..', 'dist', 'auth.js');
       let useBuiltInPort = false;
+      let tempAuthScript = null;
 
       try {
         await fs.access(distAuth);
@@ -178,7 +179,7 @@ export async function cmdAuth(args, flags) {
 
         // Determine file extension based on whether we're using tsx
         const tempExt = authInfo.useTsx ? '.ts' : '.mjs';
-        const tempAuthScript = path.join(cwd, '..', `auth-temp${tempExt}`);
+        tempAuthScript = path.join(cwd, '..', `auth-temp${tempExt}`);
 
         // Replace hardcoded port with dynamic port
         const modifiedContent = authContent
@@ -203,14 +204,18 @@ export async function cmdAuth(args, flags) {
           stdio: 'inherit',
         });
 
-        // Clean up temp file
-        await fs.unlink(tempAuthScript);
+        // Clean up temp file if we created one
+        if (tempAuthScript) {
+          await fs.unlink(tempAuthScript);
+        }
 
       } catch (error) {
         // Clean up temp file even on error
-        try {
-          await fs.unlink(tempAuthScript);
-        } catch {}
+        if (tempAuthScript) {
+          try {
+            await fs.unlink(tempAuthScript);
+          } catch {}
+        }
 
         throw error;
       }
