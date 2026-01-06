@@ -6,6 +6,7 @@
  *   pstack                     Dashboard / interactive mode
  *   pstack search <query>      Search registry for stacks/prompts
  *   pstack install <pkg>       Install a package
+ *   pstack auth <stack>        Authenticate OAuth stack
  *   pstack run <stack>         Run a stack
  *   pstack list [kind]         List installed packages
  *   pstack which <stack>       Show detailed stack info
@@ -33,6 +34,7 @@ import { cmdDoctor } from './commands/doctor.js';
 import { cmdUpdate } from './commands/update.js';
 import { cmdLogs } from './commands/logs.js';
 import { cmdWhich } from './commands/which.js';
+import { cmdAuth } from './commands/auth.js';
 
 const VERSION = '2.0.0';
 
@@ -106,6 +108,12 @@ async function main() {
       case 'info':
       case 'show':
         await cmdWhich(args, flags);
+        break;
+
+      case 'auth':
+      case 'authenticate':
+      case 'login':
+        await cmdAuth(args, flags);
         break;
 
       case 'help':

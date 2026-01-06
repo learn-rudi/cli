@@ -407,8 +407,8 @@ async function downloadRuntime(runtime, version, destPath, options = {}) {
       import_fs2.default.rmSync(destPath, { recursive: true });
     }
     import_fs2.default.mkdirSync(destPath, { recursive: true });
-    const { execSync: execSync3 } = await import("child_process");
-    execSync3(`tar -xzf "${tempFile}" -C "${destPath}" --strip-components=1`, {
+    const { execSync: execSync4 } = await import("child_process");
+    execSync4(`tar -xzf "${tempFile}" -C "${destPath}" --strip-components=1`, {
       stdio: "pipe"
     });
     import_fs2.default.unlinkSync(tempFile);
@@ -446,7 +446,7 @@ async function downloadTool(toolName, destPath, options = {}) {
     import_fs2.default.rmSync(destPath, { recursive: true });
   }
   import_fs2.default.mkdirSync(destPath, { recursive: true });
-  const { execSync: execSync3 } = await import("child_process");
+  const { execSync: execSync4 } = await import("child_process");
   const downloads = toolManifest.downloads?.[platformArch];
   if (downloads && Array.isArray(downloads)) {
     const downloadedUrls = /* @__PURE__ */ new Set();
@@ -475,11 +475,11 @@ async function downloadTool(toolName, destPath, options = {}) {
         onProgress?.({ phase: "extracting", tool: toolName, binary: import_path2.default.basename(binary) });
         const archiveType = type || guessArchiveType(urlFilename);
         if (archiveType === "zip") {
-          execSync3(`unzip -o "${tempFile}" -d "${destPath}"`, { stdio: "pipe" });
+          execSync4(`unzip -o "${tempFile}" -d "${destPath}"`, { stdio: "pipe" });
         } else if (archiveType === "tar.xz") {
-          execSync3(`tar -xJf "${tempFile}" -C "${destPath}"`, { stdio: "pipe" });
+          execSync4(`tar -xJf "${tempFile}" -C "${destPath}"`, { stdio: "pipe" });
         } else if (archiveType === "tar.gz" || archiveType === "tgz") {
-          execSync3(`tar -xzf "${tempFile}" -C "${destPath}"`, { stdio: "pipe" });
+          execSync4(`tar -xzf "${tempFile}" -C "${destPath}"`, { stdio: "pipe" });
         } else {
           throw new Error(`Unsupported archive type: ${archiveType}`);
         }
@@ -526,11 +526,11 @@ async function downloadTool(toolName, destPath, options = {}) {
       onProgress?.({ phase: "extracting", tool: toolName });
       const archiveType = extractConfig.type || guessArchiveType(urlFilename);
       if (archiveType === "zip") {
-        execSync3(`unzip -o "${tempFile}" -d "${destPath}"`, { stdio: "pipe" });
+        execSync4(`unzip -o "${tempFile}" -d "${destPath}"`, { stdio: "pipe" });
       } else if (archiveType === "tar.xz") {
-        execSync3(`tar -xJf "${tempFile}" -C "${destPath}"`, { stdio: "pipe" });
+        execSync4(`tar -xJf "${tempFile}" -C "${destPath}"`, { stdio: "pipe" });
       } else if (archiveType === "tar.gz" || archiveType === "tgz") {
-        execSync3(`tar -xzf "${tempFile}" -C "${destPath}"`, { stdio: "pipe" });
+        execSync4(`tar -xzf "${tempFile}" -C "${destPath}"`, { stdio: "pipe" });
       } else {
         throw new Error(`Unsupported archive type: ${archiveType}`);
       }
@@ -765,17 +765,17 @@ var require_visit = __commonJS({
     visit.BREAK = BREAK;
     visit.SKIP = SKIP;
     visit.REMOVE = REMOVE;
-    function visit_(key, node, visitor, path15) {
-      const ctrl = callVisitor(key, node, visitor, path15);
+    function visit_(key, node, visitor, path16) {
+      const ctrl = callVisitor(key, node, visitor, path16);
       if (identity.isNode(ctrl) || identity.isPair(ctrl)) {
-        replaceNode(key, path15, ctrl);
-        return visit_(key, ctrl, visitor, path15);
+        replaceNode(key, path16, ctrl);
+        return visit_(key, ctrl, visitor, path16);
       }
       if (typeof ctrl !== "symbol") {
         if (identity.isCollection(node)) {
-          path15 = Object.freeze(path15.concat(node));
+          path16 = Object.freeze(path16.concat(node));
           for (let i = 0; i < node.items.length; ++i) {
-            const ci = visit_(i, node.items[i], visitor, path15);
+            const ci = visit_(i, node.items[i], visitor, path16);
             if (typeof ci === "number")
               i = ci - 1;
             else if (ci === BREAK)
@@ -786,13 +786,13 @@ var require_visit = __commonJS({
             }
           }
         } else if (identity.isPair(node)) {
-          path15 = Object.freeze(path15.concat(node));
-          const ck = visit_("key", node.key, visitor, path15);
+          path16 = Object.freeze(path16.concat(node));
+          const ck = visit_("key", node.key, visitor, path16);
           if (ck === BREAK)
             return BREAK;
           else if (ck === REMOVE)
             node.key = null;
-          const cv = visit_("value", node.value, visitor, path15);
+          const cv = visit_("value", node.value, visitor, path16);
           if (cv === BREAK)
             return BREAK;
           else if (cv === REMOVE)
@@ -813,17 +813,17 @@ var require_visit = __commonJS({
     visitAsync.BREAK = BREAK;
     visitAsync.SKIP = SKIP;
     visitAsync.REMOVE = REMOVE;
-    async function visitAsync_(key, node, visitor, path15) {
-      const ctrl = await callVisitor(key, node, visitor, path15);
+    async function visitAsync_(key, node, visitor, path16) {
+      const ctrl = await callVisitor(key, node, visitor, path16);
       if (identity.isNode(ctrl) || identity.isPair(ctrl)) {
-        replaceNode(key, path15, ctrl);
-        return visitAsync_(key, ctrl, visitor, path15);
+        replaceNode(key, path16, ctrl);
+        return visitAsync_(key, ctrl, visitor, path16);
       }
       if (typeof ctrl !== "symbol") {
         if (identity.isCollection(node)) {
-          path15 = Object.freeze(path15.concat(node));
+          path16 = Object.freeze(path16.concat(node));
           for (let i = 0; i < node.items.length; ++i) {
-            const ci = await visitAsync_(i, node.items[i], visitor, path15);
+            const ci = await visitAsync_(i, node.items[i], visitor, path16);
             if (typeof ci === "number")
               i = ci - 1;
             else if (ci === BREAK)
@@ -834,13 +834,13 @@ var require_visit = __commonJS({
             }
           }
         } else if (identity.isPair(node)) {
-          path15 = Object.freeze(path15.concat(node));
-          const ck = await visitAsync_("key", node.key, visitor, path15);
+          path16 = Object.freeze(path16.concat(node));
+          const ck = await visitAsync_("key", node.key, visitor, path16);
           if (ck === BREAK)
             return BREAK;
           else if (ck === REMOVE)
             node.key = null;
-          const cv = await visitAsync_("value", node.value, visitor, path15);
+          const cv = await visitAsync_("value", node.value, visitor, path16);
           if (cv === BREAK)
             return BREAK;
           else if (cv === REMOVE)
@@ -867,23 +867,23 @@ var require_visit = __commonJS({
       }
       return visitor;
     }
-    function callVisitor(key, node, visitor, path15) {
+    function callVisitor(key, node, visitor, path16) {
       if (typeof visitor === "function")
-        return visitor(key, node, path15);
+        return visitor(key, node, path16);
       if (identity.isMap(node))
-        return visitor.Map?.(key, node, path15);
+        return visitor.Map?.(key, node, path16);
       if (identity.isSeq(node))
-        return visitor.Seq?.(key, node, path15);
+        return visitor.Seq?.(key, node, path16);
       if (identity.isPair(node))
-        return visitor.Pair?.(key, node, path15);
+        return visitor.Pair?.(key, node, path16);
       if (identity.isScalar(node))
-        return visitor.Scalar?.(key, node, path15);
+        return visitor.Scalar?.(key, node, path16);
       if (identity.isAlias(node))
-        return visitor.Alias?.(key, node, path15);
+        return visitor.Alias?.(key, node, path16);
       return void 0;
     }
-    function replaceNode(key, path15, node) {
-      const parent = path15[path15.length - 1];
+    function replaceNode(key, path16, node) {
+      const parent = path16[path16.length - 1];
       if (identity.isCollection(parent)) {
         parent.items[key] = node;
       } else if (identity.isPair(parent)) {
@@ -1491,10 +1491,10 @@ var require_Collection = __commonJS({
     var createNode = require_createNode();
     var identity = require_identity();
     var Node = require_Node();
-    function collectionFromPath(schema, path15, value) {
+    function collectionFromPath(schema, path16, value) {
       let v = value;
-      for (let i = path15.length - 1; i >= 0; --i) {
-        const k = path15[i];
+      for (let i = path16.length - 1; i >= 0; --i) {
+        const k = path16[i];
         if (typeof k === "number" && Number.isInteger(k) && k >= 0) {
           const a = [];
           a[k] = v;
@@ -1513,7 +1513,7 @@ var require_Collection = __commonJS({
         sourceObjects: /* @__PURE__ */ new Map()
       });
     }
-    var isEmptyPath = (path15) => path15 == null || typeof path15 === "object" && !!path15[Symbol.iterator]().next().done;
+    var isEmptyPath = (path16) => path16 == null || typeof path16 === "object" && !!path16[Symbol.iterator]().next().done;
     var Collection = class extends Node.NodeBase {
       constructor(type, schema) {
         super(type);
@@ -1543,11 +1543,11 @@ var require_Collection = __commonJS({
        * be a Pair instance or a `{ key, value }` object, which may not have a key
        * that already exists in the map.
        */
-      addIn(path15, value) {
-        if (isEmptyPath(path15))
+      addIn(path16, value) {
+        if (isEmptyPath(path16))
           this.add(value);
         else {
-          const [key, ...rest] = path15;
+          const [key, ...rest] = path16;
           const node = this.get(key, true);
           if (identity.isCollection(node))
             node.addIn(rest, value);
@@ -1561,8 +1561,8 @@ var require_Collection = __commonJS({
        * Removes a value from the collection.
        * @returns `true` if the item was found and removed.
        */
-      deleteIn(path15) {
-        const [key, ...rest] = path15;
+      deleteIn(path16) {
+        const [key, ...rest] = path16;
         if (rest.length === 0)
           return this.delete(key);
         const node = this.get(key, true);
@@ -1576,8 +1576,8 @@ var require_Collection = __commonJS({
        * scalar values from their surrounding node; to disable set `keepScalar` to
        * `true` (collections are always returned intact).
        */
-      getIn(path15, keepScalar) {
-        const [key, ...rest] = path15;
+      getIn(path16, keepScalar) {
+        const [key, ...rest] = path16;
         const node = this.get(key, true);
         if (rest.length === 0)
           return !keepScalar && identity.isScalar(node) ? node.value : node;
@@ -1595,8 +1595,8 @@ var require_Collection = __commonJS({
       /**
        * Checks if the collection includes a value with the key `key`.
        */
-      hasIn(path15) {
-        const [key, ...rest] = path15;
+      hasIn(path16) {
+        const [key, ...rest] = path16;
         if (rest.length === 0)
           return this.has(key);
         const node = this.get(key, true);
@@ -1606,8 +1606,8 @@ var require_Collection = __commonJS({
        * Sets a value in this collection. For `!!set`, `value` needs to be a
        * boolean to add/remove the item from the set.
        */
-      setIn(path15, value) {
-        const [key, ...rest] = path15;
+      setIn(path16, value) {
+        const [key, ...rest] = path16;
         if (rest.length === 0) {
           this.set(key, value);
         } else {
@@ -4111,9 +4111,9 @@ var require_Document = __commonJS({
           this.contents.add(value);
       }
       /** Adds a value to the document. */
-      addIn(path15, value) {
+      addIn(path16, value) {
         if (assertCollection(this.contents))
-          this.contents.addIn(path15, value);
+          this.contents.addIn(path16, value);
       }
       /**
        * Create a new `Alias` node, ensuring that the target `node` has the required anchor.
@@ -4188,14 +4188,14 @@ var require_Document = __commonJS({
        * Removes a value from the document.
        * @returns `true` if the item was found and removed.
        */
-      deleteIn(path15) {
-        if (Collection.isEmptyPath(path15)) {
+      deleteIn(path16) {
+        if (Collection.isEmptyPath(path16)) {
           if (this.contents == null)
             return false;
           this.contents = null;
           return true;
         }
-        return assertCollection(this.contents) ? this.contents.deleteIn(path15) : false;
+        return assertCollection(this.contents) ? this.contents.deleteIn(path16) : false;
       }
       /**
        * Returns item at `key`, or `undefined` if not found. By default unwraps
@@ -4210,10 +4210,10 @@ var require_Document = __commonJS({
        * scalar values from their surrounding node; to disable set `keepScalar` to
        * `true` (collections are always returned intact).
        */
-      getIn(path15, keepScalar) {
-        if (Collection.isEmptyPath(path15))
+      getIn(path16, keepScalar) {
+        if (Collection.isEmptyPath(path16))
           return !keepScalar && identity.isScalar(this.contents) ? this.contents.value : this.contents;
-        return identity.isCollection(this.contents) ? this.contents.getIn(path15, keepScalar) : void 0;
+        return identity.isCollection(this.contents) ? this.contents.getIn(path16, keepScalar) : void 0;
       }
       /**
        * Checks if the document includes a value with the key `key`.
@@ -4224,10 +4224,10 @@ var require_Document = __commonJS({
       /**
        * Checks if the document includes a value at `path`.
        */
-      hasIn(path15) {
-        if (Collection.isEmptyPath(path15))
+      hasIn(path16) {
+        if (Collection.isEmptyPath(path16))
           return this.contents !== void 0;
-        return identity.isCollection(this.contents) ? this.contents.hasIn(path15) : false;
+        return identity.isCollection(this.contents) ? this.contents.hasIn(path16) : false;
       }
       /**
        * Sets a value in this document. For `!!set`, `value` needs to be a
@@ -4244,13 +4244,13 @@ var require_Document = __commonJS({
        * Sets a value in this document. For `!!set`, `value` needs to be a
        * boolean to add/remove the item from the set.
        */
-      setIn(path15, value) {
-        if (Collection.isEmptyPath(path15)) {
+      setIn(path16, value) {
+        if (Collection.isEmptyPath(path16)) {
           this.contents = value;
         } else if (this.contents == null) {
-          this.contents = Collection.collectionFromPath(this.schema, Array.from(path15), value);
+          this.contents = Collection.collectionFromPath(this.schema, Array.from(path16), value);
         } else if (assertCollection(this.contents)) {
-          this.contents.setIn(path15, value);
+          this.contents.setIn(path16, value);
         }
       }
       /**
@@ -6202,9 +6202,9 @@ var require_cst_visit = __commonJS({
     visit.BREAK = BREAK;
     visit.SKIP = SKIP;
     visit.REMOVE = REMOVE;
-    visit.itemAtPath = (cst, path15) => {
+    visit.itemAtPath = (cst, path16) => {
       let item = cst;
-      for (const [field, index] of path15) {
+      for (const [field, index] of path16) {
         const tok = item?.[field];
         if (tok && "items" in tok) {
           item = tok.items[index];
@@ -6213,23 +6213,23 @@ var require_cst_visit = __commonJS({
       }
       return item;
     };
-    visit.parentCollection = (cst, path15) => {
-      const parent = visit.itemAtPath(cst, path15.slice(0, -1));
-      const field = path15[path15.length - 1][0];
+    visit.parentCollection = (cst, path16) => {
+      const parent = visit.itemAtPath(cst, path16.slice(0, -1));
+      const field = path16[path16.length - 1][0];
       const coll = parent?.[field];
       if (coll && "items" in coll)
         return coll;
       throw new Error("Parent collection not found");
     };
-    function _visit(path15, item, visitor) {
-      let ctrl = visitor(item, path15);
+    function _visit(path16, item, visitor) {
+      let ctrl = visitor(item, path16);
       if (typeof ctrl === "symbol")
         return ctrl;
       for (const field of ["key", "value"]) {
         const token = item[field];
         if (token && "items" in token) {
           for (let i = 0; i < token.items.length; ++i) {
-            const ci = _visit(Object.freeze(path15.concat([[field, i]])), token.items[i], visitor);
+            const ci = _visit(Object.freeze(path16.concat([[field, i]])), token.items[i], visitor);
             if (typeof ci === "number")
               i = ci - 1;
             else if (ci === BREAK)
@@ -6240,10 +6240,10 @@ var require_cst_visit = __commonJS({
             }
           }
           if (typeof ctrl === "function" && field === "key")
-            ctrl = ctrl(item, path15);
+            ctrl = ctrl(item, path16);
         }
       }
-      return typeof ctrl === "function" ? ctrl(item, path15) : ctrl;
+      return typeof ctrl === "function" ? ctrl(item, path16) : ctrl;
     }
     exports2.visit = visit;
   }
@@ -7528,14 +7528,14 @@ var require_parser = __commonJS({
             case "scalar":
             case "single-quoted-scalar":
             case "double-quoted-scalar": {
-              const fs17 = this.flowScalar(this.type);
+              const fs18 = this.flowScalar(this.type);
               if (atNextItem || it.value) {
-                map.items.push({ start, key: fs17, sep: [] });
+                map.items.push({ start, key: fs18, sep: [] });
                 this.onKeyLine = true;
               } else if (it.sep) {
-                this.stack.push(fs17);
+                this.stack.push(fs18);
               } else {
-                Object.assign(it, { key: fs17, sep: [] });
+                Object.assign(it, { key: fs18, sep: [] });
                 this.onKeyLine = true;
               }
               return;
@@ -7663,13 +7663,13 @@ var require_parser = __commonJS({
             case "scalar":
             case "single-quoted-scalar":
             case "double-quoted-scalar": {
-              const fs17 = this.flowScalar(this.type);
+              const fs18 = this.flowScalar(this.type);
               if (!it || it.value)
-                fc.items.push({ start: [], key: fs17, sep: [] });
+                fc.items.push({ start: [], key: fs18, sep: [] });
               else if (it.sep)
-                this.stack.push(fs17);
+                this.stack.push(fs18);
               else
-                Object.assign(it, { key: fs17, sep: [] });
+                Object.assign(it, { key: fs18, sep: [] });
               return;
             }
             case "flow-map-end":
@@ -11170,8 +11170,8 @@ var require_utils = __commonJS({
       }
       return ind;
     }
-    function removeDotSegments(path15) {
-      let input = path15;
+    function removeDotSegments(path16) {
+      let input = path16;
       const output = [];
       let nextSlash = -1;
       let len = 0;
@@ -11370,8 +11370,8 @@ var require_schemes = __commonJS({
         wsComponent.secure = void 0;
       }
       if (wsComponent.resourceName) {
-        const [path15, query] = wsComponent.resourceName.split("?");
-        wsComponent.path = path15 && path15 !== "/" ? path15 : void 0;
+        const [path16, query] = wsComponent.resourceName.split("?");
+        wsComponent.path = path16 && path16 !== "/" ? path16 : void 0;
         wsComponent.query = query;
         wsComponent.resourceName = void 0;
       }
@@ -14724,12 +14724,12 @@ var require_dist2 = __commonJS({
         throw new Error(`Unknown format "${name}"`);
       return f;
     };
-    function addFormats2(ajv2, list, fs17, exportName) {
+    function addFormats2(ajv2, list, fs18, exportName) {
       var _a;
       var _b;
       (_a = (_b = ajv2.opts.code).formats) !== null && _a !== void 0 ? _a : _b.formats = (0, codegen_1._)`require("ajv-formats/dist/formats").${exportName}`;
       for (const f of list)
-        ajv2.addFormat(f, fs17[f]);
+        ajv2.addFormat(f, fs18[f]);
     }
     module2.exports = exports2 = formatsPlugin;
     Object.defineProperty(exports2, "__esModule", { value: true });
@@ -15223,7 +15223,7 @@ async function installSinglePackage(pkg, options = {}) {
     onProgress?.({ phase: "downloading", package: pkg.id });
     if (pkg.npmPackage) {
       try {
-        const { execSync: execSync3 } = await import("child_process");
+        const { execSync: execSync4 } = await import("child_process");
         if (!import_fs4.default.existsSync(installPath)) {
           import_fs4.default.mkdirSync(installPath, { recursive: true });
         }
@@ -15231,16 +15231,16 @@ async function installSinglePackage(pkg, options = {}) {
         const resourcesPath = process.env.RESOURCES_PATH;
         const npmCmd = resourcesPath ? import_path4.default.join(resourcesPath, "bundled-runtimes", "node", "bin", "npm") : "npm";
         if (!import_fs4.default.existsSync(import_path4.default.join(installPath, "package.json"))) {
-          execSync3(`"${npmCmd}" init -y`, { cwd: installPath, stdio: "pipe" });
+          execSync4(`"${npmCmd}" init -y`, { cwd: installPath, stdio: "pipe" });
         }
-        execSync3(`"${npmCmd}" install ${pkg.npmPackage}`, { cwd: installPath, stdio: "pipe" });
+        execSync4(`"${npmCmd}" install ${pkg.npmPackage}`, { cwd: installPath, stdio: "pipe" });
         if (pkg.postInstall) {
           onProgress?.({ phase: "postInstall", package: pkg.id, message: pkg.postInstall });
           const postInstallCmd = pkg.postInstall.replace(
             /^npx\s+(\S+)/,
             `"${import_path4.default.join(installPath, "node_modules", ".bin", "$1")}"`
           );
-          execSync3(postInstallCmd, { cwd: installPath, stdio: "pipe" });
+          execSync4(postInstallCmd, { cwd: installPath, stdio: "pipe" });
         }
         import_fs4.default.writeFileSync(
           import_path4.default.join(installPath, "manifest.json"),
@@ -15262,15 +15262,15 @@ async function installSinglePackage(pkg, options = {}) {
     }
     if (pkg.pipPackage) {
       try {
-        const { execSync: execSync3 } = await import("child_process");
+        const { execSync: execSync4 } = await import("child_process");
         if (!import_fs4.default.existsSync(installPath)) {
           import_fs4.default.mkdirSync(installPath, { recursive: true });
         }
         onProgress?.({ phase: "installing", package: pkg.id, message: `pip install ${pkg.pipPackage}` });
         const pythonPath = import_path4.default.join(PATHS.runtimes, "python", "bin", "python3");
         const pythonCmd = import_fs4.default.existsSync(pythonPath) ? pythonPath : "python3";
-        execSync3(`"${pythonCmd}" -m venv "${installPath}/venv"`, { stdio: "pipe" });
-        execSync3(`"${installPath}/venv/bin/pip" install ${pkg.pipPackage}`, { stdio: "pipe" });
+        execSync4(`"${pythonCmd}" -m venv "${installPath}/venv"`, { stdio: "pipe" });
+        execSync4(`"${installPath}/venv/bin/pip" install ${pkg.pipPackage}`, { stdio: "pipe" });
         import_fs4.default.writeFileSync(
           import_path4.default.join(installPath, "manifest.json"),
           JSON.stringify({
@@ -16193,11 +16193,11 @@ async function runStack(id, options = {}) {
   const startTime = Date.now();
   const packagePath = getPackagePath(id);
   const manifestPath = import_path6.default.join(packagePath, "manifest.json");
-  const { default: fs17 } = await import("fs");
-  if (!fs17.existsSync(manifestPath)) {
+  const { default: fs18 } = await import("fs");
+  if (!fs18.existsSync(manifestPath)) {
     throw new Error(`Stack manifest not found: ${id}`);
   }
-  const manifest = JSON.parse(fs17.readFileSync(manifestPath, "utf-8"));
+  const manifest = JSON.parse(fs18.readFileSync(manifestPath, "utf-8"));
   const entry = manifest.entry || "index.js";
   const entryPath = import_path6.default.join(packagePath, entry);
   const runtime = manifest.runtime || "runtime:node";
@@ -18617,6 +18617,175 @@ function checkIfRunning(stackName) {
   }
 }
 
+// src/commands/auth.js
+var fs17 = __toESM(require("fs/promises"), 1);
+var path15 = __toESM(require("path"), 1);
+var import_child_process4 = require("child_process");
+init_src();
+var net = __toESM(require("net"), 1);
+async function findAvailablePort(basePort = 3456) {
+  for (let port = basePort; port < basePort + 10; port++) {
+    if (await isPortAvailable(port)) {
+      return port;
+    }
+  }
+  throw new Error(`No available ports found in range ${basePort}-${basePort + 10}`);
+}
+function isPortAvailable(port) {
+  return new Promise((resolve) => {
+    const server = net.createServer();
+    server.once("error", (err) => {
+      if (err.code === "EADDRINUSE") {
+        resolve(false);
+      } else {
+        resolve(false);
+      }
+    });
+    server.once("listening", () => {
+      server.close();
+      resolve(true);
+    });
+    server.listen(port);
+  });
+}
+async function detectRuntime2(stackPath) {
+  const runtimes = ["node", "python"];
+  for (const runtime of runtimes) {
+    const runtimePath = path15.join(stackPath, runtime);
+    try {
+      await fs17.access(runtimePath);
+      if (runtime === "node") {
+        const authTs = path15.join(runtimePath, "src", "auth.ts");
+        const authJs = path15.join(runtimePath, "dist", "auth.js");
+        try {
+          await fs17.access(authTs);
+          return { runtime: "node", authScript: authTs, useTsx: true };
+        } catch {
+          try {
+            await fs17.access(authJs);
+            return { runtime: "node", authScript: authJs, useTsx: false };
+          } catch {
+          }
+        }
+      } else if (runtime === "python") {
+        const authPy = path15.join(runtimePath, "src", "auth.py");
+        try {
+          await fs17.access(authPy);
+          return { runtime: "python", authScript: authPy, useTsx: false };
+        } catch {
+        }
+      }
+    } catch {
+      continue;
+    }
+  }
+  return null;
+}
+async function cmdAuth(args, flags) {
+  const stackId = args[0];
+  const accountEmail = args[1];
+  if (!stackId) {
+    console.error("Usage: pstack auth <stack-id> [account-email]");
+    console.error("Example: pstack auth google-workspace user@gmail.com");
+    process.exit(1);
+  }
+  try {
+    const packages = await listInstalled("stack");
+    const stack = packages.find((p) => {
+      const pId = p.id || "";
+      const pName = p.name || "";
+      return pId === stackId || pId === `stack:${stackId}` || pName === stackId;
+    });
+    if (!stack) {
+      console.error(`Stack not found: ${stackId}`);
+      console.error(`
+Installed stacks:`);
+      packages.forEach((p) => console.error(`  - ${p.id}`));
+      process.exit(1);
+    }
+    const stackPath = stack.path;
+    const authInfo = await detectRuntime2(stackPath);
+    if (!authInfo) {
+      console.error(`No authentication script found for ${stackId}`);
+      console.error(`This stack may not support OAuth authentication.`);
+      process.exit(1);
+    }
+    console.log("");
+    console.log("\u2550".repeat(60));
+    console.log(`  Authenticating ${stack.name || stackId}`);
+    console.log("\u2550".repeat(60));
+    console.log("");
+    console.log("Finding available port for OAuth callback...");
+    const port = await findAvailablePort(3456);
+    console.log(`Using port: ${port}`);
+    console.log("");
+    let cmd;
+    const cwd = path15.dirname(authInfo.authScript);
+    if (authInfo.runtime === "node") {
+      const distAuth = path15.join(cwd, "..", "dist", "auth.js");
+      let useBuiltInPort = false;
+      try {
+        await fs17.access(distAuth);
+        const distContent = await fs17.readFile(distAuth, "utf-8");
+        if (distContent.includes("findAvailablePort")) {
+          console.log("Using compiled authentication script...");
+          cmd = `node ${distAuth}${accountEmail ? ` ${accountEmail}` : ""}`;
+          useBuiltInPort = true;
+        }
+      } catch {
+      }
+      if (!useBuiltInPort) {
+        const authContent = await fs17.readFile(authInfo.authScript, "utf-8");
+        const tempExt = authInfo.useTsx ? ".ts" : ".mjs";
+        const tempAuthScript2 = path15.join(cwd, "..", `auth-temp${tempExt}`);
+        const modifiedContent = authContent.replace(/localhost:3456/g, `localhost:${port}`).replace(/server\.listen\(3456/g, `server.listen(${port}`);
+        await fs17.writeFile(tempAuthScript2, modifiedContent);
+        if (authInfo.useTsx) {
+          cmd = `npx tsx ${tempAuthScript2}${accountEmail ? ` ${accountEmail}` : ""}`;
+        } else {
+          cmd = `node ${tempAuthScript2}${accountEmail ? ` ${accountEmail}` : ""}`;
+        }
+      }
+      console.log("Starting OAuth flow...");
+      console.log("");
+      try {
+        (0, import_child_process4.execSync)(cmd, {
+          cwd,
+          stdio: "inherit"
+        });
+        await fs17.unlink(tempAuthScript);
+      } catch (error) {
+        try {
+          await fs17.unlink(tempAuthScript);
+        } catch {
+        }
+        throw error;
+      }
+    } else if (authInfo.runtime === "python") {
+      cmd = `python3 ${authInfo.authScript}${accountEmail ? ` ${accountEmail}` : ""}`;
+      console.log("Starting OAuth flow...");
+      console.log("");
+      (0, import_child_process4.execSync)(cmd, {
+        cwd,
+        stdio: "inherit",
+        env: {
+          ...process.env,
+          OAUTH_PORT: port.toString()
+        }
+      });
+    }
+    console.log("");
+    console.log("\u2713 Authentication complete!");
+    console.log("");
+  } catch (error) {
+    console.error(`Authentication failed: ${error.message}`);
+    if (flags.verbose) {
+      console.error(error.stack);
+    }
+    process.exit(1);
+  }
+}
+
 // src/index.js
 var VERSION = "2.0.0";
 async function main() {
@@ -18675,6 +18844,11 @@ async function main() {
       case "info":
       case "show":
         await cmdWhich(args, flags);
+        break;
+      case "auth":
+      case "authenticate":
+      case "login":
+        await cmdAuth(args, flags);
         break;
       case "help":
         printHelp(args[0]);

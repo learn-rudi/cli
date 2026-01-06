@@ -1,0 +1,245 @@
+/**
+ * Auth command - Authenticate OAuth-based stacks
+ *
+ * Usage:
+ *   pstack auth <stack-id>              # Auth with default account
+ *   pstack auth <stack-id> user@gmail.com
+ */
+
+import * as fs from 'fs/promises';
+import * as path from 'path';
+import { execSync } from 'child_process';
+import { listInstalled } from '@prompt-stack/core';
+import { PATHS } from '@prompt-stack/env';
+import * as net from 'net';
+
+/**
+ * Find an available port starting from a base port
+ */
+async function findAvailablePort(basePort = 3456) {
+  for (let port = basePort; port < basePort + 10; port++) {
+    if (await isPortAvailable(port)) {
+      return port;
+    }
+  }
+  throw new Error(`No available ports found in range ${basePort}-${basePort + 10}`);
+}
+
+/**
+ * Check if a port is available
+ */
+function isPortAvailable(port) {
+  return new Promise((resolve) => {
+    const server = net.createServer();
+
+    server.once('error', (err) => {
+      if (err.code === 'EADDRINUSE') {
+        resolve(false);
+      } else {
+        resolve(false);
+      }
+    });
+
+    server.once('listening', () => {
+      server.close();
+      resolve(true);
+    });
+
+    server.listen(port);
+  });
+}
+
+/**
+ * Detect runtime from stack directory
+ */
+async function detectRuntime(stackPath) {
+  const runtimes = ['node', 'python'];
+
+  for (const runtime of runtimes) {
+    const runtimePath = path.join(stackPath, runtime);
+
+    try {
+      await fs.access(runtimePath);
+
+      // Check for auth script
+      if (runtime === 'node') {
+        const authTs = path.join(runtimePath, 'src', 'auth.ts');
+        const authJs = path.join(runtimePath, 'dist', 'auth.js');
+
+        try {
+          await fs.access(authTs);
+          return { runtime: 'node', authScript: authTs, useTsx: true };
+        } catch {
+          try {
+            await fs.access(authJs);
+            return { runtime: 'node', authScript: authJs, useTsx: false };
+          } catch {
+            // No auth script
+          }
+        }
+      } else if (runtime === 'python') {
+        const authPy = path.join(runtimePath, 'src', 'auth.py');
+
+        try {
+          await fs.access(authPy);
+          return { runtime: 'python', authScript: authPy, useTsx: false };
+        } catch {
+          // No auth script
+        }
+      }
+    } catch {
+      continue;
+    }
+  }
+
+  return null;
+}
+
+/**
+ * Run authentication for a stack
+ */
+export async function cmdAuth(args, flags) {
+  const stackId = args[0];
+  const accountEmail = args[1];
+
+  if (!stackId) {
+    console.error('Usage: pstack auth <stack-id> [account-email]');
+    console.error('Example: pstack auth google-workspace user@gmail.com');
+    process.exit(1);
+  }
+
+  try {
+    // Get all installed stacks
+    const packages = await listInstalled('stack');
+
+    // Find stack by ID or name
+    const stack = packages.find(p => {
+      const pId = p.id || '';
+      const pName = p.name || '';
+      return pId === stackId || pId === `stack:${stackId}` || pName === stackId;
+    });
+
+    if (!stack) {
+      console.error(`Stack not found: ${stackId}`);
+      console.error(`\nInstalled stacks:`);
+      packages.forEach(p => console.error(`  - ${p.id}`));
+      process.exit(1);
+    }
+
+    const stackPath = stack.path;
+
+    // Detect runtime and auth script
+    const authInfo = await detectRuntime(stackPath);
+
+    if (!authInfo) {
+      console.error(`No authentication script found for ${stackId}`);
+      console.error(`This stack may not support OAuth authentication.`);
+      process.exit(1);
+    }
+
+    console.log('');
+    console.log('═'.repeat(60));
+    console.log(`  Authenticating ${stack.name || stackId}`);
+    console.log('═'.repeat(60));
+    console.log('');
+
+    // Find available port
+    console.log('Finding available port for OAuth callback...');
+    const port = await findAvailablePort(3456);
+    console.log(`Using port: ${port}`);
+    console.log('');
+
+    // Prepare authentication command
+    let cmd;
+    const cwd = path.dirname(authInfo.authScript);
+
+    if (authInfo.runtime === 'node') {
+      // Try to use the compiled dist/auth.js if available (already has port detection built-in)
+      const distAuth = path.join(cwd, '..', 'dist', 'auth.js');
+      let useBuiltInPort = false;
+
+      try {
+        await fs.access(distAuth);
+        // Check if the built version already has dynamic port support
+        const distContent = await fs.readFile(distAuth, 'utf-8');
+        if (distContent.includes('findAvailablePort')) {
+          // Use the compiled version directly - it already has dynamic port support!
+          console.log('Using compiled authentication script...');
+          cmd = `node ${distAuth}${accountEmail ? ` ${accountEmail}` : ''}`;
+          useBuiltInPort = true;
+        }
+      } catch {
+        // dist/auth.js doesn't exist or doesn't have dynamic port support
+      }
+
+      if (!useBuiltInPort) {
+        // Fallback: Create temporary script with dynamic port
+        const authContent = await fs.readFile(authInfo.authScript, 'utf-8');
+
+        // Determine file extension based on whether we're using tsx
+        const tempExt = authInfo.useTsx ? '.ts' : '.mjs';
+        const tempAuthScript = path.join(cwd, '..', `auth-temp${tempExt}`);
+
+        // Replace hardcoded port with dynamic port
+        const modifiedContent = authContent
+          .replace(/localhost:3456/g, `localhost:${port}`)
+          .replace(/server\.listen\(3456/g, `server.listen(${port}`);
+
+        await fs.writeFile(tempAuthScript, modifiedContent);
+
+        if (authInfo.useTsx) {
+          cmd = `npx tsx ${tempAuthScript}${accountEmail ? ` ${accountEmail}` : ''}`;
+        } else {
+          cmd = `node ${tempAuthScript}${accountEmail ? ` ${accountEmail}` : ''}`;
+        }
+      }
+
+      console.log('Starting OAuth flow...');
+      console.log('');
+
+      try {
+        execSync(cmd, {
+          cwd,
+          stdio: 'inherit',
+        });
+
+        // Clean up temp file
+        await fs.unlink(tempAuthScript);
+
+      } catch (error) {
+        // Clean up temp file even on error
+        try {
+          await fs.unlink(tempAuthScript);
+        } catch {}
+
+        throw error;
+      }
+
+    } else if (authInfo.runtime === 'python') {
+      cmd = `python3 ${authInfo.authScript}${accountEmail ? ` ${accountEmail}` : ''}`;
+
+      console.log('Starting OAuth flow...');
+      console.log('');
+
+      execSync(cmd, {
+        cwd,
+        stdio: 'inherit',
+        env: {
+          ...process.env,
+          OAUTH_PORT: port.toString(),
+        },
+      });
+    }
+
+    console.log('');
+    console.log('✓ Authentication complete!');
+    console.log('');
+
+  } catch (error) {
+    console.error(`Authentication failed: ${error.message}`);
+    if (flags.verbose) {
+      console.error(error.stack);
+    }
+    process.exit(1);
+  }
+}
