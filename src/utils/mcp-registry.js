@@ -575,27 +575,79 @@ export async function unregisterMcpGemini(stackId) {
 // =============================================================================
 
 /**
- * Register MCP in all supported agents
+ * Check which agents are installed in ~/.prompt-stack/agents/
  */
-export async function registerMcpAll(stackId, installPath, manifest) {
-  const results = {
-    claude: await registerMcpClaude(stackId, installPath, manifest),
-    codex: await registerMcpCodex(stackId, installPath, manifest),
-    gemini: await registerMcpGemini(stackId, installPath, manifest),
-  };
+async function getInstalledAgents() {
+  const agentsDir = path.join(HOME, '.prompt-stack', 'agents');
+  const installed = [];
+
+  for (const agent of ['claude', 'codex', 'gemini']) {
+    const agentPath = path.join(agentsDir, agent);
+    try {
+      await fs.access(agentPath);
+      installed.push(agent);
+    } catch {
+      // Agent not installed
+    }
+  }
+
+  return installed;
+}
+
+/**
+ * Register MCP in all installed agents (or specific agents if provided)
+ * @param {string} stackId - Stack ID (e.g., 'google-ai')
+ * @param {string} installPath - Path to installed stack
+ * @param {object} manifest - Stack manifest
+ * @param {string[]} [targetAgents] - Optional: specific agents to register (e.g., ['claude'])
+ */
+export async function registerMcpAll(stackId, installPath, manifest, targetAgents = null) {
+  // Determine which agents to register to
+  const agents = targetAgents || await getInstalledAgents();
+
+  const results = {};
+
+  for (const agent of agents) {
+    switch (agent) {
+      case 'claude':
+        results.claude = await registerMcpClaude(stackId, installPath, manifest);
+        break;
+      case 'codex':
+        results.codex = await registerMcpCodex(stackId, installPath, manifest);
+        break;
+      case 'gemini':
+        results.gemini = await registerMcpGemini(stackId, installPath, manifest);
+        break;
+    }
+  }
 
   return results;
 }
 
 /**
- * Unregister MCP from all supported agents
+ * Unregister MCP from all installed agents (or specific agents if provided)
+ * @param {string} stackId - Stack ID (e.g., 'google-ai')
+ * @param {string[]} [targetAgents] - Optional: specific agents to unregister (e.g., ['claude'])
  */
-export async function unregisterMcpAll(stackId) {
-  const results = {
-    claude: await unregisterMcpClaude(stackId),
-    codex: await unregisterMcpCodex(stackId),
-    gemini: await unregisterMcpGemini(stackId),
-  };
+export async function unregisterMcpAll(stackId, targetAgents = null) {
+  // Determine which agents to unregister from
+  const agents = targetAgents || await getInstalledAgents();
+
+  const results = {};
+
+  for (const agent of agents) {
+    switch (agent) {
+      case 'claude':
+        results.claude = await unregisterMcpClaude(stackId);
+        break;
+      case 'codex':
+        results.codex = await unregisterMcpCodex(stackId);
+        break;
+      case 'gemini':
+        results.gemini = await unregisterMcpGemini(stackId);
+        break;
+    }
+  }
 
   return results;
 }

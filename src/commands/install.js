@@ -66,11 +66,25 @@ export async function cmdInstall(args, flags) {
 
   if (!pkgId) {
     console.error('Usage: pstack install <package>');
+    console.error('       pstack install <package> --agent=claude        (register to Claude only)');
+    console.error('       pstack install <package> --agent=claude,codex  (register to specific agents)');
     console.error('Example: pstack install pdf-creator');
     process.exit(1);
   }
 
   const force = flags.force || false;
+
+  // Parse --agent flag (e.g., --agent=claude or --agent=claude,codex)
+  let targetAgents = null;
+  if (flags.agent) {
+    const validAgents = ['claude', 'codex', 'gemini'];
+    targetAgents = flags.agent.split(',').map(a => a.trim()).filter(a => validAgents.includes(a));
+
+    if (targetAgents.length === 0) {
+      console.error(`Invalid --agent value. Valid agents: ${validAgents.join(', ')}`);
+      process.exit(1);
+    }
+  }
 
   console.log(`Resolving ${pkgId}...`);
 
@@ -138,8 +152,8 @@ export async function cmdInstall(args, flags) {
           // Create .env file with placeholders
           const envPath = await createEnvFile(result.path, manifest);
 
-          // Register MCP in agent configs (Claude, Codex, Gemini)
-          await registerMcpAll(stackId, result.path, manifest);
+          // Register MCP in agent configs (only installed agents, or specific agents if --agent flag)
+          await registerMcpAll(stackId, result.path, manifest, targetAgents);
 
           // Show next steps if secrets are required
           if (manifest.secrets?.length > 0) {

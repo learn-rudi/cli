@@ -22,10 +22,24 @@ export async function cmdRemove(args, flags) {
 
   if (!pkgId) {
     console.error('Usage: pstack remove <package>');
-    console.error('       pstack remove --all             (remove all packages)');
-    console.error('       pstack remove stacks --all      (remove all stacks)');
+    console.error('       pstack remove --all                           (remove all packages)');
+    console.error('       pstack remove stacks --all                    (remove all stacks)');
+    console.error('       pstack remove <package> --agent=claude        (unregister from Claude only)');
+    console.error('       pstack remove <package> --agent=claude,codex  (unregister from specific agents)');
     console.error('Example: pstack remove pdf-creator');
     process.exit(1);
+  }
+
+  // Parse --agent flag
+  let targetAgents = null;
+  if (flags.agent) {
+    const validAgents = ['claude', 'codex', 'gemini'];
+    targetAgents = flags.agent.split(',').map(a => a.trim()).filter(a => validAgents.includes(a));
+
+    if (targetAgents.length === 0) {
+      console.error(`Invalid --agent value. Valid agents: ${validAgents.join(', ')}`);
+      process.exit(1);
+    }
   }
 
   // Normalize ID
@@ -50,9 +64,9 @@ export async function cmdRemove(args, flags) {
     const result = await uninstallPackage(fullId);
 
     if (result.success) {
-      // Unregister MCP from agent configs (Claude, Codex, Gemini)
+      // Unregister MCP from agent configs (only installed agents, or specific agents if --agent flag)
       const stackId = fullId.replace(/^stack:/, '');
-      await unregisterMcpAll(stackId);
+      await unregisterMcpAll(stackId, targetAgents);
 
       console.log(`✓ Removed ${fullId}`);
     } else {
@@ -70,6 +84,18 @@ export async function cmdRemove(args, flags) {
  * Bulk removal - remove all packages of a certain kind or all packages
  */
 async function removeBulk(kind, flags) {
+  // Parse --agent flag
+  let targetAgents = null;
+  if (flags.agent) {
+    const validAgents = ['claude', 'codex', 'gemini'];
+    targetAgents = flags.agent.split(',').map(a => a.trim()).filter(a => validAgents.includes(a));
+
+    if (targetAgents.length === 0) {
+      console.error(`Invalid --agent value. Valid agents: ${validAgents.join(', ')}`);
+      process.exit(1);
+    }
+  }
+
   // Normalize kind
   if (kind) {
     if (kind === 'stacks') kind = 'stack';
@@ -116,10 +142,10 @@ async function removeBulk(kind, flags) {
         const result = await uninstallPackage(pkg.id);
 
         if (result.success) {
-          // Unregister MCP from agent configs (Claude, Codex, Gemini)
+          // Unregister MCP from agent configs (only installed agents, or specific agents if --agent flag)
           if (pkg.kind === 'stack') {
             const stackId = pkg.id.replace(/^stack:/, '');
-            await unregisterMcpAll(stackId);
+            await unregisterMcpAll(stackId, targetAgents);
           }
 
           console.log(`  ✓ Removed ${pkg.id}`);

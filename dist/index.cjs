@@ -15992,20 +15992,53 @@ async function unregisterMcpGemini(stackId) {
     return { success: false, error: error.message };
   }
 }
-async function registerMcpAll(stackId, installPath, manifest) {
-  const results = {
-    claude: await registerMcpClaude(stackId, installPath, manifest),
-    codex: await registerMcpCodex(stackId, installPath, manifest),
-    gemini: await registerMcpGemini(stackId, installPath, manifest)
-  };
+async function getInstalledAgents() {
+  const agentsDir = path5.join(HOME, ".prompt-stack", "agents");
+  const installed = [];
+  for (const agent of ["claude", "codex", "gemini"]) {
+    const agentPath = path5.join(agentsDir, agent);
+    try {
+      await fs5.access(agentPath);
+      installed.push(agent);
+    } catch {
+    }
+  }
+  return installed;
+}
+async function registerMcpAll(stackId, installPath, manifest, targetAgents = null) {
+  const agents = targetAgents || await getInstalledAgents();
+  const results = {};
+  for (const agent of agents) {
+    switch (agent) {
+      case "claude":
+        results.claude = await registerMcpClaude(stackId, installPath, manifest);
+        break;
+      case "codex":
+        results.codex = await registerMcpCodex(stackId, installPath, manifest);
+        break;
+      case "gemini":
+        results.gemini = await registerMcpGemini(stackId, installPath, manifest);
+        break;
+    }
+  }
   return results;
 }
-async function unregisterMcpAll(stackId) {
-  const results = {
-    claude: await unregisterMcpClaude(stackId),
-    codex: await unregisterMcpCodex(stackId),
-    gemini: await unregisterMcpGemini(stackId)
-  };
+async function unregisterMcpAll(stackId, targetAgents = null) {
+  const agents = targetAgents || await getInstalledAgents();
+  const results = {};
+  for (const agent of agents) {
+    switch (agent) {
+      case "claude":
+        results.claude = await unregisterMcpClaude(stackId);
+        break;
+      case "codex":
+        results.codex = await unregisterMcpCodex(stackId);
+        break;
+      case "gemini":
+        results.gemini = await unregisterMcpGemini(stackId);
+        break;
+    }
+  }
   return results;
 }
 
@@ -16052,10 +16085,21 @@ async function cmdInstall(args, flags) {
   const pkgId = args[0];
   if (!pkgId) {
     console.error("Usage: pstack install <package>");
+    console.error("       pstack install <package> --agent=claude        (register to Claude only)");
+    console.error("       pstack install <package> --agent=claude,codex  (register to specific agents)");
     console.error("Example: pstack install pdf-creator");
     process.exit(1);
   }
   const force = flags.force || false;
+  let targetAgents = null;
+  if (flags.agent) {
+    const validAgents = ["claude", "codex", "gemini"];
+    targetAgents = flags.agent.split(",").map((a) => a.trim()).filter((a) => validAgents.includes(a));
+    if (targetAgents.length === 0) {
+      console.error(`Invalid --agent value. Valid agents: ${validAgents.join(", ")}`);
+      process.exit(1);
+    }
+  }
   console.log(`Resolving ${pkgId}...`);
   try {
     const resolved = await resolvePackage(pkgId);
@@ -16112,7 +16156,7 @@ Installing...`);
         if (manifest) {
           const stackId = resolved.id.replace(/^stack:/, "");
           const envPath = await createEnvFile(result.path, manifest);
-          await registerMcpAll(stackId, result.path, manifest);
+          await registerMcpAll(stackId, result.path, manifest, targetAgents);
           if (manifest.secrets?.length > 0) {
             console.log(`
 \u26A0\uFE0F  This stack requires configuration:`);
@@ -16834,10 +16878,21 @@ async function cmdRemove(args, flags) {
   const pkgId = args[0];
   if (!pkgId) {
     console.error("Usage: pstack remove <package>");
-    console.error("       pstack remove --all             (remove all packages)");
-    console.error("       pstack remove stacks --all      (remove all stacks)");
+    console.error("       pstack remove --all                           (remove all packages)");
+    console.error("       pstack remove stacks --all                    (remove all stacks)");
+    console.error("       pstack remove <package> --agent=claude        (unregister from Claude only)");
+    console.error("       pstack remove <package> --agent=claude,codex  (unregister from specific agents)");
     console.error("Example: pstack remove pdf-creator");
     process.exit(1);
+  }
+  let targetAgents = null;
+  if (flags.agent) {
+    const validAgents = ["claude", "codex", "gemini"];
+    targetAgents = flags.agent.split(",").map((a) => a.trim()).filter((a) => validAgents.includes(a));
+    if (targetAgents.length === 0) {
+      console.error(`Invalid --agent value. Valid agents: ${validAgents.join(", ")}`);
+      process.exit(1);
+    }
   }
   const fullId = pkgId.includes(":") ? pkgId : `stack:${pkgId}`;
   if (!isPackageInstalled(fullId)) {
@@ -16854,7 +16909,7 @@ async function cmdRemove(args, flags) {
     const result = await uninstallPackage(fullId);
     if (result.success) {
       const stackId = fullId.replace(/^stack:/, "");
-      await unregisterMcpAll(stackId);
+      await unregisterMcpAll(stackId, targetAgents);
       console.log(`\u2713 Removed ${fullId}`);
     } else {
       console.error(`\u2717 Failed to remove: ${result.error}`);
@@ -16866,6 +16921,15 @@ async function cmdRemove(args, flags) {
   }
 }
 async function removeBulk(kind, flags) {
+  let targetAgents = null;
+  if (flags.agent) {
+    const validAgents = ["claude", "codex", "gemini"];
+    targetAgents = flags.agent.split(",").map((a) => a.trim()).filter((a) => validAgents.includes(a));
+    if (targetAgents.length === 0) {
+      console.error(`Invalid --agent value. Valid agents: ${validAgents.join(", ")}`);
+      process.exit(1);
+    }
+  }
   if (kind) {
     if (kind === "stacks") kind = "stack";
     if (kind === "prompts") kind = "prompt";
@@ -16905,7 +16969,7 @@ Removing packages...`);
         if (result.success) {
           if (pkg.kind === "stack") {
             const stackId = pkg.id.replace(/^stack:/, "");
-            await unregisterMcpAll(stackId);
+            await unregisterMcpAll(stackId, targetAgents);
           }
           console.log(`  \u2713 Removed ${pkg.id}`);
           succeeded++;
