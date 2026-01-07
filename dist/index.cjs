@@ -41,19 +41,24 @@ function getPlatformArch() {
 }
 function ensureDirectories() {
   const dirs = [
-    PATHS.packages,
     PATHS.stacks,
+    // MCP servers (google-ai, notion-workspace, etc.)
     PATHS.prompts,
+    // Reusable prompts
     PATHS.runtimes,
+    // Language runtimes (node, python, bun, deno)
     PATHS.tools,
+    // Utility binaries (ffmpeg, git, jq, etc.)
     PATHS.agents,
-    PATHS.store,
+    // AI CLI agents (claude, codex, gemini, copilot)
     PATHS.bins,
+    // Shims directory (Studio only)
     PATHS.locks,
-    PATHS.vault,
+    // Lock files
     PATHS.db,
-    PATHS.cache,
-    PATHS.logs
+    // Database directory
+    PATHS.cache
+    // Registry cache
   ];
   for (const dir of dirs) {
     if (!import_fs.default.existsSync(dir)) {
@@ -18023,10 +18028,11 @@ async function cmdDoctor(args, flags) {
   console.log("\n\u{1F4C1} Directories");
   const dirs = [
     { path: PATHS.home, name: "Home" },
-    { path: PATHS.packages, name: "Packages" },
     { path: PATHS.stacks, name: "Stacks" },
     { path: PATHS.prompts, name: "Prompts" },
     { path: PATHS.runtimes, name: "Runtimes" },
+    { path: PATHS.tools, name: "Tools" },
+    { path: PATHS.agents, name: "Agents" },
     { path: PATHS.db, name: "Database" },
     { path: PATHS.cache, name: "Cache" }
   ];

@@ -22,10 +22,11 @@ export async function cmdDoctor(args, flags) {
   console.log('\n📁 Directories');
   const dirs = [
     { path: PATHS.home, name: 'Home' },
-    { path: PATHS.packages, name: 'Packages' },
     { path: PATHS.stacks, name: 'Stacks' },
     { path: PATHS.prompts, name: 'Prompts' },
     { path: PATHS.runtimes, name: 'Runtimes' },
+    { path: PATHS.tools, name: 'Tools' },
+    { path: PATHS.agents, name: 'Agents' },
     { path: PATHS.db, name: 'Database' },
     { path: PATHS.cache, name: 'Cache' }
   ];
