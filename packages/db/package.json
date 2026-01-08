@@ -1,0 +1,31 @@
+{
+  "name": "@learnrudi/db",
+  "version": "1.0.2",
+  "description": "Database layer for RUDI - tracks installs, runs, and artifacts",
+  "type": "module",
+  "main": "src/index.js",
+  "exports": {
+    ".": "./src/index.js",
+    "./import": "./src/import.js",
+    "./logs": "./src/logs.js",
+    "./schema": "./src/schema.js",
+    "./search": "./src/search.js",
+    "./stats": "./src/stats.js"
+  },
+  "scripts": {
+    "test": "node --test src/__tests__/"
+  },
+  "dependencies": {
+    "@learnrudi/env": "^1.0.0",
+    "better-sqlite3": "^12.5.0",
+    "uuid": "^11.1.0"
+  },
+  "devDependencies": {},
+  "engines": {
+    "node": ">=18.0.0"
+  },
+  "license": "MIT",
+  "publishConfig": {
+    "access": "public"
+  }
+}

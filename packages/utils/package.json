@@ -1,0 +1,23 @@
+{
+  "name": "@learnrudi/utils",
+  "version": "1.0.0",
+  "description": "Shared utilities for RUDI",
+  "type": "module",
+  "main": "src/index.js",
+  "exports": {
+    ".": "./src/index.js",
+    "./args": "./src/args.js",
+    "./help": "./src/help.js"
+  },
+  "scripts": {
+    "test": "node --test src/__tests__/"
+  },
+  "dependencies": {},
+  "engines": {
+    "node": ">=18.0.0"
+  },
+  "license": "MIT",
+  "publishConfig": {
+    "access": "public"
+  }
+}

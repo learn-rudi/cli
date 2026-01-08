@@ -1,0 +1,31 @@
+{
+  "name": "@learnrudi/core",
+  "version": "1.0.2",
+  "description": "Core logic for RUDI - resolve, install, lockfiles",
+  "type": "module",
+  "main": "src/index.js",
+  "exports": {
+    ".": "./src/index.js",
+    "./resolver": "./src/resolver.js",
+    "./installer": "./src/installer.js",
+    "./lockfile": "./src/lockfile.js",
+    "./rudi-config": "./src/rudi-config.js",
+    "./tool-index": "./src/tool-index.js"
+  },
+  "scripts": {
+    "test": "node --test src/__tests__/"
+  },
+  "dependencies": {
+    "@learnrudi/env": "^1.0.0",
+    "@learnrudi/manifest": "^1.0.0",
+    "@learnrudi/registry-client": "^1.0.0",
+    "yaml": "^2.3.4"
+  },
+  "engines": {
+    "node": ">=18.0.0"
+  },
+  "license": "MIT",
+  "publishConfig": {
+    "access": "public"
+  }
+}
