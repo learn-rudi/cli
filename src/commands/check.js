@@ -57,6 +57,48 @@ function getVersion(binaryPath, versionFlag = '--version') {
   }
 }
 
+/**
+ * Auto-detect package kind by checking filesystem locations
+ * Priority: agent > runtime > binary > stack (checks where it exists)
+ */
+function detectKindFromFilesystem(name) {
+  // Check RUDI agent location
+  const agentPath = path.join(PATHS.agents, name, 'node_modules', '.bin', name);
+  if (fs.existsSync(agentPath)) return 'agent';
+
+  // Check RUDI runtime location
+  const runtimePath = path.join(PATHS.runtimes, name, 'bin', name);
+  if (fs.existsSync(runtimePath)) return 'runtime';
+
+  // Check RUDI binary location
+  const binaryPath = path.join(PATHS.binaries, name, name);
+  const binaryPath2 = path.join(PATHS.binaries, name);
+  if (fs.existsSync(binaryPath) || fs.existsSync(binaryPath2)) return 'binary';
+
+  // Check RUDI stack location
+  const stackPath = path.join(PATHS.stacks, name);
+  if (fs.existsSync(stackPath)) return 'stack';
+
+  // Not found in RUDI - check global PATH and guess based on what it is
+  try {
+    const globalPath = execSync(`which ${name} 2>/dev/null`, { encoding: 'utf-8' }).trim();
+    if (globalPath) {
+      // If it's in a typical runtime location, it's probably a runtime
+      if (globalPath.includes('/node') || globalPath.includes('/python') ||
+          globalPath.includes('/deno') || globalPath.includes('/bun')) {
+        return 'runtime';
+      }
+      // Otherwise assume binary (most common case for global tools)
+      return 'binary';
+    }
+  } catch {
+    // Not in PATH
+  }
+
+  // Default to stack for unknown (user can be explicit with stack:name)
+  return 'stack';
+}
+
 export async function cmdCheck(args, flags) {
   const packageId = args[0];
 
@@ -75,31 +117,9 @@ export async function cmdCheck(args, flags) {
   if (packageId.includes(':')) {
     [kind, name] = packageId.split(':');
   } else {
-    // Guess kind based on name
-    const KNOWN_AGENTS = ['claude', 'codex', 'gemini', 'copilot', 'ollama'];
-    const KNOWN_RUNTIMES = ['node', 'python', 'deno', 'bun'];
-    const KNOWN_BINARIES = [
-      'ffmpeg', 'ripgrep', 'rg', 'git', 'pandoc', 'jq', 'yq',
-      'sqlite', 'sqlite3', 'imagemagick', 'convert', 'whisper',
-      'docker', 'kubectl', 'terraform', 'vercel', 'netlify',
-      'supabase', 'wrangler', 'railway', 'flyctl', 'gh',
-      'ytdlp', 'yt-dlp', 'rclone', 'chromium', 'playwright'
-    ];
-
-    if (KNOWN_AGENTS.includes(packageId)) {
-      kind = 'agent';
-      name = packageId;
-    } else if (KNOWN_RUNTIMES.includes(packageId)) {
-      kind = 'runtime';
-      name = packageId;
-    } else if (KNOWN_BINARIES.includes(packageId)) {
-      kind = 'binary';
-      name = packageId;
-    } else {
-      // Default to stack for unknown names
-      kind = 'stack';
-      name = packageId;
-    }
+    // Auto-detect kind by checking where it exists in ~/.rudi/
+    name = packageId;
+    kind = detectKindFromFilesystem(name);
   }
 
   const result = {
