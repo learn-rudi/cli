@@ -168,24 +168,16 @@ async function installSinglePackage(pkg, options = {}) {
     // Handle pip-based packages (aider, etc.)
     if (pkg.pipPackage) {
       try {
-        const { execSync } = await import('child_process');
-
         if (!fs.existsSync(installPath)) {
           fs.mkdirSync(installPath, { recursive: true });
         }
 
-        onProgress?.({ phase: 'installing', package: pkg.id, message: `pip install ${pkg.pipPackage}` });
+        onProgress?.({ phase: 'installing', package: pkg.id, message: `Installing ${pkg.pipPackage}...` });
 
-        // Use downloaded Python from ~/.prompt/runtimes/python/ if available
-        // Otherwise fall back to system python3
-        const pythonPath = path.join(PATHS.runtimes, 'python', 'bin', 'python3');
-        const pythonCmd = fs.existsSync(pythonPath) ? pythonPath : 'python3';
-
-        // Create a virtual environment
-        execSync(`"${pythonCmd}" -m venv "${installPath}/venv"`, { stdio: 'pipe' });
-
-        // Install the pip package in the venv
-        execSync(`"${installPath}/venv/bin/pip" install ${pkg.pipPackage}`, { stdio: 'pipe' });
+        // Use uv if available (10-100x faster), fallback to pip
+        const { usedUv } = await installPythonPackage(installPath, pkg.pipPackage, (p) => {
+          onProgress?.({ ...p, package: pkg.id });
+        });
 
         // Write package metadata
         fs.writeFileSync(
@@ -197,7 +189,7 @@ async function installSinglePackage(pkg, options = {}) {
             version: pkg.version || 'latest',
             pipPackage: pkg.pipPackage,
             installedAt: new Date().toISOString(),
-            source: 'pip',
+            source: usedUv ? 'uv' : 'pip',
             venvPath: path.join(installPath, 'venv')
           }, null, 2)
         );
@@ -614,12 +606,9 @@ async function installStackDependencies(stackPath, onProgress) {
   if (fs.existsSync(pythonPath)) {
     const requirementsPath = path.join(pythonPath, 'requirements.txt');
     if (fs.existsSync(requirementsPath)) {
-      onProgress?.({ phase: 'installing-deps', message: 'Installing Python dependencies...' });
       try {
-        // Find python executable (bundled from Studio, or system python)
-        const pythonCmd = await findPythonExecutable();
-        execSync(`"${pythonCmd}" -m venv venv`, { cwd: pythonPath, stdio: 'pipe' });
-        execSync('./venv/bin/pip install -r requirements.txt', { cwd: pythonPath, stdio: 'pipe' });
+        // Use uv if available (10-100x faster), fallback to pip
+        await installPythonRequirements(pythonPath, onProgress);
       } catch (error) {
         console.warn(`Warning: Failed to install Python dependencies: ${error.message}`);
         // Don't fail installation if deps fail - stack may still work
@@ -690,4 +679,137 @@ async function findPythonExecutable() {
 
   // Fallback to system python3
   return 'python3';
+}
+
+/**
+ * Find uv executable - check if uv is installed in binaries
+ * @returns {string|null} Path to uv executable, or null if not found
+ */
+export function findUvExecutable() {
+  const isWindows = process.platform === 'win32';
+  const exe = isWindows ? 'uv.exe' : 'uv';
+
+  // Check in ~/.rudi/binaries/uv/
+  const uvPath = path.join(PATHS.binaries, 'uv', exe);
+  if (fs.existsSync(uvPath)) {
+    return uvPath;
+  }
+
+  // Check if uv is in system PATH
+  try {
+    const { execSync } = require('child_process');
+    execSync('uv --version', { stdio: 'pipe' });
+    return 'uv';
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * Ensure uv is installed - auto-install if not present
+ * Call this before first Python package installation for faster installs
+ * @param {Function} [onProgress] - Progress callback
+ * @returns {Promise<string|null>} Path to uv executable, or null if installation failed
+ */
+export async function ensureUv(onProgress) {
+  // Check if already available
+  const existing = findUvExecutable();
+  if (existing) {
+    return existing;
+  }
+
+  // Auto-install uv
+  onProgress?.({ phase: 'installing', message: 'Installing uv for faster Python package management...' });
+
+  try {
+    const result = await installPackage('binary:uv', { onProgress });
+    if (result.success) {
+      return findUvExecutable();
+    }
+  } catch (error) {
+    console.warn(`Warning: Failed to install uv: ${error.message}`);
+    console.warn('Falling back to pip for Python package installation.');
+  }
+
+  return null;
+}
+
+/**
+ * Install Python package using uv (fast) or pip (fallback)
+ * @param {string} installPath - Directory to install into
+ * @param {string} pipPackage - Package name to install
+ * @param {Function} [onProgress] - Progress callback
+ * @returns {Promise<{ usedUv: boolean }>}
+ */
+async function installPythonPackage(installPath, pipPackage, onProgress) {
+  const { execSync } = await import('child_process');
+  const uvCmd = findUvExecutable();
+
+  if (uvCmd) {
+    // Use uv - 10-100x faster than pip
+    onProgress?.({ phase: 'installing', message: `uv pip install ${pipPackage}` });
+
+    // Create venv with uv
+    execSync(`"${uvCmd}" venv "${installPath}/venv"`, { stdio: 'pipe' });
+
+    // Install package with uv
+    execSync(`"${uvCmd}" pip install --python "${installPath}/venv/bin/python" ${pipPackage}`, { stdio: 'pipe' });
+
+    return { usedUv: true };
+  } else {
+    // Fallback to pip
+    onProgress?.({ phase: 'installing', message: `pip install ${pipPackage}` });
+
+    const pythonCmd = await findPythonExecutable();
+
+    // Create venv with python
+    execSync(`"${pythonCmd}" -m venv "${installPath}/venv"`, { stdio: 'pipe' });
+
+    // Install package with pip
+    execSync(`"${installPath}/venv/bin/pip" install ${pipPackage}`, { stdio: 'pipe' });
+
+    return { usedUv: false };
+  }
+}
+
+/**
+ * Install Python requirements using uv (fast) or pip (fallback)
+ * @param {string} pythonPath - Directory containing requirements.txt
+ * @param {Function} [onProgress] - Progress callback
+ * @returns {Promise<{ usedUv: boolean }>}
+ */
+async function installPythonRequirements(pythonPath, onProgress) {
+  const { execSync } = await import('child_process');
+  const uvCmd = findUvExecutable();
+  const isWindows = process.platform === 'win32';
+  const venvPython = isWindows
+    ? path.join(pythonPath, 'venv', 'Scripts', 'python.exe')
+    : path.join(pythonPath, 'venv', 'bin', 'python');
+
+  if (uvCmd) {
+    // Use uv - 10-100x faster than pip
+    onProgress?.({ phase: 'installing-deps', message: 'Installing Python dependencies with uv...' });
+
+    // Create venv with uv
+    execSync(`"${uvCmd}" venv "${pythonPath}/venv"`, { cwd: pythonPath, stdio: 'pipe' });
+
+    // Install requirements with uv
+    execSync(`"${uvCmd}" pip install --python "${venvPython}" -r requirements.txt`, { cwd: pythonPath, stdio: 'pipe' });
+
+    return { usedUv: true };
+  } else {
+    // Fallback to pip
+    onProgress?.({ phase: 'installing-deps', message: 'Installing Python dependencies...' });
+
+    const pythonCmd = await findPythonExecutable();
+
+    // Create venv with python
+    execSync(`"${pythonCmd}" -m venv venv`, { cwd: pythonPath, stdio: 'pipe' });
+
+    // Install requirements with pip
+    const pipCmd = isWindows ? '.\\venv\\Scripts\\pip' : './venv/bin/pip';
+    execSync(`${pipCmd} install -r requirements.txt`, { cwd: pythonPath, stdio: 'pipe' });
+
+    return { usedUv: false };
+  }
 }
