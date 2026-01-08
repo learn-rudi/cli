@@ -3937,8 +3937,23 @@ function findBinary(command, kind = "binary") {
   return { found: false, path: null, source: null };
 }
 function getAgentStatus(agent) {
-  const binaryPath = import_path7.default.join(import_core12.PATHS.agents, agent.id, "node_modules", ".bin", agent.id);
-  const installed = import_fs10.default.existsSync(binaryPath);
+  const rudiPath = import_path7.default.join(import_core12.PATHS.agents, agent.id, "node_modules", ".bin", agent.id);
+  const rudiInstalled = import_fs10.default.existsSync(rudiPath);
+  let globalPath = null;
+  let globalInstalled = false;
+  if (!rudiInstalled) {
+    try {
+      const which = (0, import_child_process7.execSync)(`which ${agent.id} 2>/dev/null`, { encoding: "utf-8" }).trim();
+      if (which && !which.includes(".rudi/bins") && !which.includes(".rudi/shims")) {
+        globalPath = which;
+        globalInstalled = true;
+      }
+    } catch {
+    }
+  }
+  const installed = rudiInstalled || globalInstalled;
+  const activePath = rudiInstalled ? rudiPath : globalPath;
+  const source = rudiInstalled ? "rudi" : globalInstalled ? "global" : null;
   let authenticated = false;
   if (agent.credentialType === "keychain") {
     authenticated = checkKeychain(agent.keychainService);
@@ -3946,16 +3961,18 @@ function getAgentStatus(agent) {
     authenticated = fileExists(agent.credentialPath);
   }
   let version = null;
-  if (installed) {
-    version = getVersion(binaryPath, "--version");
+  if (installed && activePath) {
+    version = getVersion(activePath, "--version");
   }
   return {
     id: agent.id,
     name: agent.name,
     installed,
+    source,
+    // 'rudi' | 'global' | null
     authenticated,
     version,
-    path: installed ? binaryPath : null,
+    path: activePath,
     ready: installed && authenticated
   };
 }
@@ -4045,10 +4062,10 @@ function printStatus(status, filter) {
     console.log("-".repeat(50));
     for (const agent of status.agents) {
       const installIcon = agent.installed ? "\x1B[32m\u2713\x1B[0m" : "\x1B[31m\u2717\x1B[0m";
-      const authIcon = agent.authenticated ? "\x1B[32m\u2713\x1B[0m" : "\x1B[33m\u25CB\x1B[0m";
       const version = agent.version ? `v${agent.version}` : "";
-      console.log(`  ${installIcon} ${agent.name} ${version}`);
-      console.log(`    Installed: ${agent.installed ? "yes" : "no"}, Auth: ${agent.authenticated ? "yes" : "no"}`);
+      const source = agent.source ? `(${agent.source})` : "";
+      console.log(`  ${installIcon} ${agent.name} ${version} ${source}`);
+      console.log(`    Installed: ${agent.installed ? "yes" : "no"}, Auth: ${agent.authenticated ? "yes" : "no"}, Ready: ${agent.ready ? "yes" : "no"}`);
     }
     console.log("");
   }
@@ -4183,6 +4200,8 @@ async function cmdCheck(args, flags) {
     kind,
     name,
     installed: false,
+    source: null,
+    // 'rudi' | 'global' | null
     authenticated: null,
     // Only for agents
     ready: false,
@@ -4191,11 +4210,25 @@ async function cmdCheck(args, flags) {
   };
   switch (kind) {
     case "agent": {
-      const binaryPath = import_path8.default.join(import_core13.PATHS.agents, name, "node_modules", ".bin", name);
-      result.installed = import_fs11.default.existsSync(binaryPath);
-      result.path = result.installed ? binaryPath : null;
-      if (result.installed) {
-        result.version = getVersion2(binaryPath);
+      const rudiPath = import_path8.default.join(import_core13.PATHS.agents, name, "node_modules", ".bin", name);
+      const rudiInstalled = import_fs11.default.existsSync(rudiPath);
+      let globalPath = null;
+      let globalInstalled = false;
+      if (!rudiInstalled) {
+        try {
+          const which = (0, import_child_process8.execSync)(`which ${name} 2>/dev/null`, { encoding: "utf-8" }).trim();
+          if (which && !which.includes(".rudi/bins") && !which.includes(".rudi/shims")) {
+            globalPath = which;
+            globalInstalled = true;
+          }
+        } catch {
+        }
+      }
+      result.installed = rudiInstalled || globalInstalled;
+      result.path = rudiInstalled ? rudiPath : globalPath;
+      result.source = rudiInstalled ? "rudi" : globalInstalled ? "global" : null;
+      if (result.installed && result.path) {
+        result.version = getVersion2(result.path);
       }
       const cred = AGENT_CREDENTIALS[name];
       if (cred) {
