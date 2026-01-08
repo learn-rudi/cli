@@ -4169,6 +4169,28 @@ function getVersion2(binaryPath, versionFlag = "--version") {
     return null;
   }
 }
+function detectKindFromFilesystem(name) {
+  const agentPath = import_path8.default.join(import_core13.PATHS.agents, name, "node_modules", ".bin", name);
+  if (import_fs11.default.existsSync(agentPath)) return "agent";
+  const runtimePath = import_path8.default.join(import_core13.PATHS.runtimes, name, "bin", name);
+  if (import_fs11.default.existsSync(runtimePath)) return "runtime";
+  const binaryPath = import_path8.default.join(import_core13.PATHS.binaries, name, name);
+  const binaryPath2 = import_path8.default.join(import_core13.PATHS.binaries, name);
+  if (import_fs11.default.existsSync(binaryPath) || import_fs11.default.existsSync(binaryPath2)) return "binary";
+  const stackPath = import_path8.default.join(import_core13.PATHS.stacks, name);
+  if (import_fs11.default.existsSync(stackPath)) return "stack";
+  try {
+    const globalPath = (0, import_child_process8.execSync)(`which ${name} 2>/dev/null`, { encoding: "utf-8" }).trim();
+    if (globalPath) {
+      if (globalPath.includes("/node") || globalPath.includes("/python") || globalPath.includes("/deno") || globalPath.includes("/bun")) {
+        return "runtime";
+      }
+      return "binary";
+    }
+  } catch {
+  }
+  return "stack";
+}
 async function cmdCheck(args, flags) {
   const packageId = args[0];
   if (!packageId) {
@@ -4184,50 +4206,8 @@ async function cmdCheck(args, flags) {
   if (packageId.includes(":")) {
     [kind, name] = packageId.split(":");
   } else {
-    const KNOWN_AGENTS = ["claude", "codex", "gemini", "copilot", "ollama"];
-    const KNOWN_RUNTIMES = ["node", "python", "deno", "bun"];
-    const KNOWN_BINARIES = [
-      "ffmpeg",
-      "ripgrep",
-      "rg",
-      "git",
-      "pandoc",
-      "jq",
-      "yq",
-      "sqlite",
-      "sqlite3",
-      "imagemagick",
-      "convert",
-      "whisper",
-      "docker",
-      "kubectl",
-      "terraform",
-      "vercel",
-      "netlify",
-      "supabase",
-      "wrangler",
-      "railway",
-      "flyctl",
-      "gh",
-      "ytdlp",
-      "yt-dlp",
-      "rclone",
-      "chromium",
-      "playwright"
-    ];
-    if (KNOWN_AGENTS.includes(packageId)) {
-      kind = "agent";
-      name = packageId;
-    } else if (KNOWN_RUNTIMES.includes(packageId)) {
-      kind = "runtime";
-      name = packageId;
-    } else if (KNOWN_BINARIES.includes(packageId)) {
-      kind = "binary";
-      name = packageId;
-    } else {
-      kind = "stack";
-      name = packageId;
-    }
+    name = packageId;
+    kind = detectKindFromFilesystem(name);
   }
   const result = {
     id: `${kind}:${name}`,
