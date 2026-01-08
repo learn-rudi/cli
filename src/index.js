@@ -43,6 +43,7 @@ import { cmdAuth } from './commands/auth.js';
 import { cmdMcp } from './commands/mcp.js';
 import { cmdIntegrate } from './commands/integrate.js';
 import { cmdMigrate } from './commands/migrate.js';
+import { cmdIndex } from './commands/index-tools.js';
 
 const VERSION = '2.0.0';
 
@@ -144,6 +145,10 @@ async function main() {
 
       case 'migrate':
         await cmdMigrate(args, flags);
+        break;
+
+      case 'index':
+        await cmdIndex(args, flags);
         break;
 
       case 'home':

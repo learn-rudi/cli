@@ -12,7 +12,7 @@
 import * as fs from 'fs/promises';
 import * as path from 'path';
 import { execSync } from 'child_process';
-import { installPackage, resolvePackage, checkAllDependencies, formatDependencyResults } from '@learnrudi/core';
+import { installPackage, resolvePackage, checkAllDependencies, formatDependencyResults, addStack, updateSecretStatus } from '@learnrudi/core';
 import { hasSecret, listSecrets, setSecret, getSecret } from '@learnrudi/secrets';
 import { getInstalledAgents } from '@learnrudi/mcp';
 
@@ -390,6 +390,20 @@ export async function cmdInstall(args, flags) {
             process.exit(1);
           }
 
+          // Update rudi.json with stack info (for router-mcp)
+          try {
+            addStack(result.id, {
+              path: result.path,
+              runtime: manifest.runtime || manifest.mcp?.runtime || 'node',
+              command: manifest.command || (manifest.mcp?.command ? [manifest.mcp.command, ...(manifest.mcp.args || [])] : null),
+              secrets: getManifestSecrets(manifest),
+              version: manifest.version
+            });
+            console.log(`  ✓ Updated rudi.json`);
+          } catch (err) {
+            console.log(`  ⚠ Failed to update rudi.json: ${err.message}`);
+          }
+
           // Check secrets status
           const { found, missing } = await checkSecrets(manifest);
 
@@ -415,6 +429,21 @@ export async function cmdInstall(args, flags) {
                 // Add empty placeholder - hasSecret() will return false for empty strings
                 await setSecret(key, '');
               }
+              // Update rudi.json secrets metadata
+              try {
+                updateSecretStatus(key, false);
+              } catch {
+                // Ignore errors updating secret status
+              }
+            }
+          }
+
+          // Update rudi.json for found secrets
+          for (const key of found) {
+            try {
+              updateSecretStatus(key, true);
+            } catch {
+              // Ignore errors updating secret status
             }
           }
 
