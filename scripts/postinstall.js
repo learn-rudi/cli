@@ -37,7 +37,7 @@ function ensureDirectories() {
     RUDI_HOME,
     path.join(RUDI_HOME, 'runtimes'),
     path.join(RUDI_HOME, 'stacks'),
-    path.join(RUDI_HOME, 'tools'),
+    path.join(RUDI_HOME, 'binaries'),
     path.join(RUDI_HOME, 'shims'),
     path.join(RUDI_HOME, 'cache'),
   ];
@@ -179,7 +179,7 @@ async function downloadBinary(binaryName, platformArch) {
       return false;
     }
 
-    const destDir = path.join(RUDI_HOME, 'tools', binaryName);
+    const destDir = path.join(RUDI_HOME, 'binaries', binaryName);
     const binaryPath = path.join(destDir, manifest.binary || binaryName);
 
     // Skip if already installed

@@ -29,7 +29,7 @@ src/index.js → commands/*.js
 ~/.rudi/
 ├── stacks/               # Installed MCP stacks
 ├── runtimes/             # Node, Python, Deno
-├── tools/                # ffmpeg, ripgrep, etc.
+├── binaries/             # ffmpeg, ripgrep, etc.
 ├── agents/               # Claude, Codex, Gemini CLIs
 └── rudi.db               # Shared with Studio
 ```

@@ -1,6 +1,6 @@
 {
   "name": "@learnrudi/cli",
-  "version": "1.8.4",
+  "version": "1.8.5",
   "description": "RUDI CLI - Install and manage MCP stacks, runtimes, and AI agents",
   "type": "module",
   "main": "dist/index.cjs",
