@@ -76,14 +76,27 @@ export async function cmdCheck(args, flags) {
     [kind, name] = packageId.split(':');
   } else {
     // Guess kind based on name
-    if (['claude', 'codex', 'gemini', 'copilot'].includes(packageId)) {
+    const KNOWN_AGENTS = ['claude', 'codex', 'gemini', 'copilot', 'ollama'];
+    const KNOWN_RUNTIMES = ['node', 'python', 'deno', 'bun'];
+    const KNOWN_BINARIES = [
+      'ffmpeg', 'ripgrep', 'rg', 'git', 'pandoc', 'jq', 'yq',
+      'sqlite', 'sqlite3', 'imagemagick', 'convert', 'whisper',
+      'docker', 'kubectl', 'terraform', 'vercel', 'netlify',
+      'supabase', 'wrangler', 'railway', 'flyctl', 'gh',
+      'ytdlp', 'yt-dlp', 'rclone', 'chromium', 'playwright'
+    ];
+
+    if (KNOWN_AGENTS.includes(packageId)) {
       kind = 'agent';
       name = packageId;
-    } else if (['node', 'python', 'deno', 'bun'].includes(packageId)) {
+    } else if (KNOWN_RUNTIMES.includes(packageId)) {
       kind = 'runtime';
       name = packageId;
+    } else if (KNOWN_BINARIES.includes(packageId)) {
+      kind = 'binary';
+      name = packageId;
     } else {
-      // Assume stack
+      // Default to stack for unknown names
       kind = 'stack';
       name = packageId;
     }
