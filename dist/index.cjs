@@ -4295,8 +4295,10 @@ async function cmdCheck(args, flags) {
     console.log(JSON.stringify(result, null, 2));
   } else {
     const installIcon = result.installed ? "\x1B[32m\u2713\x1B[0m" : "\x1B[31m\u2717\x1B[0m";
-    console.log(`${installIcon} ${result.id}`);
+    const source = result.source ? `(${result.source})` : "";
+    console.log(`${installIcon} ${result.id} ${source}`);
     console.log(`  Installed: ${result.installed}`);
+    if (result.source) console.log(`  Source: ${result.source}`);
     if (result.path) console.log(`  Path: ${result.path}`);
     if (result.version) console.log(`  Version: ${result.version}`);
     if (result.authenticated !== null) {
