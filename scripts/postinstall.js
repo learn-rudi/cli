@@ -145,6 +145,27 @@ function initSecrets() {
   }
 }
 
+// Initialize database
+function initDatabase() {
+  const dbPath = path.join(RUDI_HOME, 'rudi.db');
+
+  if (fs.existsSync(dbPath)) {
+    console.log(`  ✓ Database already exists`);
+    return;
+  }
+
+  try {
+    // Use rudi CLI to init the database (it has the schema)
+    execSync('node -e "require(\'@learnrudi/db\').initSchema()"', {
+      stdio: 'pipe',
+      cwd: path.dirname(process.argv[1])
+    });
+    console.log(`  ✓ Database initialized`);
+  } catch (error) {
+    console.log(`  ⚠ Database init deferred (run 'rudi init' later)`);
+  }
+}
+
 // Download a binary from manifest
 async function downloadBinary(binaryName, platformArch) {
   const manifestUrl = `${REGISTRY_BASE}/catalog/binaries/${binaryName}.json`;
@@ -224,6 +245,10 @@ async function setup() {
 
   // Initialize secrets
   initSecrets();
+
+  // Initialize database
+  console.log('\nInitializing database...');
+  initDatabase();
 
   console.log('\n✓ RUDI setup complete!\n');
   console.log('Get started:');
