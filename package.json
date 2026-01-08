@@ -1,6 +1,6 @@
 {
   "name": "@learnrudi/cli",
-  "version": "1.8.0",
+  "version": "1.8.2",
   "description": "RUDI CLI - Install and manage MCP stacks, runtimes, and AI agents",
   "type": "module",
   "main": "dist/index.cjs",
@@ -19,8 +19,7 @@
     "prepublishOnly": "npm run build",
     "test": "node --test src/__tests__/"
   },
-  "dependencies": {},
-  "devDependencies": {
+  "dependencies": {
     "@learnrudi/core": "workspace:*",
     "@learnrudi/db": "workspace:*",
     "@learnrudi/env": "workspace:*",
@@ -29,7 +28,9 @@
     "@learnrudi/registry-client": "workspace:*",
     "@learnrudi/runner": "workspace:*",
     "@learnrudi/secrets": "workspace:*",
-    "@learnrudi/utils": "workspace:*",
+    "@learnrudi/utils": "workspace:*"
+  },
+  "devDependencies": {
     "esbuild": "^0.27.2"
   },
   "engines": {
