@@ -3,7 +3,7 @@
  * Resolves package dependencies and version constraints
  */
 
-import { getPackage } from '@learnrudi/registry-client';
+import { getPackage, getManifest } from '@learnrudi/registry-client';
 import { isPackageInstalled, parsePackageId } from '@learnrudi/env';
 
 /**
@@ -12,42 +12,126 @@ import { isPackageInstalled, parsePackageId } from '@learnrudi/env';
  * @returns {Promise<Object>} Resolved package with dependencies
  */
 export async function resolvePackage(id) {
-  // Normalize ID (default to stack if no prefix)
+  // 1. Handle dynamic npm install (npm:<package>)
+  if (id.startsWith('npm:')) {
+    return resolveDynamicNpm(id);
+  }
+
+  // 2. Normalize ID (default to stack if no prefix)
   const normalizedId = id.includes(':') ? id : `stack:${id}`;
 
-  // Get package from registry
+  // Get package from registry index (discovery metadata)
   const pkg = await getPackage(normalizedId);
   if (!pkg) {
     throw new Error(`Package not found: ${id}`);
   }
 
+  // For curated tools (with path field), fetch canonical manifest
+  // This ensures install-critical fields (npmPackage, bins, etc.) are available
+  let manifest = null;
+  if (pkg.path) {
+    manifest = await getManifest(pkg);
+  }
+
+  // Merge: index metadata + canonical manifest (manifest takes precedence)
+  const mergedPkg = manifest ? { ...pkg, ...manifest } : pkg;
+
   // Build full ID
-  const fullId = pkg.id?.includes(':') ? pkg.id : `${pkg.kind}:${pkg.id || id.split(':').pop()}`;
+  const fullId = mergedPkg.id?.includes(':') ? mergedPkg.id : `${mergedPkg.kind}:${mergedPkg.id || id.split(':').pop()}`;
 
   // Check if installed
   const installed = isPackageInstalled(fullId);
 
   // Resolve dependencies
-  const dependencies = await resolveDependencies(pkg);
+  const dependencies = await resolveDependencies(mergedPkg);
 
   return {
     id: fullId,
-    kind: pkg.kind,
-    name: pkg.name,
-    version: pkg.version,
-    path: pkg.path,
-    description: pkg.description,
-    runtime: pkg.runtime,
-    entry: pkg.entry,
+    kind: mergedPkg.kind,
+    name: mergedPkg.name,
+    version: mergedPkg.version,
+    path: mergedPkg.path,
+    description: mergedPkg.description,
+    runtime: mergedPkg.runtime,
+    entry: mergedPkg.entry,
     installed,
     dependencies,
-    requires: pkg.requires,
-    // Install-related properties
-    npmPackage: pkg.npmPackage,
-    pipPackage: pkg.pipPackage,
-    postInstall: pkg.postInstall,
-    binary: pkg.binary,
-    installDir: pkg.installDir
+    requires: mergedPkg.requires,
+    // Install-related properties (from canonical manifest)
+    npmPackage: mergedPkg.npmPackage,
+    pipPackage: mergedPkg.pipPackage,
+    postInstall: mergedPkg.postInstall,
+    binary: mergedPkg.binary,
+    bins: mergedPkg.bins,
+    binaries: mergedPkg.binaries, // backward compat
+    installDir: mergedPkg.installDir,
+    installType: mergedPkg.installType
+  };
+}
+
+/**
+ * Resolve dynamic npm package (npm:<spec>)
+ * Creates a virtual manifest since no registry entry exists
+ * @param {string} id - npm:<spec> (e.g., 'npm:cowsay', 'npm:@stripe/cli@2.0.0')
+ * @returns {Promise<Object>} Virtual resolved package
+ */
+async function resolveDynamicNpm(id) {
+  const spec = id.replace('npm:', '');
+
+  // Parse package name and version
+  // Handle scoped packages: @stripe/cli@1.2.3
+  // Handle regular packages: cowsay@latest
+  let name, version;
+
+  if (spec.startsWith('@')) {
+    // Scoped package: @scope/name@version
+    const parts = spec.split('@');
+    // parts[0] = '', parts[1] = 'scope/name', parts[2] = 'version' (optional)
+    if (parts.length >= 3) {
+      name = `@${parts[1]}`;
+      version = parts[2];
+    } else {
+      name = `@${parts[1]}`;
+      version = 'latest';
+    }
+  } else {
+    // Regular package: name@version
+    const lastAt = spec.lastIndexOf('@');
+    if (lastAt > 0) {
+      name = spec.substring(0, lastAt);
+      version = spec.substring(lastAt + 1);
+    } else {
+      name = spec;
+      version = 'latest';
+    }
+  }
+
+  // Generate deterministic install directory
+  // @stripe/cli -> npm/@stripe__cli
+  // cowsay -> npm/cowsay
+  const sanitizedName = name.replace(/\//g, '__').replace(/^@/, '');
+  const installDir = `npm/${sanitizedName}`;
+
+  const fullId = id;
+  const installed = isPackageInstalled(fullId);
+
+  return {
+    id: fullId,
+    kind: 'binary',
+    name: name,
+    version: version,
+    description: `Dynamic npm package: ${name}`,
+    installType: 'npm',
+    npmPackage: name,
+    installDir: installDir,
+    installed,
+    dependencies: [],
+    source: {
+      type: 'npm',
+      spec: spec
+    },
+    // bins will be discovered after install by installer
+    bins: null
   };
 }
 

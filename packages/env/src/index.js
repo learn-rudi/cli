@@ -200,13 +200,14 @@ export const PACKAGE_KINDS = ['stack', 'prompt', 'runtime', 'binary', 'agent'];
 
 /**
  * Parse a package ID into kind and name
- * @param {string} id - Package ID (e.g., 'stack:pdf-creator', 'binary:ffmpeg', 'agent:claude')
+ * @param {string} id - Package ID (e.g., 'stack:pdf-creator', 'binary:ffmpeg', 'agent:claude', 'npm:cowsay')
  * @returns {[string, string]} [kind, name]
  */
 export function parsePackageId(id) {
-  const match = id.match(/^(stack|prompt|runtime|binary|agent):(.+)$/);
+  // Allow 'npm:' prefix for dynamic npm installs
+  const match = id.match(/^(stack|prompt|runtime|binary|agent|npm):(.+)$/);
   if (!match) {
-    throw new Error(`Invalid package ID: ${id} (expected format: kind:name, where kind is one of: ${PACKAGE_KINDS.join(', ')})`);
+    throw new Error(`Invalid package ID: ${id} (expected format: kind:name, where kind is one of: ${PACKAGE_KINDS.join(', ')}, npm)`);
   }
   return [match[1], match[2]];
 }
@@ -241,6 +242,12 @@ export function getPackagePath(id) {
       return path.join(PATHS.binaries, name);
     case 'agent':
       return path.join(PATHS.agents, name);
+    case 'npm':
+      // Dynamic npm packages: npm/<sanitized-name>
+      // e.g., npm:cowsay -> ~/.rudi/binaries/npm/cowsay
+      // e.g., npm:@stripe/cli -> ~/.rudi/binaries/npm/@stripe__cli
+      const sanitized = name.replace(/\//g, '__').replace(/^@/, '');
+      return path.join(PATHS.binaries, 'npm', sanitized);
     default:
       throw new Error(`Unknown package kind: ${kind}`);
   }
@@ -253,8 +260,15 @@ export function getPackagePath(id) {
  */
 export function getLockfilePath(id) {
   const [kind, name] = parsePackageId(id);
-  const lockDir = kind === 'binary' ? 'binaries' : kind + 's';
-  return path.join(PATHS.locks, lockDir, `${name}.lock.yaml`);
+
+  // Sanitize npm package names (same as install path)
+  let lockName = name;
+  if (kind === 'npm') {
+    lockName = name.replace(/\//g, '__').replace(/^@/, '');
+  }
+
+  const lockDir = kind === 'binary' ? 'binaries' : kind === 'npm' ? 'npms' : kind + 's';
+  return path.join(PATHS.locks, lockDir, `${lockName}.lock.yaml`);
 }
 
 /**

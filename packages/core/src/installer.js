@@ -12,6 +12,69 @@ import { PATHS, getPackagePath, ensureDirectories, parsePackageId } from '@learn
 import { downloadRuntime, downloadPackage, downloadTool } from '@learnrudi/registry-client';
 import { resolvePackage, getInstallOrder } from './resolver.js';
 import { writeLockfile } from './lockfile.js';
+import { createShimsForTool, removeShims } from './shims.js';
+
+/**
+ * Auto-discover binaries from installed npm package
+ * Reads package.json bin field after npm install completes
+ * @param {string} installPath - Installation directory
+ * @param {string} packageName - npm package name
+ * @returns {string[]} Array of discovered bin names
+ */
+function discoverNpmBins(installPath, packageName) {
+  try {
+    const pkgJsonPath = path.join(installPath, 'node_modules', packageName, 'package.json');
+
+    if (!fs.existsSync(pkgJsonPath)) {
+      console.warn(`[Installer] Warning: Could not find package.json at ${pkgJsonPath}`);
+      return [];
+    }
+
+    const pkgJson = JSON.parse(fs.readFileSync(pkgJsonPath, 'utf8'));
+    const bins = [];
+
+    if (typeof pkgJson.bin === 'string') {
+      // Single binary - use package name (minus scope)
+      const binName = packageName.split('/').pop();
+      bins.push(binName);
+    } else if (typeof pkgJson.bin === 'object' && pkgJson.bin !== null) {
+      // Multiple binaries - use all keys
+      bins.push(...Object.keys(pkgJson.bin));
+    } else {
+      console.warn(`[Installer] Warning: Package '${packageName}' has no 'bin' field`);
+    }
+
+    return bins;
+  } catch (error) {
+    console.warn(`[Installer] Error discovering bins: ${error.message}`);
+    return [];
+  }
+}
+
+/**
+ * Check if package defines install scripts
+ * @param {string} installPath - Installation directory
+ * @param {string} packageName - npm package name
+ * @returns {boolean} True if package has install scripts
+ */
+function hasInstallScripts(installPath, packageName) {
+  try {
+    const pkgJsonPath = path.join(installPath, 'node_modules', packageName, 'package.json');
+
+    if (!fs.existsSync(pkgJsonPath)) {
+      return false;
+    }
+
+    const pkgJson = JSON.parse(fs.readFileSync(pkgJsonPath, 'utf8'));
+    const scripts = pkgJson.scripts || {};
+
+    // Check for common install-time scripts
+    const installScriptKeys = ['preinstall', 'install', 'postinstall', 'prepare'];
+    return installScriptKeys.some(key => scripts[key]);
+  } catch (error) {
+    return false;
+  }
+}
 
 /**
  * @typedef {Object} InstallResult
@@ -30,7 +93,7 @@ import { writeLockfile } from './lockfile.js';
  * @returns {Promise<InstallResult>}
  */
 export async function installPackage(id, options = {}) {
-  const { force = false, onProgress } = options;
+  const { force = false, allowScripts = false, onProgress } = options;
 
   // Ensure directories exist
   ensureDirectories();
@@ -63,7 +126,7 @@ export async function installPackage(id, options = {}) {
     onProgress?.({ phase: 'installing', package: pkg.id, total: toInstall.length, current: results.length + 1 });
 
     try {
-      const result = await installSinglePackage(pkg, { force, onProgress });
+      const result = await installSinglePackage(pkg, { force, allowScripts, onProgress });
       results.push(result);
     } catch (error) {
       return {
@@ -93,7 +156,7 @@ export async function installPackage(id, options = {}) {
  * @returns {Promise<InstallResult>}
  */
 async function installSinglePackage(pkg, options = {}) {
-  const { force = false, onProgress } = options;
+  const { force = false, allowScripts = false, onProgress } = options;
   const installPath = getPackagePath(pkg.id);
 
   // Check if already installed
@@ -130,8 +193,34 @@ async function installSinglePackage(pkg, options = {}) {
           execSync(`"${npmCmd}" init -y`, { cwd: installPath, stdio: 'pipe' });
         }
 
-        // Install the npm package
-        execSync(`"${npmCmd}" install ${pkg.npmPackage}`, { cwd: installPath, stdio: 'pipe' });
+        // Install the npm package with safety flags
+        // --ignore-scripts: prevent arbitrary code execution during install (safer default)
+        // --no-audit --no-fund: reduce noise
+        const shouldIgnoreScripts = pkg.source?.type === 'npm' && !allowScripts;
+        const installFlags = shouldIgnoreScripts
+          ? '--ignore-scripts --no-audit --no-fund'  // Dynamic npm: safer default
+          : '--no-audit --no-fund';  // Curated or --allow-scripts: run scripts
+
+        execSync(`"${npmCmd}" install ${pkg.npmPackage} ${installFlags}`, { cwd: installPath, stdio: 'pipe' });
+
+        // Auto-discover bins if not specified (dynamic npm installs)
+        let bins = pkg.bins;
+        if (!bins || bins.length === 0) {
+          bins = discoverNpmBins(installPath, pkg.npmPackage);
+          console.log(`[Installer] Discovered binaries: ${bins.join(', ') || '(none)'}`);
+        }
+
+        // Get actual installed version
+        let installedVersion = pkg.version || 'latest';
+        try {
+          const pkgJsonPath = path.join(installPath, 'node_modules', pkg.npmPackage, 'package.json');
+          if (fs.existsSync(pkgJsonPath)) {
+            const pkgJson = JSON.parse(fs.readFileSync(pkgJsonPath, 'utf8'));
+            installedVersion = pkgJson.version;
+          }
+        } catch (err) {
+          // Use fallback version
+        }
 
         // Run postInstall if specified
         if (pkg.postInstall) {
@@ -144,20 +233,49 @@ async function installSinglePackage(pkg, options = {}) {
           execSync(postInstallCmd, { cwd: installPath, stdio: 'pipe' });
         }
 
+        // Check if package has install scripts
+        const scriptsDetected = hasInstallScripts(installPath, pkg.npmPackage);
+        const scriptsPolicy = installFlags.includes('--ignore-scripts') ? 'ignore' : 'allow';
+
+        // Warn if scripts were skipped
+        if (scriptsDetected && scriptsPolicy === 'ignore') {
+          console.warn(`\n⚠️  This package defines install scripts that were skipped for security.`);
+          console.warn(`   If the CLI fails to run, reinstall with:`);
+          console.warn(`   rudi install ${pkg.id} --allow-scripts\n`);
+        }
+
         // Write package metadata
+        const manifest = {
+          id: pkg.id,
+          kind: pkg.kind,
+          name: pkgName,
+          version: installedVersion,
+          npmPackage: pkg.npmPackage,
+          bins: bins,
+          hasInstallScripts: scriptsDetected,
+          scriptsPolicy: scriptsPolicy,
+          postInstall: pkg.postInstall,
+          installedAt: new Date().toISOString(),
+          source: pkg.source || { type: 'npm' }
+        };
+
         fs.writeFileSync(
           path.join(installPath, 'manifest.json'),
-          JSON.stringify({
-            id: pkg.id,
-            kind: pkg.kind,
-            name: pkgName,
-            version: pkg.version || 'latest',
-            npmPackage: pkg.npmPackage,
-            postInstall: pkg.postInstall,
-            installedAt: new Date().toISOString(),
-            source: 'npm'
-          }, null, 2)
+          JSON.stringify(manifest, null, 2)
         );
+
+        // Create shims for discovered/specified bins
+        if (bins && bins.length > 0) {
+          await createShimsForTool({
+            id: pkg.id,
+            installType: 'npm',
+            installDir: installPath,
+            bins: bins,
+            name: pkgName
+          });
+        } else {
+          console.warn(`[Installer] Warning: No binaries found for ${pkg.npmPackage}`);
+        }
 
         return { success: true, id: pkg.id, path: installPath };
       } catch (error) {
@@ -180,19 +298,30 @@ async function installSinglePackage(pkg, options = {}) {
         });
 
         // Write package metadata
+        const manifest = {
+          id: pkg.id,
+          kind: pkg.kind,
+          name: pkgName,
+          version: pkg.version || 'latest',
+          pipPackage: pkg.pipPackage,
+          installedAt: new Date().toISOString(),
+          source: usedUv ? 'uv' : 'pip',
+          venvPath: path.join(installPath, 'venv')
+        };
+
         fs.writeFileSync(
           path.join(installPath, 'manifest.json'),
-          JSON.stringify({
-            id: pkg.id,
-            kind: pkg.kind,
-            name: pkgName,
-            version: pkg.version || 'latest',
-            pipPackage: pkg.pipPackage,
-            installedAt: new Date().toISOString(),
-            source: usedUv ? 'uv' : 'pip',
-            venvPath: path.join(installPath, 'venv')
-          }, null, 2)
+          JSON.stringify(manifest, null, 2)
         );
+
+        // Create shims for pip package
+        await createShimsForTool({
+          id: pkg.id,
+          installType: 'pip',
+          installDir: installPath,
+          bins: pkg.bins || [pkgName],
+          name: pkgName
+        });
 
         return { success: true, id: pkg.id, path: installPath };
       } catch (error) {
@@ -208,6 +337,19 @@ async function installSinglePackage(pkg, options = {}) {
         // Binaries: use upstream URLs from binary manifests (e.g., evermeet.cx for ffmpeg)
         await downloadTool(pkgName, installPath, {
           onProgress: (p) => onProgress?.({ ...p, package: pkg.id })
+        });
+
+        // Read the manifest written by downloadTool
+        const manifestPath = path.join(installPath, 'manifest.json');
+        const manifest = JSON.parse(fs.readFileSync(manifestPath, 'utf-8'));
+
+        // Create shims for binary (support both 'bins' and 'binaries' for backward compat)
+        await createShimsForTool({
+          id: pkg.id,
+          installType: 'binary',
+          installDir: installPath,
+          bins: manifest.bins || manifest.binaries || pkg.bins || [pkgName],
+          name: pkgName
         });
       } else {
         // Runtimes and agents: use GitHub releases
@@ -317,7 +459,7 @@ async function installSinglePackage(pkg, options = {}) {
 /**
  * Uninstall a package
  * @param {string} id - Package ID
- * @returns {Promise<{ success: boolean, error?: string }>}
+ * @returns {Promise<{ success: boolean, error?: string, removedShims?: string[] }>}
  */
 export async function uninstallPackage(id) {
   const installPath = getPackagePath(id);
@@ -328,6 +470,26 @@ export async function uninstallPackage(id) {
   }
 
   try {
+    // Read manifest to get bins list for shim cleanup
+    let bins = [];
+    if (kind !== 'prompt') {
+      const manifestPath = path.join(installPath, 'manifest.json');
+      if (fs.existsSync(manifestPath)) {
+        try {
+          const manifest = JSON.parse(fs.readFileSync(manifestPath, 'utf-8'));
+          bins = manifest.bins || manifest.binaries || [];
+        } catch {
+          // Fallback: use package name as bin
+          bins = [name];
+        }
+      }
+    }
+
+    // Remove shims BEFORE deleting the package directory
+    if (bins.length > 0) {
+      removeShims(bins);
+    }
+
     // Prompts are single files, not directories
     if (kind === 'prompt') {
       fs.unlinkSync(installPath);
@@ -335,14 +497,15 @@ export async function uninstallPackage(id) {
       fs.rmSync(installPath, { recursive: true });
     }
 
-    // Remove lockfile
-    const lockDir = kind === 'binary' ? 'binaries' : kind + 's';
-    const lockPath = path.join(PATHS.locks, lockDir, `${name}.lock.yaml`);
+    // Remove lockfile (handle both direct name and sanitized npm names)
+    const lockDir = kind === 'binary' ? 'binaries' : kind === 'npm' ? 'npms' : kind + 's';
+    const lockName = name.replace(/\//g, '__').replace(/^@/, '');
+    const lockPath = path.join(PATHS.locks, lockDir, `${lockName}.lock.yaml`);
     if (fs.existsSync(lockPath)) {
       fs.unlinkSync(lockPath);
     }
 
-    return { success: true };
+    return { success: true, removedShims: bins };
   } catch (error) {
     return { success: false, error: error.message };
   }

@@ -276,6 +276,7 @@ export async function cmdInstall(args, flags) {
   }
 
   const force = flags.force || false;
+  const allowScripts = flags['allow-scripts'] || flags.allowScripts || false;
 
   console.log(`Resolving ${pkgId}...`);
 
@@ -348,6 +349,7 @@ export async function cmdInstall(args, flags) {
 
     const result = await installPackage(pkgId, {
       force,
+      allowScripts,
       onProgress: (progress) => {
         if (progress.phase === 'installing') {
           console.log(`  Installing ${progress.package}...`);

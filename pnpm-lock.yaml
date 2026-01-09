@@ -9,32 +9,35 @@ importers:
   .:
     dependencies:
       '@learnrudi/core':
-        specifier: ^1.0.0
-        version: 1.0.2
+        specifier: workspace:*
+        version: link:packages/core
       '@learnrudi/db':
-        specifier: ^1.0.0
-        version: 1.0.2
+        specifier: workspace:*
+        version: link:packages/db
       '@learnrudi/env':
-        specifier: ^1.0.0
-        version: 1.0.0
+        specifier: workspace:*
+        version: link:packages/env
       '@learnrudi/manifest':
-        specifier: ^1.0.0
-        version: 1.0.0
+        specifier: workspace:*
+        version: link:packages/manifest
       '@learnrudi/mcp':
-        specifier: ^1.0.0
-        version: 1.0.0
+        specifier: workspace:*
+        version: link:packages/mcp
       '@learnrudi/registry-client':
-        specifier: ^1.0.0
-        version: 1.0.1
+        specifier: workspace:*
+        version: link:packages/registry-client
       '@learnrudi/runner':
-        specifier: ^1.0.0
-        version: 1.0.1
+        specifier: workspace:*
+        version: link:packages/runner
       '@learnrudi/secrets':
-        specifier: ^1.0.0
-        version: 1.0.1
+        specifier: workspace:*
+        version: link:packages/secrets
       '@learnrudi/utils':
-        specifier: ^1.0.0
-        version: 1.0.0
+        specifier: workspace:*
+        version: link:packages/utils
+      better-sqlite3:
+        specifier: ^12.5.0
+        version: 12.5.0
     devDependencies:
       esbuild:
         specifier: ^0.27.2
@@ -283,24 +286,8 @@ packages:
     resolution: {integrity: sha512-HimnqHunAfpSMvKu0F7RJg+IixOfrpeYo6MwGqMlhl/7nduXcrLU37BrDMbgIlgl5EXHNoQIN3e+BTMrM77emw==}
     engines: {node: '>=18.0.0'}
 
-  '@learnrudi/mcp@1.0.0':
-    resolution: {integrity: sha512-HI+Mhfwq/NEEWiMwgz5MCBJVXLspfBJAdXDddtOIZ4QxMoZ4GF0QAXZf2KWbplt6TnV2OZWL0IzIB/efHBRvEg==}
-    engines: {node: '>=18.0.0'}
-
   '@learnrudi/registry-client@1.0.1':
     resolution: {integrity: sha512-JRK0i7PWx3PG/bDBqQEae0R2BXfL33DK0nx62z44L7cM1wsw89L39RfSDi08YHr0XY+lCMgTZ5nwooqhOOzg+w==}
-    engines: {node: '>=18.0.0'}
-
-  '@learnrudi/runner@1.0.1':
-    resolution: {integrity: sha512-avEuEG8C9t5QbuskRaC7IH8cfAfHy9Y3s2f1ma2ynWEd3poAzNr4EDr9FmI423QBRvOCdvIDoXeo8qoyaRkijg==}
-    engines: {node: '>=18.0.0'}
-
-  '@learnrudi/secrets@1.0.1':
-    resolution: {integrity: sha512-mHoB1ZNSWZ7ETFw/YvlXJ7z4X9F2jDk0wPBaNptGcNGSKYIp1rK90GE2uW3Z26ed7FFCUCF4oLM+TxtcZ14tDA==}
-    engines: {node: '>=18.0.0'}
-
-  '@learnrudi/utils@1.0.0':
-    resolution: {integrity: sha512-DOG7Dk8peZ+bC0exLhXjTvEW7/++sJdR4nniaw7GbmP1epTFowdp1Ti9OjmUa41gPZ/uRla6Qe2PeqYT2L6bQA==}
     engines: {node: '>=18.0.0'}
 
   ajv-formats@3.0.1:
@@ -571,23 +558,9 @@ snapshots:
       ajv-formats: 3.0.1(ajv@8.17.1)
       yaml: 2.8.2
 
-  '@learnrudi/mcp@1.0.0': {}
-
   '@learnrudi/registry-client@1.0.1':
     dependencies:
       '@learnrudi/env': 1.0.0
-
-  '@learnrudi/runner@1.0.1':
-    dependencies:
-      '@learnrudi/core': 1.0.2
-      '@learnrudi/db': 1.0.2
-      '@learnrudi/manifest': 1.0.0
-
-  '@learnrudi/secrets@1.0.1':
-    dependencies:
-      '@learnrudi/env': 1.0.0
-
-  '@learnrudi/utils@1.0.0': {}
 
   ajv-formats@3.0.1(ajv@8.17.1):
     optionalDependencies:

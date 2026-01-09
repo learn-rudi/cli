@@ -30,16 +30,14 @@ import { PATHS, parsePackageId, getLockfilePath, isPackageInstalled, getPackageP
  * @returns {Promise<string>} Path to lockfile
  */
 export async function writeLockfile(resolved) {
-  const [kind, name] = parsePackageId(resolved.id);
-  const lockKind = kind === 'binary' ? 'binaries' : kind + 's';
-  const lockDir = path.join(PATHS.locks, lockKind);
+  // Use getLockfilePath for consistency with read/delete operations
+  const lockPath = getLockfilePath(resolved.id);
+  const lockDir = path.dirname(lockPath);
 
   // Ensure lock directory exists
   if (!fs.existsSync(lockDir)) {
     fs.mkdirSync(lockDir, { recursive: true });
   }
-
-  const lockPath = path.join(lockDir, `${name}.lock.yaml`);
 
   const lockfile = {
     id: resolved.id,

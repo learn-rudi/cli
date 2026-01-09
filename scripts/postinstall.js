@@ -19,6 +19,9 @@ const RUDI_JSON_PATH = path.join(RUDI_HOME, 'rudi.json');
 const RUDI_JSON_TMP = path.join(RUDI_HOME, 'rudi.json.tmp');
 const REGISTRY_BASE = 'https://raw.githubusercontent.com/learn-rudi/registry/main';
 
+// Use 'bins' (consistent with @learnrudi/env) not 'shims'
+const BINS_DIR = path.join(RUDI_HOME, 'bins');
+
 // =============================================================================
 // RUDI.JSON CONFIG MANAGEMENT
 // =============================================================================
@@ -162,8 +165,10 @@ function ensureDirectories() {
     path.join(RUDI_HOME, 'runtimes'),
     path.join(RUDI_HOME, 'stacks'),
     path.join(RUDI_HOME, 'binaries'),
-    path.join(RUDI_HOME, 'shims'),
+    path.join(RUDI_HOME, 'agents'),
+    BINS_DIR,  // Use bins/ (consistent with @learnrudi/env)
     path.join(RUDI_HOME, 'cache'),
+    path.join(RUDI_HOME, 'router'),
   ];
 
   for (const dir of dirs) {
@@ -251,46 +256,181 @@ async function downloadRuntime(runtimeId, platformArch) {
   }
 }
 
-// Create all shims
+// =============================================================================
+// SHIM GENERATION
+// =============================================================================
+
+/**
+ * Load packages manifest (generated at build time from registry catalog)
+ * Falls back to empty manifest if not found
+ */
+function loadPackagesManifest() {
+  const possiblePaths = [
+    // When running from npm install (dist directory)
+    path.join(path.dirname(process.argv[1]), '..', 'dist', 'packages-manifest.json'),
+    // When running from source/dev
+    path.join(path.dirname(process.argv[1]), '..', 'src', 'packages-manifest.json'),
+  ];
+
+  for (const manifestPath of possiblePaths) {
+    try {
+      if (fs.existsSync(manifestPath)) {
+        const content = fs.readFileSync(manifestPath, 'utf-8');
+        return JSON.parse(content);
+      }
+    } catch {
+      // Try next path
+    }
+  }
+
+  console.log('  ⚠ packages-manifest.json not found, using minimal shims');
+  return { packages: { runtimes: [], agents: [], binaries: [] } };
+}
+
+/**
+ * Build a shim script that executes a target binary
+ * Shows helpful error if binary not installed
+ */
+function buildExecShim(targetPath, notInstalledMessage) {
+  const target = targetPath.replace(/"/g, '\\"');
+  const message = notInstalledMessage.replace(/"/g, '\\"');
+  return `#!/bin/sh
+TARGET="${target}"
+if [ ! -x "$TARGET" ]; then
+  echo "RUDI: ${message}" 1>&2
+  exit 127
+fi
+exec "$TARGET" "$@"
+`;
+}
+
+/**
+ * Build a shim script that runs a binary with extra args prepended
+ * Used for things like "pip" which runs "python3 -m pip"
+ */
+function buildArgsShim(targetPath, args, notInstalledMessage) {
+  const target = targetPath.replace(/"/g, '\\"');
+  const argsStr = args.map(a => `"${a.replace(/"/g, '\\"')}"`).join(' ');
+  const message = notInstalledMessage.replace(/"/g, '\\"');
+  return `#!/bin/sh
+TARGET="${target}"
+if [ ! -x "$TARGET" ]; then
+  echo "RUDI: ${message}" 1>&2
+  exit 127
+fi
+exec "$TARGET" ${argsStr} "$@"
+`;
+}
+
+/**
+ * Create all shims for runtimes, agents, and binaries
+ * Reads from packages-manifest.json (generated from registry catalog)
+ */
 function createShims() {
-  // Legacy shim for direct stack access: rudi-mcp <stack>
-  const mcpShimPath = path.join(RUDI_HOME, 'shims', 'rudi-mcp');
-  const mcpShimContent = `#!/bin/bash
+  const platform = process.platform;
+  const isWindows = platform === 'win32';
+
+  // Skip shim creation on Windows (uses different mechanism)
+  if (isWindows) {
+    console.log(`  ⚠ Shim creation skipped on Windows`);
+    return;
+  }
+
+  const manifest = loadPackagesManifest();
+  const shimDefs = [];
+
+  // ---------------------------------------------------------------------------
+  // GENERATE SHIMS FROM MANIFEST (only for installed packages)
+  // ---------------------------------------------------------------------------
+
+  const allPackages = [
+    ...manifest.packages.runtimes,
+    ...manifest.packages.agents,
+    ...manifest.packages.binaries,
+  ];
+
+  for (const pkg of allPackages) {
+    const installPath = path.join(RUDI_HOME, pkg.basePath, pkg.installDir);
+
+    // Only create shims for packages that are actually installed
+    // Check if the install directory exists
+    if (!fs.existsSync(installPath)) {
+      continue;
+    }
+
+    for (const cmd of pkg.commands) {
+      const binPath = path.join(installPath, cmd.bin);
+
+      // Only create shim if the target binary exists
+      if (!fs.existsSync(binPath)) {
+        continue;
+      }
+
+      if (cmd.args && cmd.args.length > 0) {
+        // Command with prepended args (like pip -> python3 -m pip)
+        shimDefs.push({
+          name: cmd.name,
+          script: buildArgsShim(binPath, cmd.args, `${pkg.name} binary not found`),
+        });
+      } else {
+        // Simple exec shim
+        shimDefs.push({
+          name: cmd.name,
+          script: buildExecShim(binPath, `${pkg.name} binary not found`),
+        });
+      }
+    }
+  }
+
+  // ---------------------------------------------------------------------------
+  // RUDI SHIMS (router, mcp) - always included
+  // ---------------------------------------------------------------------------
+
+  // rudi-mcp shim for direct stack access
+  shimDefs.push({
+    name: 'rudi-mcp',
+    script: `#!/bin/bash
 # RUDI MCP Shim - Routes agent calls to rudi mcp command
 # Usage: rudi-mcp <stack-name>
 exec rudi mcp "$@"
-`;
-  fs.writeFileSync(mcpShimPath, mcpShimContent);
-  fs.chmodSync(mcpShimPath, 0o755);
-  console.log(`  ✓ Created rudi-mcp shim`);
+`
+  });
 
-  // New router shim: Master MCP server that aggregates all stacks
-  const routerShimPath = path.join(RUDI_HOME, 'shims', 'rudi-router');
-  const routerShimContent = `#!/bin/bash
+  // rudi-router shim for aggregated MCP server
+  shimDefs.push({
+    name: 'rudi-router',
+    script: `#!/bin/bash
 # RUDI Router - Master MCP server for all installed stacks
 # Reads ~/.rudi/rudi.json and proxies tool calls to correct stack
-# Usage: Point agent config to this shim (no args needed)
-
 RUDI_HOME="$HOME/.rudi"
-
-# Use bundled Node if available
 if [ -x "$RUDI_HOME/runtimes/node/bin/node" ]; then
   exec "$RUDI_HOME/runtimes/node/bin/node" "$RUDI_HOME/router/router-mcp.js" "$@"
 else
   exec node "$RUDI_HOME/router/router-mcp.js" "$@"
 fi
-`;
-  fs.writeFileSync(routerShimPath, routerShimContent);
-  fs.chmodSync(routerShimPath, 0o755);
-  console.log(`  ✓ Created rudi-router shim`);
+`
+  });
 
-  // Create router directory for the router-mcp.js file
-  const routerDir = path.join(RUDI_HOME, 'router');
-  if (!fs.existsSync(routerDir)) {
-    fs.mkdirSync(routerDir, { recursive: true });
+  // ---------------------------------------------------------------------------
+  // WRITE ALL SHIMS
+  // ---------------------------------------------------------------------------
+
+  let created = 0;
+  for (const { name, script } of shimDefs) {
+    const shimPath = path.join(BINS_DIR, name);
+    fs.writeFileSync(shimPath, script, { encoding: 'utf-8' });
+    fs.chmodSync(shimPath, 0o755);
+    created++;
   }
 
+  console.log(`  ✓ Created ${created} shims in ~/.rudi/bins/`);
+
+  // ---------------------------------------------------------------------------
+  // ROUTER SETUP
+  // ---------------------------------------------------------------------------
+
   // Create package.json for ES module support
+  const routerDir = path.join(RUDI_HOME, 'router');
   const routerPackageJson = path.join(routerDir, 'package.json');
   fs.writeFileSync(routerPackageJson, JSON.stringify({
     name: 'rudi-router',

@@ -1,0 +1,189 @@
+{
+  "version": "1.0.0",
+  "generated": "2026-01-09T16:18:08.647Z",
+  "packages": {
+    "runtimes": [
+      {
+        "id": "bun",
+        "name": "Bun",
+        "kind": "runtime",
+        "installDir": "bun",
+        "basePath": "runtimes",
+        "installType": "binary",
+        "commands": [
+          {
+            "name": "bun",
+            "bin": "bun",
+            "args": null
+          },
+          {
+            "name": "bunx",
+            "bin": "bun",
+            "args": [
+              "x"
+            ]
+          }
+        ]
+      },
+      {
+        "id": "deno",
+        "name": "Deno",
+        "kind": "runtime",
+        "installDir": "deno",
+        "basePath": "runtimes",
+        "installType": "binary",
+        "commands": [
+          {
+            "name": "deno",
+            "bin": "deno",
+            "args": null
+          }
+        ]
+      },
+      {
+        "id": "node",
+        "name": "Node.js",
+        "kind": "runtime",
+        "installDir": "node",
+        "basePath": "runtimes",
+        "installType": "binary",
+        "commands": [
+          {
+            "name": "node",
+            "bin": "bin/node",
+            "args": null
+          },
+          {
+            "name": "npm",
+            "bin": "bin/npm",
+            "args": null
+          },
+          {
+            "name": "npx",
+            "bin": "bin/npx",
+            "args": null
+          }
+        ]
+      },
+      {
+        "id": "python",
+        "name": "Python",
+        "kind": "runtime",
+        "installDir": "python",
+        "basePath": "runtimes",
+        "installType": "binary",
+        "commands": [
+          {
+            "name": "python",
+            "bin": "bin/python3",
+            "args": null
+          },
+          {
+            "name": "python3",
+            "bin": "bin/python3",
+            "args": null
+          },
+          {
+            "name": "pip",
+            "bin": "bin/python3",
+            "args": [
+              "-m",
+              "pip"
+            ]
+          },
+          {
+            "name": "pip3",
+            "bin": "bin/python3",
+            "args": [
+              "-m",
+              "pip"
+            ]
+          }
+        ]
+      }
+    ],
+    "agents": [
+      {
+        "id": "claude",
+        "name": "Claude Code",
+        "kind": "agent",
+        "installDir": "claude",
+        "basePath": "agents",
+        "installType": "npm",
+        "commands": [
+          {
+            "name": "claude",
+            "bin": "node_modules/.bin/claude",
+            "args": null
+          }
+        ]
+      },
+      {
+        "id": "codex",
+        "name": "OpenAI Codex",
+        "kind": "agent",
+        "installDir": "codex",
+        "basePath": "agents",
+        "installType": "npm",
+        "commands": [
+          {
+            "name": "codex",
+            "bin": "node_modules/.bin/codex",
+            "args": null
+          }
+        ]
+      },
+      {
+        "id": "copilot",
+        "name": "GitHub Copilot",
+        "kind": "agent",
+        "installDir": "copilot",
+        "basePath": "agents",
+        "installType": "npm",
+        "commands": [
+          {
+            "name": "copilot",
+            "bin": "node_modules/.bin/github-copilot-cli",
+            "args": null
+          },
+          {
+            "name": "github-copilot-cli",
+            "bin": "node_modules/.bin/github-copilot-cli",
+            "args": null
+          }
+        ]
+      },
+      {
+        "id": "gemini",
+        "name": "Gemini CLI",
+        "kind": "agent",
+        "installDir": "gemini",
+        "basePath": "agents",
+        "installType": "npm",
+        "commands": [
+          {
+            "name": "gemini",
+            "bin": "node_modules/.bin/gemini",
+            "args": null
+          }
+        ]
+      },
+      {
+        "id": "ollama",
+        "name": "Ollama",
+        "kind": "agent",
+        "installDir": "ollama",
+        "basePath": "agents",
+        "installType": "binary",
+        "commands": [
+          {
+            "name": "ollama",
+            "bin": "ollama",
+            "args": null
+          }
+        ]
+      }
+    ],
+    "binaries": []
+  }
+}

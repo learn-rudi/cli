@@ -46,6 +46,8 @@ import { cmdMigrate } from './commands/migrate.js';
 import { cmdIndex } from './commands/index-tools.js';
 import { cmdStatus } from './commands/status.js';
 import { cmdCheck } from './commands/check.js';
+import { cmdShims } from './commands/shims.js';
+import { cmdInfo } from './commands/info.js';
 
 const VERSION = '2.0.0';
 
@@ -162,6 +164,15 @@ async function main() {
 
       case 'check':
         await cmdCheck(args, flags);
+        break;
+
+      case 'shims':
+        await cmdShims(args, flags);
+        break;
+
+      case 'pkg':
+      case 'package':
+        await cmdInfo(args, flags);
         break;
 
       // Shortcuts for listing specific package types

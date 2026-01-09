@@ -310,6 +310,59 @@ export async function getPackage(id) {
 }
 
 /**
+ * Get canonical manifest for a package
+ * Fetches the full manifest from catalog path (not just index metadata)
+ * @param {Object} pkg - Package object from getPackage() with path field
+ * @returns {Promise<Object|null>} Full manifest with install-critical fields
+ */
+export async function getManifest(pkg) {
+  if (!pkg || !pkg.path) {
+    return null;
+  }
+
+  const manifestPath = pkg.path;
+
+  // Try local registry first (development mode)
+  if (process.env.USE_LOCAL_REGISTRY === 'true') {
+    const localPaths = [
+      path.join(process.cwd(), 'registry', manifestPath),
+      path.join(process.cwd(), '..', 'registry', manifestPath),
+      `/Users/hoff/dev/RUDI/registry/${manifestPath}`
+    ];
+
+    for (const localPath of localPaths) {
+      if (fs.existsSync(localPath)) {
+        try {
+          const content = fs.readFileSync(localPath, 'utf-8');
+          return JSON.parse(content);
+        } catch (err) {
+          // Skip invalid JSON
+        }
+      }
+    }
+  }
+
+  // Fetch from remote (GitHub raw)
+  try {
+    const url = `${GITHUB_RAW_BASE}/${manifestPath}`;
+    const response = await fetch(url, {
+      headers: {
+        'Accept': 'application/json',
+        'User-Agent': 'rudi-cli/2.0'
+      }
+    });
+
+    if (!response.ok) {
+      return null;
+    }
+
+    return await response.json();
+  } catch (err) {
+    return null;
+  }
+}
+
+/**
  * List all packages of a specific kind
  * @param {'stack' | 'prompt' | 'runtime' | 'binary' | 'agent'} kind
  * @returns {Promise<Array>}
@@ -773,7 +826,7 @@ export async function downloadTool(toolName, destPath, options = {}) {
       throw new Error(`No upstream URL for ${toolName} on ${platformArch}`);
     }
 
-    const extractConfig = toolManifest.extract?.[platformArch];
+    const extractConfig = toolManifest.extract?.[platformArch] || toolManifest.extract?.default;
     if (!extractConfig) {
       throw new Error(`No extract config for ${toolName} on ${platformArch}`);
     }
@@ -801,13 +854,15 @@ export async function downloadTool(toolName, destPath, options = {}) {
       onProgress?.({ phase: 'extracting', tool: toolName });
 
       const archiveType = extractConfig.type || guessArchiveType(urlFilename);
+      const stripComponents = extractConfig.strip || 0;
+      const stripFlag = stripComponents > 0 ? ` --strip-components=${stripComponents}` : '';
 
       if (archiveType === 'zip') {
         execSync(`unzip -o "${tempFile}" -d "${destPath}"`, { stdio: 'pipe' });
       } else if (archiveType === 'tar.xz') {
-        execSync(`tar -xJf "${tempFile}" -C "${destPath}"`, { stdio: 'pipe' });
+        execSync(`tar -xJf "${tempFile}" -C "${destPath}"${stripFlag}`, { stdio: 'pipe' });
       } else if (archiveType === 'tar.gz' || archiveType === 'tgz') {
-        execSync(`tar -xzf "${tempFile}" -C "${destPath}"`, { stdio: 'pipe' });
+        execSync(`tar -xzf "${tempFile}" -C "${destPath}"${stripFlag}`, { stdio: 'pipe' });
       } else {
         throw new Error(`Unsupported archive type: ${archiveType}`);
       }
@@ -842,7 +897,7 @@ export async function downloadTool(toolName, destPath, options = {}) {
       kind: 'binary',
       name: toolManifest.name || toolName,
       version: toolManifest.version,
-      binaries: toolManifest.binaries || [toolName],
+      binaries: toolManifest.bins || toolManifest.binaries || [toolName],
       platformArch,
       installedAt: new Date().toISOString()
     }, null, 2)
