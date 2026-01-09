@@ -17,11 +17,8 @@ export async function resolvePackage(id) {
     return resolveDynamicNpm(id);
   }
 
-  // 2. Normalize ID (default to stack if no prefix)
-  const normalizedId = id.includes(':') ? id : `stack:${id}`;
-
-  // Get package from registry index (discovery metadata)
-  const pkg = await getPackage(normalizedId);
+  // 2. Get package from registry (searches all kinds if no prefix)
+  const pkg = await getPackage(id);
   if (!pkg) {
     throw new Error(`Package not found: ${id}`);
   }

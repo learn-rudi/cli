@@ -1,206 +1,263 @@
 # RUDI CLI
 
-Universal tool manager for MCP stacks, CLI tools, runtimes, and AI agents.
+A universal tool manager for MCP stacks, CLI tools, runtimes, and AI agents.
 
-## Install
+RUDI provides a unified installation and management system for:
+- **MCP Stacks** - Model Context Protocol servers for Claude, Codex, and Gemini
+- **CLI Tools** - Any npm package or upstream binary (ffmpeg, ripgrep, etc.)
+- **Runtimes** - Node.js, Python, Deno, Bun
+- **AI Agents** - Claude Code, Codex CLI, Gemini CLI
+
+## Installation
 
 ```bash
-npm i -g @learnrudi/cli
+npm install -g @learnrudi/cli
 ```
 
-Requires Node.js 18+. The postinstall step bootstraps `~/.rudi` and creates shims.
+Requires Node.js 18 or later. The installer creates `~/.rudi/` and adds shims to `~/.rudi/bins/`.
 
-## Quick Start
+Add to your shell profile (`.bashrc`, `.zshrc`, or `.profile`):
+
+```bash
+export PATH="$HOME/.rudi/bins:$PATH"
+```
+
+## Core Concepts
+
+### Shim-Based Architecture
+
+Every tool installed through RUDI gets a wrapper script (shim) in `~/.rudi/bins/`. This provides:
+
+- Clean PATH integration without modifying system directories
+- Version isolation per package
+- Ownership tracking for clean uninstalls
+- Consistent invocation across different package sources
+
+When you run `tsc`, the shell finds `~/.rudi/bins/tsc`, which delegates to the actual TypeScript installation at `~/.rudi/binaries/npm/typescript/node_modules/.bin/tsc`.
+
+### Package Sources
+
+RUDI supports three installation sources:
+
+1. **Dynamic npm** (`npm:<package>`) - Any npm package with a `bin` field
+2. **Curated Registry** - Pre-configured stacks and binaries with documentation
+3. **Upstream Binaries** - Direct downloads from official sources
+
+### Secret Management
+
+MCP stacks often require API keys and tokens. RUDI stores secrets in `~/.rudi/secrets.json` (mode 0600) and injects them as environment variables when running stacks. Secrets are never exposed in process listings or logs.
+
+## Usage
+
+### Installing Packages
 
 ```bash
 # Install any npm CLI tool
-rudi install npm:typescript
-rudi install npm:@stripe/cli
-rudi install npm:vercel
+rudi install npm:typescript       # Installs tsc, tsserver
+rudi install npm:@stripe/cli      # Installs stripe
+rudi install npm:vercel           # Installs vercel
 
-# Install curated stacks and tools
-rudi install slack
-rudi install binary:ffmpeg
-rudi install binary:supabase
+# Install from curated registry
+rudi install slack                # MCP stack for Slack
+rudi install binary:ffmpeg        # Upstream ffmpeg binary
+rudi install binary:supabase      # Supabase CLI
 
-# All tools available via ~/.rudi/bins/
-tsc --version
-ffmpeg -version
-supabase --version
-
-# Configure secrets for stacks
-rudi secrets set SLACK_BOT_TOKEN "xoxb-your-token"
-
-# Wire up your AI agents
-rudi integrate all
+# Install with scripts enabled (when needed)
+rudi install npm:puppeteer --allow-scripts
 ```
 
-## Features
-
-### Universal Tool Installation
-
-RUDI supports multiple installation paths:
+### Listing Installed Packages
 
 ```bash
-# Dynamic npm packages (any npm CLI)
-rudi install npm:cowsay
-rudi install npm:typescript
-rudi install npm:@railway/cli
-
-# Curated registry (stacks and binaries with docs)
-rudi install slack              # MCP stack
-rudi install binary:ffmpeg      # Upstream binary
-rudi install binary:supabase    # npm-based CLI
-
-# All tools resolve through ~/.rudi/bins/
+rudi list                # All installed packages
+rudi list stacks         # MCP stacks only
+rudi list binaries       # CLI tools only
+rudi list runtimes       # Language runtimes
+rudi list agents         # AI agent CLIs
 ```
 
-### Shim-First Architecture
-
-Every installed tool gets a shim in `~/.rudi/bins/`:
+### Searching the Registry
 
 ```bash
-# Add to your shell profile (.bashrc, .zshrc)
-export PATH="$HOME/.rudi/bins:$PATH"
-
-# Then use tools directly
-tsc --version      # → ~/.rudi/bins/tsc
-ffmpeg -version    # → ~/.rudi/bins/ffmpeg
-supabase --help    # → ~/.rudi/bins/supabase
+rudi search pdf          # Search for packages
+rudi search --all        # List all available packages
+rudi search --stacks     # Filter to MCP stacks
+rudi search --binaries   # Filter to CLI tools
 ```
 
-### Security by Default
-
-npm packages run with `--ignore-scripts` by default:
+### Managing Secrets
 
 ```bash
-# Safe install (scripts skipped)
-rudi install npm:some-package
-
-# If CLI fails, opt-in to scripts
-rudi install npm:some-package --allow-scripts
+rudi secrets list                      # Show configured secrets (masked)
+rudi secrets set SLACK_BOT_TOKEN       # Set a secret (prompts for value)
+rudi secrets set OPENAI_API_KEY "sk-..." # Set with value
+rudi secrets remove SLACK_BOT_TOKEN    # Remove a secret
 ```
 
-## Commands
+### Integrating with AI Agents
 
 ```bash
-# Search and install
-rudi search <query>         # Search for packages
-rudi search --all           # List all packages
-rudi install <pkg>          # Install a package
-rudi install npm:<pkg>      # Install any npm CLI
-rudi remove <pkg>           # Remove a package
-
-# List and inspect
-rudi list [kind]            # List installed (stacks, binaries, agents)
-rudi pkg <id>               # Show package details and shim status
-rudi shims list             # List all shims
-rudi shims check            # Validate shim targets
-
-# Secrets and integration
-rudi secrets list           # Show configured secrets
-rudi secrets set <key>      # Set a secret
-rudi integrate <agent>      # Wire stack to agent config
-
-# Maintenance
-rudi update [pkg]           # Update packages
-rudi doctor                 # Check system health
+rudi integrate claude    # Add stacks to Claude Desktop config
+rudi integrate codex     # Add stacks to Codex config
+rudi integrate gemini    # Add stacks to Gemini config
+rudi integrate all       # Add to all detected agents
 ```
 
-## How It Works
+This modifies the agent's MCP configuration file (e.g., `~/Library/Application Support/Claude/claude_desktop_config.json`) to include your installed stacks with proper secret injection.
 
-### Installing a Package
+### Inspecting Packages
 
 ```bash
-rudi install npm:typescript
+rudi pkg slack           # Show package details
+rudi pkg npm:typescript  # Show shims and paths
+
+rudi shims list          # List all shims
+rudi shims check         # Validate shim targets exist
 ```
 
-1. Resolves package from npm registry
-2. Creates install directory at `~/.rudi/binaries/npm/typescript/`
-3. Runs `npm install typescript --ignore-scripts`
-4. Discovers binaries from package.json (`tsc`, `tsserver`)
-5. Creates wrapper shims in `~/.rudi/bins/`
-6. Records ownership in shim registry
-
-### Installing an MCP Stack
+### Maintenance
 
 ```bash
-rudi install slack
+rudi update              # Update all packages
+rudi update slack        # Update specific package
+rudi remove slack        # Uninstall a package
+rudi doctor              # Check system health
 ```
-
-1. Downloads stack tarball from registry
-2. Extracts to `~/.rudi/stacks/slack/`
-3. Runs `npm install` for dependencies
-4. Shows which secrets need configuration
-5. Ready for `rudi integrate` to wire to agents
-
-### Running MCP Stacks
-
-When an AI agent runs a stack:
-
-1. Agent config points to `~/.rudi/bins/rudi-mcp`
-2. RUDI loads secrets from `~/.rudi/secrets.json`
-3. Injects secrets as environment variables
-4. Runs the MCP server with bundled runtime
 
 ## Directory Structure
 
 ```
 ~/.rudi/
-├── bins/             # Shims for all tools (add to PATH)
-├── stacks/           # Installed MCP stacks
-├── binaries/         # Installed CLI tools
-│   ├── ffmpeg/       # Upstream binary
-│   ├── supabase/     # npm-based CLI
-│   └── npm/          # Dynamic npm packages
+├── bins/                 # Shims (add to PATH)
+│   ├── tsc              # → binaries/npm/typescript/...
+│   ├── ffmpeg           # → binaries/ffmpeg/...
+│   └── rudi-mcp         # MCP router for agents
+│
+├── stacks/               # MCP server installations
+│   ├── slack/
+│   │   ├── manifest.json
+│   │   ├── index.js
+│   │   └── node_modules/
+│   └── google-workspace/
+│
+├── binaries/             # CLI tool installations
+│   ├── ffmpeg/           # Upstream binary
+│   ├── supabase/         # npm-based CLI
+│   └── npm/              # Dynamic npm packages
 │       ├── typescript/
-│       └── cowsay/
-├── runtimes/         # Bundled Node.js, Python
-├── agents/           # AI agent CLIs
-├── secrets.json      # Encrypted secrets
-├── shim-registry.json # Shim ownership tracking
-└── rudi.db           # Local database
+│       └── vercel/
+│
+├── runtimes/             # Language runtimes
+│   ├── node/
+│   └── python/
+│
+├── agents/               # AI agent CLI installations
+│
+├── secrets.json          # API keys (mode 0600)
+├── shim-registry.json    # Shim ownership tracking
+└── rudi.db               # Local metadata database
 ```
 
-## Available Packages
+## How MCP Integration Works
 
-### MCP Stacks
+When you run `rudi integrate claude`, RUDI:
 
-| Stack | Description |
-|-------|-------------|
-| slack | Send messages, search channels, manage reactions |
-| google-workspace | Gmail, Sheets, Docs, Drive, Calendar |
-| notion-workspace | Pages, databases, search |
-| google-ai | Gemini, Imagen, Veo |
-| openai | DALL-E, Whisper, TTS, Sora |
-| postgres | PostgreSQL database queries |
-| video-editor | ffmpeg-based video editing |
-| github | Issues, PRs, repos, actions |
-| stripe | Payments, subscriptions, invoices |
+1. Reads the Claude Desktop config at `~/Library/Application Support/Claude/claude_desktop_config.json`
+2. Adds entries for each installed stack pointing to `~/.rudi/bins/rudi-mcp`
+3. Passes the stack ID as an argument
 
-### Binaries
+When Claude invokes the MCP server:
 
-| Binary | Description |
-|--------|-------------|
-| ffmpeg | Video/audio processing |
-| ripgrep | Fast search |
-| supabase | Supabase CLI |
-| vercel | Vercel CLI |
-| uv | Fast Python package manager |
+1. `rudi-mcp` receives the stack ID
+2. Loads secrets from `~/.rudi/secrets.json`
+3. Injects secrets as environment variables
+4. Spawns the actual MCP server process
+5. Proxies stdio between Claude and the server
 
-### Dynamic npm
+This architecture means secrets stay local and are never written to agent config files.
 
-Any npm package with a `bin` field works:
+## Security Model
+
+### npm Package Installation
+
+By default, npm packages install with `--ignore-scripts` to prevent arbitrary code execution during install. If a package requires lifecycle scripts (e.g., native compilation), use:
 
 ```bash
-rudi install npm:typescript    # tsc, tsserver
-rudi install npm:cowsay        # cowsay, cowthink
-rudi install npm:@stripe/cli   # stripe
-rudi install npm:netlify-cli   # netlify
+rudi install npm:puppeteer --allow-scripts
+```
+
+### Secret Storage
+
+Secrets are stored in `~/.rudi/secrets.json` with file permissions `0600` (owner read/write only). This matches the security model used by SSH, AWS CLI, and other credential stores.
+
+### Shim Isolation
+
+Each package installs to its own directory. Shims are thin wrappers that set up the environment and delegate to the real binary. This prevents packages from interfering with each other.
+
+## Available Stacks
+
+| Stack | Description | Required Secrets |
+|-------|-------------|------------------|
+| slack | Channels, messages, reactions | `SLACK_BOT_TOKEN` |
+| google-workspace | Gmail, Sheets, Docs, Drive | `GOOGLE_CLIENT_ID`, `GOOGLE_CLIENT_SECRET` |
+| notion-workspace | Pages, databases, search | `NOTION_API_KEY` |
+| github | Issues, PRs, repos, actions | `GITHUB_TOKEN` |
+| postgres | SQL queries | `DATABASE_URL` |
+| stripe | Payments, subscriptions | `STRIPE_SECRET_KEY` |
+| openai | DALL-E, Whisper, TTS | `OPENAI_API_KEY` |
+| google-ai | Gemini, Imagen | `GOOGLE_AI_API_KEY` |
+
+## Available Binaries
+
+| Binary | Description | Source |
+|--------|-------------|--------|
+| ffmpeg | Video/audio processing | Upstream |
+| ripgrep | Fast text search | Upstream |
+| supabase | Supabase CLI | npm |
+| vercel | Vercel CLI | npm |
+| uv | Python package manager | Upstream |
+
+## Troubleshooting
+
+### Command not found after install
+
+Ensure `~/.rudi/bins` is in your PATH:
+
+```bash
+echo $PATH | grep -q '.rudi/bins' && echo "OK" || echo "Add ~/.rudi/bins to PATH"
+```
+
+### Shim points to missing target
+
+Run `rudi shims check` to validate all shims. If a target is missing, reinstall the package:
+
+```bash
+rudi remove npm:typescript
+rudi install npm:typescript
+```
+
+### MCP stack not appearing in agent
+
+1. Check the stack is installed: `rudi list stacks`
+2. Run integration: `rudi integrate claude`
+3. Restart the AI agent application
+
+### Permission denied on secrets
+
+Ensure correct permissions:
+
+```bash
+chmod 600 ~/.rudi/secrets.json
 ```
 
 ## Links
 
-- Website: https://learnrudi.com
+- Documentation: https://learn-rudi.github.io/cli/
+- Repository: https://github.com/learn-rudi/cli
 - Registry: https://github.com/learn-rudi/registry
+- npm: https://www.npmjs.com/package/@learnrudi/cli
 - Issues: https://github.com/learn-rudi/cli/issues
+
+## License
+
+MIT

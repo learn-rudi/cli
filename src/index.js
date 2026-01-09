@@ -49,6 +49,8 @@ import { cmdStatus } from './commands/status.js';
 import { cmdCheck } from './commands/check.js';
 import { cmdShims } from './commands/shims.js';
 import { cmdInfo } from './commands/info.js';
+import { cmdApply } from './commands/apply.js';
+import { cmdProject } from './commands/project.js';
 
 const VERSION = '2.0.0';
 
@@ -111,6 +113,15 @@ async function main() {
 
       case 'import':
         await cmdImport(args, flags);
+        break;
+
+      case 'apply':
+        await cmdApply(args, flags);
+        break;
+
+      case 'project':
+      case 'projects':
+        await cmdProject(args, flags);
         break;
 
       case 'doctor':

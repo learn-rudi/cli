@@ -239,6 +239,51 @@ export function getEmbeddingStats(model) {
 }
 
 /**
+ * Get embedding stats for all models (model-agnostic)
+ * @returns {{ total: number, done: number, queued: number, error: number, models: Object }}
+ */
+export function getAllEmbeddingStats() {
+  const db = getDb();
+
+  // Total turns with content
+  const totalStmt = db.prepare(`
+    SELECT COUNT(*) as count
+    FROM turns
+    WHERE (user_message IS NOT NULL AND length(trim(user_message)) > 0)
+       OR (assistant_response IS NOT NULL AND length(trim(assistant_response)) > 0)
+  `);
+  const total = totalStmt.get().count;
+
+  // Embedding counts by status (all models)
+  const statsStmt = db.prepare(`
+    SELECT
+      status,
+      COUNT(*) as count
+    FROM turn_embeddings
+    GROUP BY status
+  `);
+
+  const stats = { total, done: 0, queued: 0, error: 0 };
+  for (const row of statsStmt.all()) {
+    stats[row.status] = row.count;
+  }
+
+  // Get breakdown by model
+  const modelsStmt = db.prepare(`
+    SELECT model, dimensions, COUNT(*) as count
+    FROM turn_embeddings
+    WHERE status = 'done'
+    GROUP BY model, dimensions
+  `);
+  stats.models = {};
+  for (const row of modelsStmt.all()) {
+    stats.models[row.model] = { dimensions: row.dimensions, count: row.count };
+  }
+
+  return stats;
+}
+
+/**
  * Delete embeddings for a turn
  * @param {string} turnId
  */

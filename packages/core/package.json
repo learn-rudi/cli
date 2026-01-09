@@ -7,13 +7,20 @@
   "exports": {
     ".": "./src/index.js",
     "./resolver": "./src/resolver.js",
+    "./platform-resolver": "./src/platform-resolver.js",
     "./installer": "./src/installer.js",
     "./lockfile": "./src/lockfile.js",
     "./rudi-config": "./src/rudi-config.js",
     "./tool-index": "./src/tool-index.js"
   },
   "scripts": {
-    "test": "node --test src/__tests__/"
+    "test": "bash scripts/test.sh fast",
+    "test:unit": "node --test src/__tests__/unit/",
+    "test:integration": "SKIP_NPM_TESTS=true node --test src/__tests__/integration/",
+    "test:integration:full": "node --test src/__tests__/integration/",
+    "test:e2e": "node --test src/__tests__/e2e/",
+    "test:all": "node --test src/__tests__/",
+    "test:watch": "node --test --watch src/__tests__/unit/"
   },
   "dependencies": {
     "@learnrudi/env": "workspace:*",

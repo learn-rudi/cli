@@ -662,37 +662,64 @@ async function downloadDirectoryFromGitHub(dirUrl, destDir, onProgress) {
 async function downloadRuntime(runtime, version, destPath, options = {}) {
   const { onProgress } = options;
   const platformArch = getPlatformArch2();
-  const shortVersion = version.replace(/\.x$/, "").replace(/\.0$/, "");
-  const filename = `${runtime}-${shortVersion}-${platformArch}.tar.gz`;
-  const url = `${RUNTIMES_DOWNLOAD_BASE}/${RUNTIMES_RELEASE_VERSION}/${filename}`;
-  onProgress?.({ phase: "downloading", runtime, version, url });
+  const { execSync: execSync10 } = await import("child_process");
+  const runtimeManifest = await loadRuntimeManifest(runtime);
+  const customDownload = runtimeManifest?.download?.[platformArch];
   const tempDir = import_path3.default.join(PATHS2.cache, "downloads");
   if (!import_fs2.default.existsSync(tempDir)) {
     import_fs2.default.mkdirSync(tempDir, { recursive: true });
   }
-  const tempFile = import_path3.default.join(tempDir, filename);
+  if (import_fs2.default.existsSync(destPath)) {
+    import_fs2.default.rmSync(destPath, { recursive: true });
+  }
+  import_fs2.default.mkdirSync(destPath, { recursive: true });
+  let url;
+  let downloadType;
+  if (customDownload) {
+    url = typeof customDownload === "string" ? customDownload : customDownload.url;
+    downloadType = customDownload.type || "tar.gz";
+  } else {
+    const shortVersion = version.replace(/\.x$/, "").replace(/\.0$/, "");
+    const filename = `${runtime}-${shortVersion}-${platformArch}.tar.gz`;
+    url = `${RUNTIMES_DOWNLOAD_BASE}/${RUNTIMES_RELEASE_VERSION}/${filename}`;
+    downloadType = "tar.gz";
+  }
+  onProgress?.({ phase: "downloading", runtime, version, url });
+  const tempFile = import_path3.default.join(tempDir, `${runtime}-${version}-${platformArch}.download`);
   try {
-    const response = await fetch(url, {
-      headers: {
-        "User-Agent": "rudi-cli/2.0",
-        "Accept": "application/octet-stream"
+    if (url.includes("github.com")) {
+      execSync10(`curl -sL "${url}" -o "${tempFile}"`, { stdio: "pipe" });
+    } else {
+      const response = await fetch(url, {
+        headers: {
+          "User-Agent": "rudi-cli/2.0",
+          "Accept": "application/octet-stream"
+        }
+      });
+      if (!response.ok) {
+        throw new Error(`Failed to download ${runtime}: HTTP ${response.status}`);
       }
-    });
-    if (!response.ok) {
-      throw new Error(`Failed to download ${runtime}: HTTP ${response.status}`);
+      const buffer = await response.arrayBuffer();
+      import_fs2.default.writeFileSync(tempFile, Buffer.from(buffer));
     }
-    const buffer = await response.arrayBuffer();
-    import_fs2.default.writeFileSync(tempFile, Buffer.from(buffer));
     onProgress?.({ phase: "extracting", runtime, version });
-    if (import_fs2.default.existsSync(destPath)) {
-      import_fs2.default.rmSync(destPath, { recursive: true });
+    if (downloadType === "binary") {
+      const binaryName = runtimeManifest?.binary || runtime;
+      const binaryPath = import_path3.default.join(destPath, binaryName);
+      import_fs2.default.renameSync(tempFile, binaryPath);
+      import_fs2.default.chmodSync(binaryPath, 493);
+    } else if (downloadType === "tar.gz" || downloadType === "tgz") {
+      execSync10(`tar -xzf "${tempFile}" -C "${destPath}" --strip-components=1`, { stdio: "pipe" });
+      import_fs2.default.unlinkSync(tempFile);
+    } else if (downloadType === "tar.xz") {
+      execSync10(`tar -xJf "${tempFile}" -C "${destPath}" --strip-components=1`, { stdio: "pipe" });
+      import_fs2.default.unlinkSync(tempFile);
+    } else if (downloadType === "zip") {
+      execSync10(`unzip -o "${tempFile}" -d "${destPath}"`, { stdio: "pipe" });
+      import_fs2.default.unlinkSync(tempFile);
+    } else {
+      throw new Error(`Unsupported download type: ${downloadType}`);
     }
-    import_fs2.default.mkdirSync(destPath, { recursive: true });
-    const { execSync: execSync10 } = await import("child_process");
-    execSync10(`tar -xzf "${tempFile}" -C "${destPath}" --strip-components=1`, {
-      stdio: "pipe"
-    });
-    import_fs2.default.unlinkSync(tempFile);
     import_fs2.default.writeFileSync(
       import_path3.default.join(destPath, "runtime.json"),
       JSON.stringify({
@@ -700,7 +727,9 @@ async function downloadRuntime(runtime, version, destPath, options = {}) {
         version,
         platformArch,
         downloadedAt: (/* @__PURE__ */ new Date()).toISOString(),
-        source: url
+        source: url,
+        ...runtimeManifest?.commands && { commands: runtimeManifest.commands },
+        ...runtimeManifest?.postInstall && { postInstall: runtimeManifest.postInstall }
       }, null, 2)
     );
     onProgress?.({ phase: "complete", runtime, version, path: destPath });
@@ -882,6 +911,33 @@ async function extractBinaryFromPath(extractedPath, binaryPattern, destPath) {
     }
   }
 }
+async function loadRuntimeManifest(runtimeName) {
+  for (const basePath of getLocalRegistryPaths()) {
+    const registryDir = import_path3.default.dirname(basePath);
+    const manifestPath = import_path3.default.join(registryDir, "catalog", "runtimes", `${runtimeName}.json`);
+    if (import_fs2.default.existsSync(manifestPath)) {
+      try {
+        return JSON.parse(import_fs2.default.readFileSync(manifestPath, "utf-8"));
+      } catch {
+        continue;
+      }
+    }
+  }
+  try {
+    const url = `https://raw.githubusercontent.com/learn-rudi/registry/main/catalog/runtimes/${runtimeName}.json`;
+    const response = await fetch(url, {
+      headers: {
+        "User-Agent": "rudi-cli/2.0",
+        "Accept": "application/json"
+      }
+    });
+    if (response.ok) {
+      return await response.json();
+    }
+  } catch {
+  }
+  return null;
+}
 async function loadToolManifest(toolName) {
   for (const basePath of getLocalRegistryPaths()) {
     const registryDir = import_path3.default.dirname(basePath);
@@ -960,8 +1016,7 @@ async function resolvePackage(id) {
   if (id.startsWith("npm:")) {
     return resolveDynamicNpm(id);
   }
-  const normalizedId = id.includes(":") ? id : `stack:${id}`;
-  const pkg = await getPackage(normalizedId);
+  const pkg = await getPackage(id);
   if (!pkg) {
     throw new Error(`Package not found: ${id}`);
   }
@@ -17247,6 +17302,7 @@ __export(sqlite_exports, {
   clearEmbeddings: () => clearEmbeddings,
   deleteEmbedding: () => deleteEmbedding,
   ensureEmbeddingsSchema: () => ensureEmbeddingsSchema,
+  getAllEmbeddingStats: () => getAllEmbeddingStats,
   getEmbeddingStats: () => getEmbeddingStats,
   getErrorTurns: () => getErrorTurns,
   getMissingTurns: () => getMissingTurns,
@@ -17413,6 +17469,38 @@ function getEmbeddingStats(model) {
   const stats = { total, done: 0, queued: 0, error: 0 };
   for (const row of statsStmt.all(model.name, model.dimensions)) {
     stats[row.status] = row.count;
+  }
+  return stats;
+}
+function getAllEmbeddingStats() {
+  const db3 = getDb2();
+  const totalStmt = db3.prepare(`
+    SELECT COUNT(*) as count
+    FROM turns
+    WHERE (user_message IS NOT NULL AND length(trim(user_message)) > 0)
+       OR (assistant_response IS NOT NULL AND length(trim(assistant_response)) > 0)
+  `);
+  const total = totalStmt.get().count;
+  const statsStmt = db3.prepare(`
+    SELECT
+      status,
+      COUNT(*) as count
+    FROM turn_embeddings
+    GROUP BY status
+  `);
+  const stats = { total, done: 0, queued: 0, error: 0 };
+  for (const row of statsStmt.all()) {
+    stats[row.status] = row.count;
+  }
+  const modelsStmt = db3.prepare(`
+    SELECT model, dimensions, COUNT(*) as count
+    FROM turn_embeddings
+    WHERE status = 'done'
+    GROUP BY model, dimensions
+  `);
+  stats.models = {};
+  for (const row of modelsStmt.all()) {
+    stats.models[row.model] = { dimensions: row.dimensions, count: row.count };
   }
   return stats;
 }
@@ -35461,12 +35549,99 @@ function dbTables(flags) {
 }
 
 // src/commands/session.js
+var import_readline2 = require("readline");
 var embeddingsModule = null;
 async function getEmbeddings() {
   if (!embeddingsModule) {
     embeddingsModule = await Promise.resolve().then(() => (init_src6(), src_exports3));
   }
   return embeddingsModule;
+}
+async function confirm(message) {
+  const rl = (0, import_readline2.createInterface)({ input: process.stdin, output: process.stdout });
+  return new Promise((resolve) => {
+    rl.question(`${message} [Y/n] `, (answer) => {
+      rl.close();
+      resolve(answer.toLowerCase() !== "n");
+    });
+  });
+}
+async function ensureEmbeddingProvider(preferredProvider = "auto", options = {}) {
+  const { checkProviderStatus: checkProviderStatus2, getProvider: getProvider2 } = await getEmbeddings();
+  const status = await checkProviderStatus2();
+  if (preferredProvider === "openai") {
+    if (status.openai.configured) {
+      return await getProvider2("openai");
+    }
+    console.log("OpenAI not configured. Set OPENAI_API_KEY environment variable.");
+    return null;
+  }
+  try {
+    return await getProvider2("auto");
+  } catch {
+  }
+  if (status.openai.configured) {
+    console.log("\nOllama not available. OpenAI is configured.");
+    const useOpenAI = await confirm("Use OpenAI for embeddings? (costs ~$0.02/1M tokens)");
+    if (useOpenAI) {
+      return await getProvider2("openai");
+    }
+  }
+  console.log("\nNo embedding provider available.\n");
+  console.log("Options:");
+  console.log("  [1] Install Ollama (recommended - free, local, works offline)");
+  console.log("  [2] Use OpenAI (requires OPENAI_API_KEY)");
+  console.log("  [3] Cancel\n");
+  const rl = (0, import_readline2.createInterface)({ input: process.stdin, output: process.stdout });
+  const choice = await new Promise((resolve) => {
+    rl.question("Choice [1]: ", (answer) => {
+      rl.close();
+      resolve(answer || "1");
+    });
+  });
+  if (choice === "3" || choice.toLowerCase() === "cancel") {
+    return null;
+  }
+  if (choice === "2") {
+    if (!status.openai.configured) {
+      console.log("\nOpenAI not configured.");
+      console.log("Set: export OPENAI_API_KEY=your-key");
+      return null;
+    }
+    return await getProvider2("openai");
+  }
+  console.log("\nInstalling Ollama...");
+  try {
+    const { installPackage: installPackage2 } = await Promise.resolve().then(() => (init_src4(), src_exports2));
+    await installPackage2("runtime:ollama", {
+      onProgress: (p2) => {
+        if (p2.phase === "downloading") process.stdout.write("\r  Downloading...");
+        if (p2.phase === "extracting") process.stdout.write("\r  Installing...  ");
+      }
+    });
+    console.log("\r  \u2713 Ollama installed     ");
+    console.log("  Starting ollama serve...");
+    const { spawn: spawn4 } = await import("child_process");
+    const server = spawn4("ollama", ["serve"], {
+      detached: true,
+      stdio: "ignore",
+      env: { ...process.env, HOME: process.env.HOME }
+    });
+    server.unref();
+    await new Promise((r2) => setTimeout(r2, 2e3));
+    console.log("  Pulling nomic-embed-text model (274MB)...");
+    const { execSync: execSync10 } = await import("child_process");
+    execSync10("ollama pull nomic-embed-text", { stdio: "inherit" });
+    console.log("  \u2713 Model ready\n");
+    return await getProvider2("ollama");
+  } catch (err) {
+    console.error("\nSetup failed:", err.message);
+    console.log("\nManual setup:");
+    console.log("  rudi install ollama");
+    console.log("  ollama serve");
+    console.log("  ollama pull nomic-embed-text");
+    return null;
+  }
 }
 async function cmdSession(args, flags) {
   const subcommand = args[0];
@@ -35504,6 +35679,9 @@ async function cmdSession(args, flags) {
     case "setup":
       await sessionSetup(flags);
       break;
+    case "organize":
+      await sessionOrganize(flags);
+      break;
     default:
       console.log(`
 rudi session - Manage RUDI sessions
@@ -35522,6 +35700,9 @@ SEMANTIC SEARCH
   search <query> [--semantic] [--limit]     Search sessions (FTS or semantic)
   index [--embeddings] [--provider X]        Index sessions for semantic search
   similar <id> [--limit]                     Find similar sessions
+
+ORGANIZATION (batch operations)
+  organize [--dry-run] [--out plan.json]     Auto-organize sessions into projects
 
 OPTIONS
   --provider <name>     Filter by provider (claude, codex, gemini)
@@ -35870,8 +36051,12 @@ Found ${results.length} result(s) for "${query}":
 async function semanticSearch(query, options) {
   const { limit: limit2, format } = options;
   try {
-    const { createClient: createClient2, getProvider: getProvider2 } = await getEmbeddings();
-    const { provider, model } = await getProvider2("auto");
+    const { createClient: createClient2 } = await getEmbeddings();
+    const result = await ensureEmbeddingProvider("auto");
+    if (!result) {
+      return;
+    }
+    const { provider, model } = result;
     console.log(`Using ${provider.id} with ${model.name}`);
     const client = createClient2({ provider, model });
     const stats = client.getStats();
@@ -35920,18 +36105,25 @@ async function sessionIndex(flags) {
   const providerName = flags.provider || "auto";
   if (!flags.embeddings) {
     try {
-      const { createClient: createClient2, getProvider: getProvider2, store } = await getEmbeddings();
-      const model = { name: "text-embedding-3-small", dimensions: 1536 };
-      const stats = store.getEmbeddingStats(model);
+      const { store } = await getEmbeddings();
+      const stats = store.getAllEmbeddingStats();
       const pct = stats.total > 0 ? (stats.done / stats.total * 100).toFixed(1) : 0;
       console.log("\nEmbedding Index Status:");
       console.log(`  Total turns: ${stats.total}`);
       console.log(`  Indexed: ${stats.done} (${pct}%)`);
       console.log(`  Queued: ${stats.queued}`);
       console.log(`  Errors: ${stats.error}`);
-      console.log("\nTo index missing turns:");
-      console.log("  rudi session index --embeddings");
-      console.log("  rudi session index --embeddings --provider ollama");
+      if (Object.keys(stats.models).length > 0) {
+        console.log("\nIndexed by model:");
+        for (const [model, info] of Object.entries(stats.models)) {
+          console.log(`  ${model} (${info.dimensions}d): ${info.count} turns`);
+        }
+      }
+      if (stats.done < stats.total) {
+        console.log("\nTo index missing turns:");
+        console.log("  rudi session index --embeddings");
+        console.log("  rudi session index --embeddings --provider ollama");
+      }
     } catch (err) {
       console.log("Embedding status unavailable:", err.message);
     }
@@ -35939,8 +36131,12 @@ async function sessionIndex(flags) {
   }
   console.log("Indexing sessions for semantic search...\n");
   try {
-    const { createClient: createClient2, getProvider: getProvider2 } = await getEmbeddings();
-    const { provider, model } = await getProvider2(providerName);
+    const { createClient: createClient2 } = await getEmbeddings();
+    const providerResult = await ensureEmbeddingProvider(providerName);
+    if (!providerResult) {
+      return;
+    }
+    const { provider, model } = providerResult;
     console.log(`Provider: ${provider.id}`);
     console.log(`Model: ${model.name} (${model.dimensions}d)
 `);
@@ -36001,8 +36197,12 @@ async function sessionSimilar(args, flags) {
   const format = flags.format || "table";
   const providerName = flags.provider || "auto";
   try {
-    const { createClient: createClient2, getProvider: getProvider2 } = await getEmbeddings();
-    const { provider, model } = await getProvider2(providerName);
+    const { createClient: createClient2 } = await getEmbeddings();
+    const result = await ensureEmbeddingProvider(providerName);
+    if (!result) {
+      return;
+    }
+    const { provider, model } = result;
     const client = createClient2({ provider, model });
     const results = await client.findSimilar(turnId, { limit: limit2 });
     if (format === "json") {
@@ -36050,6 +36250,223 @@ async function sessionSetup(flags) {
   } catch (err) {
     console.error("Setup error:", err.message);
   }
+}
+async function sessionOrganize(flags) {
+  if (!isDatabaseInitialized()) {
+    console.log("Database not initialized.");
+    return;
+  }
+  const dryRun = flags["dry-run"] || flags.dryRun || true;
+  const outputFile = flags.out || flags.output || "organize-plan.json";
+  const threshold = parseFloat(flags.threshold) || 0.65;
+  const db3 = getDb();
+  console.log("\u2550".repeat(60));
+  console.log("Session Organization");
+  console.log("\u2550".repeat(60));
+  console.log(`Mode: ${dryRun ? "Dry run (preview only)" : "LIVE - will apply changes"}`);
+  console.log(`Output: ${outputFile}`);
+  console.log(`Similarity threshold: ${(threshold * 100).toFixed(0)}%`);
+  console.log("\u2550".repeat(60));
+  const sessions = db3.prepare(`
+    SELECT
+      s.id, s.provider, s.title, s.title_override, s.project_id, s.cwd,
+      s.turn_count, s.total_cost, s.created_at, s.last_active_at,
+      p.name as project_name
+    FROM sessions s
+    LEFT JOIN projects p ON s.project_id = p.id
+    WHERE s.status = 'active'
+    ORDER BY s.total_cost DESC
+  `).all();
+  console.log(`
+Analyzing ${sessions.length} sessions...
+`);
+  const projects = db3.prepare("SELECT id, name FROM projects").all();
+  const projectMap = new Map(projects.map((p2) => [p2.name.toLowerCase(), p2]));
+  console.log(`Existing projects: ${projects.map((p2) => p2.name).join(", ") || "(none)"}
+`);
+  const cwdGroups = /* @__PURE__ */ new Map();
+  for (const s2 of sessions) {
+    if (!s2.cwd) continue;
+    const match = s2.cwd.match(/\/([^/]+)$/);
+    const projectKey = match ? match[1] : "other";
+    if (!cwdGroups.has(projectKey)) {
+      cwdGroups.set(projectKey, []);
+    }
+    cwdGroups.get(projectKey).push(s2);
+  }
+  const genericTitlePatterns = [
+    /^(Imported|Agent|New|Untitled|Chat) Session$/i,
+    /^Session \d+$/i,
+    /^Untitled$/i,
+    /^[A-Z][a-z]+ [A-Z][a-z]+ [A-Z][a-z]+$/
+    // "Adjective Verb Noun" (Claude auto-generated)
+  ];
+  const sessionsNeedingTitles = sessions.filter((s2) => {
+    if (s2.title_override && s2.title_override !== s2.title) {
+      return false;
+    }
+    const title = s2.title || "";
+    return !title || genericTitlePatterns.some((p2) => p2.test(title));
+  });
+  console.log(`Sessions with generic titles: ${sessionsNeedingTitles.length}`);
+  const titleSuggestions = [];
+  for (const s2 of sessionsNeedingTitles.slice(0, 100)) {
+    const firstTurn = db3.prepare(`
+      SELECT user_message
+      FROM turns
+      WHERE session_id = ? AND user_message IS NOT NULL AND length(trim(user_message)) > 10
+      ORDER BY turn_number
+      LIMIT 1
+    `).get(s2.id);
+    if (firstTurn && firstTurn.user_message) {
+      const msg = firstTurn.user_message.trim();
+      let suggestedTitle = msg.split("\n")[0].slice(0, 60).trim();
+      const skipPatterns = [
+        /^\/[A-Za-z]/,
+        // Unix paths
+        /^<[a-z-]+>/,
+        // XML tags
+        /^[A-Z]:\\[A-Za-z]/,
+        // Windows paths
+        /^(cd|ls|cat|npm|node|git|rudi|pnpm|yarn)\s/i,
+        // Commands
+        /^[a-f0-9-]{8,}/i,
+        // UUIDs or hashes
+        /^https?:\/\//i,
+        // URLs
+        /^[>\*\-#\d\.]\s/,
+        // Markdown list/quote starts
+        /^(yes|no|ok|sure|y|n)$/i,
+        // Single word responses
+        /^[^a-zA-Z]*$/,
+        // No letters at all
+        /^\s*\[/,
+        // JSON/array starts
+        /^\s*\{/
+        // Object starts
+      ];
+      if (skipPatterns.some((p2) => p2.test(suggestedTitle))) {
+        continue;
+      }
+      const wordCount = suggestedTitle.split(/\s+/).length;
+      if (wordCount < 3) {
+        continue;
+      }
+      if (suggestedTitle.length > 50) {
+        suggestedTitle = suggestedTitle.slice(0, 47) + "...";
+      }
+      if (suggestedTitle && suggestedTitle.length > 10) {
+        titleSuggestions.push({
+          sessionId: s2.id,
+          currentTitle: s2.title || "(none)",
+          suggestedTitle,
+          cost: s2.total_cost,
+          confidence: "medium"
+          // Could add scoring later
+        });
+      }
+    }
+  }
+  const projectSuggestions = [];
+  const moveSuggestions = [];
+  const knownProjects = {
+    "studio": "Prompt Stack Studio",
+    "prompt-stack": "Prompt Stack Studio",
+    "RUDI": "RUDI",
+    "rudi": "RUDI",
+    "cli": "RUDI",
+    "registry": "RUDI",
+    "resonance": "Resonance",
+    "cloud": "Cloud"
+  };
+  for (const [cwdKey, cwdSessions] of cwdGroups) {
+    const projectName = knownProjects[cwdKey];
+    if (projectName && cwdSessions.length >= 2) {
+      const existingProject = projectMap.get(projectName.toLowerCase());
+      for (const s2 of cwdSessions) {
+        if (!s2.project_id || existingProject && s2.project_id !== existingProject.id) {
+          moveSuggestions.push({
+            sessionId: s2.id,
+            sessionTitle: s2.title_override || s2.title,
+            currentProject: s2.project_name || null,
+            suggestedProject: projectName,
+            reason: `Working directory: ${cwdKey}`,
+            cost: s2.total_cost
+          });
+        }
+      }
+      if (!existingProject && cwdSessions.length >= 3) {
+        projectSuggestions.push({
+          name: projectName,
+          sessionCount: cwdSessions.length,
+          totalCost: cwdSessions.reduce((sum, s2) => sum + (s2.total_cost || 0), 0)
+        });
+      }
+    }
+  }
+  const plan = {
+    version: "1.0",
+    createdAt: (/* @__PURE__ */ new Date()).toISOString(),
+    dryRun,
+    threshold,
+    summary: {
+      totalSessions: sessions.length,
+      sessionsWithProjects: sessions.filter((s2) => s2.project_id).length,
+      sessionsNeedingTitles: sessionsNeedingTitles.length,
+      projectsToCreate: projectSuggestions.length,
+      movesToApply: moveSuggestions.length,
+      titlesToUpdate: titleSuggestions.length
+    },
+    actions: {
+      createProjects: projectSuggestions,
+      moveSessions: moveSuggestions.slice(0, 200),
+      // Limit batch size
+      updateTitles: titleSuggestions.slice(0, 100)
+      // Limit batch size
+    }
+  };
+  console.log("\n" + "\u2500".repeat(60));
+  console.log("PLAN SUMMARY");
+  console.log("\u2500".repeat(60));
+  console.log(`Sessions analyzed: ${plan.summary.totalSessions}`);
+  console.log(`Already in projects: ${plan.summary.sessionsWithProjects}`);
+  console.log(`
+Proposed actions:`);
+  console.log(`  Create projects: ${plan.summary.projectsToCreate}`);
+  console.log(`  Move sessions: ${plan.summary.movesToApply}`);
+  console.log(`  Update titles: ${plan.summary.titlesToUpdate}`);
+  if (projectSuggestions.length > 0) {
+    console.log("\nProjects to create:");
+    for (const p2 of projectSuggestions) {
+      console.log(`  \u2022 ${p2.name} (${p2.sessionCount} sessions, $${p2.totalCost.toFixed(2)})`);
+    }
+  }
+  if (moveSuggestions.length > 0) {
+    console.log("\nTop session moves:");
+    for (const m2 of moveSuggestions.slice(0, 10)) {
+      console.log(`  \u2022 "${m2.sessionTitle?.slice(0, 30) || m2.sessionId.slice(0, 8)}..." \u2192 ${m2.suggestedProject}`);
+    }
+    if (moveSuggestions.length > 10) {
+      console.log(`  ... and ${moveSuggestions.length - 10} more`);
+    }
+  }
+  if (titleSuggestions.length > 0) {
+    console.log("\nTop title updates:");
+    for (const t2 of titleSuggestions.slice(0, 5)) {
+      console.log(`  \u2022 "${t2.currentTitle?.slice(0, 20) || "(none)"}..." \u2192 "${t2.suggestedTitle.slice(0, 30)}..."`);
+    }
+    if (titleSuggestions.length > 5) {
+      console.log(`  ... and ${titleSuggestions.length - 5} more`);
+    }
+  }
+  const { writeFileSync: writeFileSync7 } = await import("fs");
+  writeFileSync7(outputFile, JSON.stringify(plan, null, 2));
+  console.log(`
+\u2713 Plan saved to: ${outputFile}`);
+  console.log("\nTo apply this plan:");
+  console.log(`  rudi apply ${outputFile}`);
+  console.log("\nTo review the full plan:");
+  console.log(`  cat ${outputFile} | jq .`);
 }
 
 // src/commands/import.js
@@ -39200,6 +39617,371 @@ Lockfile: ${lockPath}`);
   }
 }
 
+// src/commands/apply.js
+var import_fs28 = require("fs");
+var import_path26 = require("path");
+var import_os10 = require("os");
+var import_crypto3 = require("crypto");
+async function cmdApply(args, flags) {
+  const planFile = args[0];
+  const force = flags.force;
+  const undoPlanId = flags.undo;
+  const only = flags.only;
+  if (undoPlanId) {
+    return undoPlan(undoPlanId);
+  }
+  if (!planFile) {
+    console.log(`
+rudi apply - Execute organization plans
+
+USAGE
+  rudi apply <plan.json>     Apply a plan file
+  rudi apply --undo <id>     Undo a previously applied plan
+
+OPTIONS
+  --force                    Skip confirmation prompts
+  --only <type>              Apply only specific operations:
+                               move    - session moves only
+                               rename  - title updates only
+                               project - project creation only
+
+EXAMPLES
+  rudi session organize --dry-run --out plan.json
+  rudi apply plan.json
+  rudi apply plan.json --only move      # Moves first (low regret)
+  rudi apply plan.json --only rename    # Renames second
+  rudi apply --undo plan-20260109-abc123
+`);
+    return;
+  }
+  if (!(0, import_fs28.existsSync)(planFile)) {
+    console.error(`Plan file not found: ${planFile}`);
+    process.exit(1);
+  }
+  if (!isDatabaseInitialized()) {
+    console.error("Database not initialized. Run: rudi db init");
+    process.exit(1);
+  }
+  let plan;
+  try {
+    plan = JSON.parse((0, import_fs28.readFileSync)(planFile, "utf-8"));
+  } catch (err) {
+    console.error(`Invalid plan file: ${err.message}`);
+    process.exit(1);
+  }
+  if (!plan.version || !plan.actions) {
+    console.error("Invalid plan format: missing version or actions");
+    process.exit(1);
+  }
+  console.log("\u2550".repeat(60));
+  console.log("Apply Organization Plan");
+  console.log("\u2550".repeat(60));
+  console.log(`Plan file: ${planFile}`);
+  console.log(`Created: ${plan.createdAt}`);
+  console.log("\u2550".repeat(60));
+  let { createProjects = [], moveSessions = [], updateTitles = [] } = plan.actions;
+  if (only) {
+    console.log(`
+Filter: --only ${only}`);
+    if (only === "move") {
+      createProjects = [];
+      updateTitles = [];
+    } else if (only === "rename") {
+      createProjects = [];
+      moveSessions = [];
+    } else if (only === "project") {
+      moveSessions = [];
+      updateTitles = [];
+    } else {
+      console.error(`Unknown filter: ${only}. Use: move, rename, project`);
+      process.exit(1);
+    }
+  }
+  console.log("\nActions to apply:");
+  console.log(`  Create projects: ${createProjects.length}`);
+  console.log(`  Move sessions: ${moveSessions.length}`);
+  console.log(`  Update titles: ${updateTitles.length}`);
+  const totalActions = createProjects.length + moveSessions.length + updateTitles.length;
+  if (totalActions === 0) {
+    console.log("\nNo actions to apply (filtered out or empty).");
+    return;
+  }
+  if (!force) {
+    console.log("\nThis will modify your database.");
+    console.log("Add --force to skip this confirmation.\n");
+    const readline3 = await import("readline");
+    const rl = readline3.createInterface({
+      input: process.stdin,
+      output: process.stdout
+    });
+    const answer = await new Promise((resolve) => {
+      rl.question("Apply this plan? (y/N): ", resolve);
+    });
+    rl.close();
+    if (answer.toLowerCase() !== "y") {
+      console.log("Cancelled.");
+      return;
+    }
+  }
+  const db3 = getDb();
+  const planId = `plan-${(/* @__PURE__ */ new Date()).toISOString().slice(0, 10).replace(/-/g, "")}-${(0, import_crypto3.randomUUID)().slice(0, 6)}`;
+  const undoActions = [];
+  console.log(`
+Applying plan ${planId}...
+`);
+  if (createProjects.length > 0) {
+    console.log("Creating projects...");
+    const insertProject = db3.prepare(`
+      INSERT OR IGNORE INTO projects (id, provider, name, created_at)
+      VALUES (?, 'claude', ?, datetime('now'))
+    `);
+    for (const p2 of createProjects) {
+      const projectId = `proj-${p2.name.toLowerCase().replace(/\s+/g, "-")}`;
+      try {
+        insertProject.run(projectId, p2.name);
+        console.log(`  \u2713 Created: ${p2.name}`);
+        undoActions.push({ type: "deleteProject", projectId, name: p2.name });
+      } catch (err) {
+        console.log(`  \u26A0 Skipped (exists): ${p2.name}`);
+      }
+    }
+  }
+  if (moveSessions.length > 0) {
+    console.log("\nMoving sessions...");
+    const projectIds = /* @__PURE__ */ new Map();
+    const projects = db3.prepare("SELECT id, name FROM projects").all();
+    for (const p2 of projects) {
+      projectIds.set(p2.name.toLowerCase(), p2.id);
+    }
+    const updateSession = db3.prepare(`
+      UPDATE sessions SET project_id = ? WHERE id = ?
+    `);
+    let moved = 0;
+    for (const m2 of moveSessions) {
+      const projectId = projectIds.get(m2.suggestedProject.toLowerCase());
+      if (!projectId) {
+        console.log(`  \u26A0 Project not found: ${m2.suggestedProject}`);
+        continue;
+      }
+      const current = db3.prepare("SELECT project_id FROM sessions WHERE id = ?").get(m2.sessionId);
+      try {
+        updateSession.run(projectId, m2.sessionId);
+        moved++;
+        undoActions.push({
+          type: "moveSession",
+          sessionId: m2.sessionId,
+          fromProject: current?.project_id,
+          toProject: projectId
+        });
+      } catch (err) {
+        console.log(`  \u26A0 Failed: ${m2.sessionId} - ${err.message}`);
+      }
+    }
+    console.log(`  \u2713 Moved ${moved} sessions`);
+  }
+  if (updateTitles.length > 0) {
+    console.log("\nUpdating titles...");
+    const updateTitle = db3.prepare(`
+      UPDATE sessions SET title = ?, title_override = ? WHERE id = ?
+    `);
+    let updated = 0;
+    for (const t2 of updateTitles) {
+      const current = db3.prepare("SELECT title, title_override FROM sessions WHERE id = ?").get(t2.sessionId);
+      try {
+        updateTitle.run(t2.suggestedTitle, t2.suggestedTitle, t2.sessionId);
+        updated++;
+        undoActions.push({
+          type: "updateTitle",
+          sessionId: t2.sessionId,
+          fromTitle: current?.title,
+          fromTitleOverride: current?.title_override,
+          toTitle: t2.suggestedTitle
+        });
+      } catch (err) {
+        console.log(`  \u26A0 Failed: ${t2.sessionId} - ${err.message}`);
+      }
+    }
+    console.log(`  \u2713 Updated ${updated} titles`);
+  }
+  const undoDir = (0, import_path26.join)((0, import_os10.homedir)(), ".rudi", "plans");
+  const { mkdirSync: mkdirSync5 } = await import("fs");
+  try {
+    mkdirSync5(undoDir, { recursive: true });
+  } catch (e2) {
+  }
+  const undoFile = (0, import_path26.join)(undoDir, `${planId}.undo.json`);
+  const undoPlan = {
+    planId,
+    appliedAt: (/* @__PURE__ */ new Date()).toISOString(),
+    sourceFile: planFile,
+    actions: undoActions
+  };
+  (0, import_fs28.writeFileSync)(undoFile, JSON.stringify(undoPlan, null, 2));
+  console.log("\n" + "\u2550".repeat(60));
+  console.log("Plan applied successfully!");
+  console.log("\u2550".repeat(60));
+  console.log(`Plan ID: ${planId}`);
+  console.log(`Undo file: ${undoFile}`);
+  console.log(`
+To undo: rudi apply --undo ${planId}`);
+}
+
+// src/commands/project.js
+async function cmdProject(args, flags) {
+  const subcommand = args[0];
+  switch (subcommand) {
+    case "list":
+    case "ls":
+      projectList(flags);
+      break;
+    case "create":
+    case "add":
+      projectCreate(args.slice(1), flags);
+      break;
+    case "rename":
+      projectRename(args.slice(1), flags);
+      break;
+    case "delete":
+    case "rm":
+      projectDelete(args.slice(1), flags);
+      break;
+    default:
+      console.log(`
+rudi project - Manage session projects
+
+COMMANDS
+  list                         List all projects
+  create <name>                Create a new project
+  rename <id> <new-name>       Rename a project
+  delete <id>                  Delete a project (sessions become unassigned)
+
+OPTIONS
+  --provider <name>            Provider (claude, codex, gemini). Default: claude
+
+EXAMPLES
+  rudi project list
+  rudi project create "RUDI CLI"
+  rudi project rename proj-rudi "RUDI Tooling"
+  rudi project delete proj-old
+`);
+  }
+}
+function projectList(flags) {
+  if (!isDatabaseInitialized()) {
+    console.log("Database not initialized. Run: rudi db init");
+    return;
+  }
+  const db3 = getDb();
+  const provider = flags.provider;
+  let query = `
+    SELECT
+      p.id, p.provider, p.name, p.color, p.created_at,
+      COUNT(s.id) as session_count,
+      ROUND(SUM(s.total_cost), 2) as total_cost
+    FROM projects p
+    LEFT JOIN sessions s ON s.project_id = p.id
+  `;
+  if (provider) {
+    query += ` WHERE p.provider = '${provider}'`;
+  }
+  query += ` GROUP BY p.id ORDER BY total_cost DESC`;
+  const projects = db3.prepare(query).all();
+  if (projects.length === 0) {
+    console.log("No projects found.");
+    console.log('\nCreate one with: rudi project create "My Project"');
+    return;
+  }
+  console.log(`
+Projects (${projects.length}):
+`);
+  for (const p2 of projects) {
+    console.log(`${p2.name}`);
+    console.log(`  ID: ${p2.id}`);
+    console.log(`  Provider: ${p2.provider}`);
+    console.log(`  Sessions: ${p2.session_count || 0}`);
+    console.log(`  Total cost: $${p2.total_cost || 0}`);
+    console.log("");
+  }
+}
+function projectCreate(args, flags) {
+  if (!isDatabaseInitialized()) {
+    console.log("Database not initialized. Run: rudi db init");
+    return;
+  }
+  const name = args.join(" ");
+  if (!name) {
+    console.log("Error: Project name required");
+    console.log('Usage: rudi project create "Project Name"');
+    return;
+  }
+  const provider = flags.provider || "claude";
+  const id = `proj-${name.toLowerCase().replace(/\s+/g, "-").replace(/[^a-z0-9-]/g, "")}`;
+  const db3 = getDb();
+  try {
+    db3.prepare(`
+      INSERT INTO projects (id, provider, name, created_at)
+      VALUES (?, ?, ?, datetime('now'))
+    `).run(id, provider, name);
+    console.log(`
+Project created:`);
+    console.log(`  ID: ${id}`);
+    console.log(`  Name: ${name}`);
+    console.log(`  Provider: ${provider}`);
+  } catch (err) {
+    if (err.message.includes("UNIQUE")) {
+      console.log(`Error: Project "${name}" already exists for ${provider}`);
+    } else {
+      console.log(`Error: ${err.message}`);
+    }
+  }
+}
+function projectRename(args, flags) {
+  if (!isDatabaseInitialized()) {
+    console.log("Database not initialized.");
+    return;
+  }
+  const [id, ...nameParts] = args;
+  const newName = nameParts.join(" ");
+  if (!id || !newName) {
+    console.log("Error: Project ID and new name required");
+    console.log('Usage: rudi project rename <id> "New Name"');
+    return;
+  }
+  const db3 = getDb();
+  const result = db3.prepare("UPDATE projects SET name = ? WHERE id = ?").run(newName, id);
+  if (result.changes === 0) {
+    console.log(`Project not found: ${id}`);
+    return;
+  }
+  console.log(`
+Project renamed to: ${newName}`);
+}
+function projectDelete(args, flags) {
+  if (!isDatabaseInitialized()) {
+    console.log("Database not initialized.");
+    return;
+  }
+  const id = args[0];
+  if (!id) {
+    console.log("Error: Project ID required");
+    console.log("Usage: rudi project delete <id>");
+    return;
+  }
+  const db3 = getDb();
+  const project = db3.prepare("SELECT name FROM projects WHERE id = ?").get(id);
+  if (!project) {
+    console.log(`Project not found: ${id}`);
+    return;
+  }
+  const sessionsResult = db3.prepare("UPDATE sessions SET project_id = NULL WHERE project_id = ?").run(id);
+  db3.prepare("DELETE FROM projects WHERE id = ?").run(id);
+  console.log(`
+Project deleted: ${project.name}`);
+  if (sessionsResult.changes > 0) {
+    console.log(`Unassigned ${sessionsResult.changes} sessions`);
+  }
+}
+
 // src/index.js
 var VERSION2 = "2.0.0";
 async function main() {
@@ -39249,6 +40031,13 @@ async function main() {
         break;
       case "import":
         await cmdImport(args, flags);
+        break;
+      case "apply":
+        await cmdApply(args, flags);
+        break;
+      case "project":
+      case "projects":
+        await cmdProject(args, flags);
         break;
       case "doctor":
         await cmdDoctor(args, flags);

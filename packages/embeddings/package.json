@@ -11,7 +11,11 @@
     "./stores/sqlite": "./src/stores/sqlite.js"
   },
   "scripts": {
-    "test": "node --test src/__tests__/"
+    "test": "node --test src/__tests__/unit/",
+    "test:unit": "node --test src/__tests__/unit/",
+    "test:integration": "node --test src/__tests__/integration/",
+    "test:all": "node --test src/__tests__/",
+    "test:watch": "node --test --watch src/__tests__/unit/"
   },
   "dependencies": {
     "@learnrudi/db": "^1.0.0",

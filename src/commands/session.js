@@ -4,6 +4,7 @@
 
 import { getDb, isDatabaseInitialized } from '@learnrudi/db';
 import { formatDuration } from '@learnrudi/utils/args';
+import { createInterface } from 'readline';
 
 // Lazy load embeddings to avoid startup cost
 let embeddingsModule = null;
@@ -12,6 +13,125 @@ async function getEmbeddings() {
     embeddingsModule = await import('@learnrudi/embeddings');
   }
   return embeddingsModule;
+}
+
+/**
+ * Prompt user for confirmation
+ */
+async function confirm(message) {
+  const rl = createInterface({ input: process.stdin, output: process.stdout });
+  return new Promise((resolve) => {
+    rl.question(`${message} [Y/n] `, (answer) => {
+      rl.close();
+      resolve(answer.toLowerCase() !== 'n');
+    });
+  });
+}
+
+/**
+ * Ensure an embedding provider is ready (auto-install Ollama if needed)
+ * @param {string} preferredProvider - 'auto', 'ollama', or 'openai'
+ * @param {Object} options
+ * @returns {Promise<{provider, model} | null>}
+ */
+async function ensureEmbeddingProvider(preferredProvider = 'auto', options = {}) {
+  const { checkProviderStatus, getProvider } = await getEmbeddings();
+  const status = await checkProviderStatus();
+
+  // If OpenAI explicitly requested and configured, use it
+  if (preferredProvider === 'openai') {
+    if (status.openai.configured) {
+      return await getProvider('openai');
+    }
+    console.log('OpenAI not configured. Set OPENAI_API_KEY environment variable.');
+    return null;
+  }
+
+  // Try auto-detection first
+  try {
+    return await getProvider('auto');
+  } catch {
+    // No provider available, need to set one up
+  }
+
+  // Check if OpenAI is available as alternative
+  if (status.openai.configured) {
+    console.log('\nOllama not available. OpenAI is configured.');
+    const useOpenAI = await confirm('Use OpenAI for embeddings? (costs ~$0.02/1M tokens)');
+    if (useOpenAI) {
+      return await getProvider('openai');
+    }
+  }
+
+  // Need to install/setup Ollama
+  console.log('\nNo embedding provider available.\n');
+  console.log('Options:');
+  console.log('  [1] Install Ollama (recommended - free, local, works offline)');
+  console.log('  [2] Use OpenAI (requires OPENAI_API_KEY)');
+  console.log('  [3] Cancel\n');
+
+  const rl = createInterface({ input: process.stdin, output: process.stdout });
+  const choice = await new Promise((resolve) => {
+    rl.question('Choice [1]: ', (answer) => {
+      rl.close();
+      resolve(answer || '1');
+    });
+  });
+
+  if (choice === '3' || choice.toLowerCase() === 'cancel') {
+    return null;
+  }
+
+  if (choice === '2') {
+    if (!status.openai.configured) {
+      console.log('\nOpenAI not configured.');
+      console.log('Set: export OPENAI_API_KEY=your-key');
+      return null;
+    }
+    return await getProvider('openai');
+  }
+
+  // Install Ollama
+  console.log('\nInstalling Ollama...');
+
+  try {
+    const { installPackage } = await import('@learnrudi/core');
+    await installPackage('runtime:ollama', {
+      onProgress: (p) => {
+        if (p.phase === 'downloading') process.stdout.write('\r  Downloading...');
+        if (p.phase === 'extracting') process.stdout.write('\r  Installing...  ');
+      }
+    });
+    console.log('\r  ✓ Ollama installed     ');
+
+    // Start server
+    console.log('  Starting ollama serve...');
+    const { spawn } = await import('child_process');
+    const server = spawn('ollama', ['serve'], {
+      detached: true,
+      stdio: 'ignore',
+      env: { ...process.env, HOME: process.env.HOME }
+    });
+    server.unref();
+
+    // Wait for server to be ready
+    await new Promise(r => setTimeout(r, 2000));
+
+    // Pull embedding model
+    console.log('  Pulling nomic-embed-text model (274MB)...');
+    const { execSync } = await import('child_process');
+    execSync('ollama pull nomic-embed-text', { stdio: 'inherit' });
+    console.log('  ✓ Model ready\n');
+
+    return await getProvider('ollama');
+  } catch (err) {
+    console.error('\nSetup failed:', err.message);
+    console.log('\nManual setup:');
+    console.log('  rudi install ollama');
+    console.log('  ollama serve');
+    console.log('  ollama pull nomic-embed-text');
+    return null;
+  }
 }
 
 export async function cmdSession(args, flags) {
@@ -62,6 +182,10 @@ export async function cmdSession(args, flags) {
       await sessionSetup(flags);
       break;
 
+    case 'organize':
+      await sessionOrganize(flags);
+      break;
+
     default:
       console.log(`
 rudi session - Manage RUDI sessions
@@ -80,6 +204,9 @@ SEMANTIC SEARCH
   search <query> [--semantic] [--limit]     Search sessions (FTS or semantic)
   index [--embeddings] [--provider X]        Index sessions for semantic search
   similar <id> [--limit]                     Find similar sessions
+
+ORGANIZATION (batch operations)
+  organize [--dry-run] [--out plan.json]     Auto-organize sessions into projects
 
 OPTIONS
   --provider <name>     Filter by provider (claude, codex, gemini)
@@ -507,10 +634,14 @@ async function semanticSearch(query, options) {
   const { limit, format } = options;
 
   try {
-    const { createClient, getProvider } = await getEmbeddings();
+    const { createClient } = await getEmbeddings();
 
-    // Auto-detect provider (Ollama first, then OpenAI if key exists)
-    const { provider, model } = await getProvider('auto');
+    // Ensure provider is ready (auto-install Ollama if needed)
+    const result = await ensureEmbeddingProvider('auto');
+    if (!result) {
+      return; // User cancelled or setup failed
+    }
+    const { provider, model } = result;
     console.log(`Using ${provider.id} with ${model.name}`);
 
     const client = createClient({ provider, model });
@@ -573,11 +704,10 @@ async function sessionIndex(flags) {
   if (!flags.embeddings) {
     // Show status
     try {
-      const { createClient, getProvider, store } = await getEmbeddings();
+      const { store } = await getEmbeddings();
 
-      // For status, just check what's in the DB (don't need a provider)
-      const model = { name: 'text-embedding-3-small', dimensions: 1536 }; // Check OpenAI model
-      const stats = store.getEmbeddingStats(model);
+      // Get stats for all models (model-agnostic)
+      const stats = store.getAllEmbeddingStats();
       const pct = stats.total > 0 ? ((stats.done / stats.total) * 100).toFixed(1) : 0;
 
       console.log('\nEmbedding Index Status:');
@@ -585,9 +715,20 @@ async function sessionIndex(flags) {
       console.log(`  Indexed: ${stats.done} (${pct}%)`);
       console.log(`  Queued: ${stats.queued}`);
       console.log(`  Errors: ${stats.error}`);
-      console.log('\nTo index missing turns:');
-      console.log('  rudi session index --embeddings');
-      console.log('  rudi session index --embeddings --provider ollama');
+
+      // Show which models have embeddings
+      if (Object.keys(stats.models).length > 0) {
+        console.log('\nIndexed by model:');
+        for (const [model, info] of Object.entries(stats.models)) {
+          console.log(`  ${model} (${info.dimensions}d): ${info.count} turns`);
+        }
+      }
+
+      if (stats.done < stats.total) {
+        console.log('\nTo index missing turns:');
+        console.log('  rudi session index --embeddings');
+        console.log('  rudi session index --embeddings --provider ollama');
+      }
     } catch (err) {
       console.log('Embedding status unavailable:', err.message);
     }
@@ -597,10 +738,14 @@ async function sessionIndex(flags) {
   console.log('Indexing sessions for semantic search...\n');
 
   try {
-    const { createClient, getProvider } = await getEmbeddings();
+    const { createClient } = await getEmbeddings();
 
-    // Auto-detect or use specified provider
-    const { provider, model } = await getProvider(providerName);
+    // Ensure provider is ready (auto-install Ollama if needed)
+    const providerResult = await ensureEmbeddingProvider(providerName);
+    if (!providerResult) {
+      return; // User cancelled or setup failed
+    }
+    const { provider, model } = providerResult;
     console.log(`Provider: ${provider.id}`);
     console.log(`Model: ${model.name} (${model.dimensions}d)\n`);
 
@@ -671,9 +816,14 @@ async function sessionSimilar(args, flags) {
   const providerName = flags.provider || 'auto';
 
   try {
-    const { createClient, getProvider } = await getEmbeddings();
+    const { createClient } = await getEmbeddings();
 
-    const { provider, model } = await getProvider(providerName);
+    // Ensure provider is ready (auto-install Ollama if needed)
+    const result = await ensureEmbeddingProvider(providerName);
+    if (!result) {
+      return; // User cancelled or setup failed
+    }
+    const { provider, model } = result;
     const client = createClient({ provider, model });
 
     const results = await client.findSimilar(turnId, { limit });
@@ -732,4 +882,255 @@ async function sessionSetup(flags) {
   } catch (err) {
     console.error('Setup error:', err.message);
   }
+}
+
+/**
+ * Auto-organize sessions into projects using semantic analysis
+ */
+async function sessionOrganize(flags) {
+  if (!isDatabaseInitialized()) {
+    console.log('Database not initialized.');
+    return;
+  }
+
+  const dryRun = flags['dry-run'] || flags.dryRun || true; // Default to dry-run for safety
+  const outputFile = flags.out || flags.output || 'organize-plan.json';
+  const threshold = parseFloat(flags.threshold) || 0.65;
+
+  const db = getDb();
+
+  console.log('═'.repeat(60));
+  console.log('Session Organization');
+  console.log('═'.repeat(60));
+  console.log(`Mode: ${dryRun ? 'Dry run (preview only)' : 'LIVE - will apply changes'}`);
+  console.log(`Output: ${outputFile}`);
+  console.log(`Similarity threshold: ${(threshold * 100).toFixed(0)}%`);
+  console.log('═'.repeat(60));
+
+  // Step 1: Get all sessions
+  const sessions = db.prepare(`
+    SELECT
+      s.id, s.provider, s.title, s.title_override, s.project_id, s.cwd,
+      s.turn_count, s.total_cost, s.created_at, s.last_active_at,
+      p.name as project_name
+    FROM sessions s
+    LEFT JOIN projects p ON s.project_id = p.id
+    WHERE s.status = 'active'
+    ORDER BY s.total_cost DESC
+  `).all();
+
+  console.log(`\nAnalyzing ${sessions.length} sessions...\n`);
+
+  // Step 2: Get existing projects
+  const projects = db.prepare('SELECT id, name FROM projects').all();
+  const projectMap = new Map(projects.map(p => [p.name.toLowerCase(), p]));
+
+  console.log(`Existing projects: ${projects.map(p => p.name).join(', ') || '(none)'}\n`);
+
+  // Step 3: Analyze sessions by working directory patterns
+  const cwdGroups = new Map();
+  for (const s of sessions) {
+    if (!s.cwd) continue;
+    // Extract project name from cwd
+    const match = s.cwd.match(/\/([^/]+)$/);
+    const projectKey = match ? match[1] : 'other';
+    if (!cwdGroups.has(projectKey)) {
+      cwdGroups.set(projectKey, []);
+    }
+    cwdGroups.get(projectKey).push(s);
+  }
+
+  // Step 4: Get first user message for sessions with generic titles
+  // Only rename if title matches STRICT generic patterns (conservative)
+  const genericTitlePatterns = [
+    /^(Imported|Agent|New|Untitled|Chat) Session$/i,
+    /^Session \d+$/i,
+    /^Untitled$/i,
+    /^[A-Z][a-z]+ [A-Z][a-z]+ [A-Z][a-z]+$/,  // "Adjective Verb Noun" (Claude auto-generated)
+  ];
+
+  const sessionsNeedingTitles = sessions.filter(s => {
+    // Skip if user already set a title_override (they renamed it manually)
+    if (s.title_override && s.title_override !== s.title) {
+      return false;
+    }
+    const title = s.title || '';
+    // Only include if title is empty OR matches generic patterns
+    return !title || genericTitlePatterns.some(p => p.test(title));
+  });
+
+  console.log(`Sessions with generic titles: ${sessionsNeedingTitles.length}`);
+
+  // Get first user message for title suggestions (conservative)
+  const titleSuggestions = [];
+  for (const s of sessionsNeedingTitles.slice(0, 100)) { // Limit to 100 for performance
+    const firstTurn = db.prepare(`
+      SELECT user_message
+      FROM turns
+      WHERE session_id = ? AND user_message IS NOT NULL AND length(trim(user_message)) > 10
+      ORDER BY turn_number
+      LIMIT 1
+    `).get(s.id);
+
+    if (firstTurn && firstTurn.user_message) {
+      // Create title from first message
+      const msg = firstTurn.user_message.trim();
+      let suggestedTitle = msg.split('\n')[0].slice(0, 60).trim();
+
+      // Skip if it looks like noise (very conservative)
+      const skipPatterns = [
+        /^\/[A-Za-z]/,                    // Unix paths
+        /^<[a-z-]+>/,                     // XML tags
+        /^[A-Z]:\\[A-Za-z]/,              // Windows paths
+        /^(cd|ls|cat|npm|node|git|rudi|pnpm|yarn)\s/i,  // Commands
+        /^[a-f0-9-]{8,}/i,                // UUIDs or hashes
+        /^https?:\/\//i,                  // URLs
+        /^[>\*\-#\d\.]\s/,                // Markdown list/quote starts
+        /^(yes|no|ok|sure|y|n)$/i,        // Single word responses
+        /^[^a-zA-Z]*$/,                   // No letters at all
+        /^\s*\[/,                          // JSON/array starts
+        /^\s*\{/,                          // Object starts
+      ];
+
+      if (skipPatterns.some(p => p.test(suggestedTitle))) {
+        continue;
+      }
+
+      // Must have at least 3 words to be meaningful
+      const wordCount = suggestedTitle.split(/\s+/).length;
+      if (wordCount < 3) {
+        continue;
+      }
+
+      // Clean up the title
+      if (suggestedTitle.length > 50) {
+        suggestedTitle = suggestedTitle.slice(0, 47) + '...';
+      }
+
+      if (suggestedTitle && suggestedTitle.length > 10) {
+        titleSuggestions.push({
+          sessionId: s.id,
+          currentTitle: s.title || '(none)',
+          suggestedTitle,
+          cost: s.total_cost,
+          confidence: 'medium' // Could add scoring later
+        });
+      }
+    }
+  }
+
+  // Step 5: Generate project suggestions based on cwd patterns
+  const projectSuggestions = [];
+  const moveSuggestions = [];
+
+  // Known project mappings
+  const knownProjects = {
+    'studio': 'Prompt Stack Studio',
+    'prompt-stack': 'Prompt Stack Studio',
+    'RUDI': 'RUDI',
+    'rudi': 'RUDI',
+    'cli': 'RUDI',
+    'registry': 'RUDI',
+    'resonance': 'Resonance',
+    'cloud': 'Cloud',
+  };
+
+  for (const [cwdKey, cwdSessions] of cwdGroups) {
+    const projectName = knownProjects[cwdKey];
+    if (projectName && cwdSessions.length >= 2) {
+      const existingProject = projectMap.get(projectName.toLowerCase());
+
+      // Suggest moves for sessions not already in this project
+      for (const s of cwdSessions) {
+        if (!s.project_id || (existingProject && s.project_id !== existingProject.id)) {
+          moveSuggestions.push({
+            sessionId: s.id,
+            sessionTitle: s.title_override || s.title,
+            currentProject: s.project_name || null,
+            suggestedProject: projectName,
+            reason: `Working directory: ${cwdKey}`,
+            cost: s.total_cost
+          });
+        }
+      }
+
+      // Suggest creating project if it doesn't exist
+      if (!existingProject && cwdSessions.length >= 3) {
+        projectSuggestions.push({
+          name: projectName,
+          sessionCount: cwdSessions.length,
+          totalCost: cwdSessions.reduce((sum, s) => sum + (s.total_cost || 0), 0)
+        });
+      }
+    }
+  }
+
+  // Step 6: Build the plan
+  const plan = {
+    version: '1.0',
+    createdAt: new Date().toISOString(),
+    dryRun,
+    threshold,
+    summary: {
+      totalSessions: sessions.length,
+      sessionsWithProjects: sessions.filter(s => s.project_id).length,
+      sessionsNeedingTitles: sessionsNeedingTitles.length,
+      projectsToCreate: projectSuggestions.length,
+      movesToApply: moveSuggestions.length,
+      titlesToUpdate: titleSuggestions.length
+    },
+    actions: {
+      createProjects: projectSuggestions,
+      moveSessions: moveSuggestions.slice(0, 200), // Limit batch size
+      updateTitles: titleSuggestions.slice(0, 100)  // Limit batch size
+    }
+  };
+
+  // Step 7: Output summary
+  console.log('\n' + '─'.repeat(60));
+  console.log('PLAN SUMMARY');
+  console.log('─'.repeat(60));
+  console.log(`Sessions analyzed: ${plan.summary.totalSessions}`);
+  console.log(`Already in projects: ${plan.summary.sessionsWithProjects}`);
+  console.log(`\nProposed actions:`);
+  console.log(`  Create projects: ${plan.summary.projectsToCreate}`);
+  console.log(`  Move sessions: ${plan.summary.movesToApply}`);
+  console.log(`  Update titles: ${plan.summary.titlesToUpdate}`);
+
+  if (projectSuggestions.length > 0) {
+    console.log('\nProjects to create:');
+    for (const p of projectSuggestions) {
+      console.log(`  • ${p.name} (${p.sessionCount} sessions, $${p.totalCost.toFixed(2)})`);
+    }
+  }
+
+  if (moveSuggestions.length > 0) {
+    console.log('\nTop session moves:');
+    for (const m of moveSuggestions.slice(0, 10)) {
+      console.log(`  • "${m.sessionTitle?.slice(0, 30) || m.sessionId.slice(0, 8)}..." → ${m.suggestedProject}`);
+    }
+    if (moveSuggestions.length > 10) {
+      console.log(`  ... and ${moveSuggestions.length - 10} more`);
+    }
+  }
+
+  if (titleSuggestions.length > 0) {
+    console.log('\nTop title updates:');
+    for (const t of titleSuggestions.slice(0, 5)) {
+      console.log(`  • "${t.currentTitle?.slice(0, 20) || '(none)'}..." → "${t.suggestedTitle.slice(0, 30)}..."`);
+    }
+    if (titleSuggestions.length > 5) {
+      console.log(`  ... and ${titleSuggestions.length - 5} more`);
+    }
+  }
+
+  // Step 8: Write plan to file
+  const { writeFileSync } = await import('fs');
+  writeFileSync(outputFile, JSON.stringify(plan, null, 2));
+  console.log(`\n✓ Plan saved to: ${outputFile}`);
+
+  console.log('\nTo apply this plan:');
+  console.log(`  rudi apply ${outputFile}`);
+  console.log('\nTo review the full plan:');
+  console.log(`  cat ${outputFile} | jq .`);
 }
