@@ -1,6 +1,6 @@
 {
   "version": "1.0.0",
-  "generated": "2026-01-09T20:02:55.604Z",
+  "generated": "2026-01-09T20:09:38.138Z",
   "packages": {
     "runtimes": [
       {
@@ -61,6 +61,21 @@
           {
             "name": "npx",
             "bin": "bin/npx",
+            "args": null
+          }
+        ]
+      },
+      {
+        "id": "ollama",
+        "name": "Ollama",
+        "kind": "runtime",
+        "installDir": "ollama",
+        "basePath": "runtimes",
+        "installType": "binary",
+        "commands": [
+          {
+            "name": "ollama",
+            "bin": "ollama",
             "args": null
           }
         ]
@@ -164,21 +179,6 @@
           {
             "name": "gemini",
             "bin": "node_modules/.bin/gemini",
-            "args": null
-          }
-        ]
-      },
-      {
-        "id": "ollama",
-        "name": "Ollama",
-        "kind": "agent",
-        "installDir": "ollama",
-        "basePath": "agents",
-        "installType": "binary",
-        "commands": [
-          {
-            "name": "ollama",
-            "bin": "ollama",
             "args": null
           }
         ]

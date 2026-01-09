@@ -632,54 +632,85 @@ export const RUNTIMES_RELEASE_VERSION = 'v1.0.0';
 export async function downloadRuntime(runtime, version, destPath, options = {}) {
   const { onProgress } = options;
   const platformArch = getPlatformArch();
+  const { execSync } = await import('child_process');
 
-  // Version format: use short version (3.12 not 3.12.0, but keep full for node)
-  const shortVersion = version.replace(/\.x$/, '').replace(/\.0$/, '');
-  const filename = `${runtime}-${shortVersion}-${platformArch}.tar.gz`;
-  const url = `${RUNTIMES_DOWNLOAD_BASE}/${RUNTIMES_RELEASE_VERSION}/${filename}`;
-
-  onProgress?.({ phase: 'downloading', runtime, version, url });
+  // Try to load runtime manifest for custom download URLs
+  const runtimeManifest = await loadRuntimeManifest(runtime);
+  const customDownload = runtimeManifest?.download?.[platformArch];
 
   // Create temp directory for download
   const tempDir = path.join(PATHS.cache, 'downloads');
   if (!fs.existsSync(tempDir)) {
     fs.mkdirSync(tempDir, { recursive: true });
   }
-  const tempFile = path.join(tempDir, filename);
+
+  // Create destination directory
+  if (fs.existsSync(destPath)) {
+    fs.rmSync(destPath, { recursive: true });
+  }
+  fs.mkdirSync(destPath, { recursive: true });
+
+  let url;
+  let downloadType;
+
+  if (customDownload) {
+    // Use custom download URL from manifest (e.g., Ollama)
+    url = typeof customDownload === 'string' ? customDownload : customDownload.url;
+    downloadType = customDownload.type || 'tar.gz';
+  } else {
+    // Fall back to RUDI-hosted runtimes (Node, Python, etc.)
+    const shortVersion = version.replace(/\.x$/, '').replace(/\.0$/, '');
+    const filename = `${runtime}-${shortVersion}-${platformArch}.tar.gz`;
+    url = `${RUNTIMES_DOWNLOAD_BASE}/${RUNTIMES_RELEASE_VERSION}/${filename}`;
+    downloadType = 'tar.gz';
+  }
+
+  onProgress?.({ phase: 'downloading', runtime, version, url });
+
+  const tempFile = path.join(tempDir, `${runtime}-${version}-${platformArch}.download`);
 
   try {
-    // Download the tarball
-    const response = await fetch(url, {
-      headers: {
-        'User-Agent': 'rudi-cli/2.0',
-        'Accept': 'application/octet-stream'
+    // Download the file (follow redirects with curl for GitHub releases)
+    if (url.includes('github.com')) {
+      // Use curl for GitHub releases to follow redirects properly
+      execSync(`curl -sL "${url}" -o "${tempFile}"`, { stdio: 'pipe' });
+    } else {
+      const response = await fetch(url, {
+        headers: {
+          'User-Agent': 'rudi-cli/2.0',
+          'Accept': 'application/octet-stream'
+        }
+      });
+
+      if (!response.ok) {
+        throw new Error(`Failed to download ${runtime}: HTTP ${response.status}`);
       }
-    });
 
-    if (!response.ok) {
-      throw new Error(`Failed to download ${runtime}: HTTP ${response.status}`);
+      const buffer = await response.arrayBuffer();
+      fs.writeFileSync(tempFile, Buffer.from(buffer));
     }
-
-    // Write to temp file
-    const buffer = await response.arrayBuffer();
-    fs.writeFileSync(tempFile, Buffer.from(buffer));
 
     onProgress?.({ phase: 'extracting', runtime, version });
 
-    // Create destination directory
-    if (fs.existsSync(destPath)) {
-      fs.rmSync(destPath, { recursive: true });
+    // Handle different download types
+    if (downloadType === 'binary') {
+      // Raw binary - just move and make executable
+      const binaryName = runtimeManifest?.binary || runtime;
+      const binaryPath = path.join(destPath, binaryName);
+      fs.renameSync(tempFile, binaryPath);
+      fs.chmodSync(binaryPath, 0o755);
+    } else if (downloadType === 'tar.gz' || downloadType === 'tgz') {
+      execSync(`tar -xzf "${tempFile}" -C "${destPath}" --strip-components=1`, { stdio: 'pipe' });
+      fs.unlinkSync(tempFile);
+    } else if (downloadType === 'tar.xz') {
+      execSync(`tar -xJf "${tempFile}" -C "${destPath}" --strip-components=1`, { stdio: 'pipe' });
+      fs.unlinkSync(tempFile);
+    } else if (downloadType === 'zip') {
+      execSync(`unzip -o "${tempFile}" -d "${destPath}"`, { stdio: 'pipe' });
+      fs.unlinkSync(tempFile);
+    } else {
+      throw new Error(`Unsupported download type: ${downloadType}`);
     }
-    fs.mkdirSync(destPath, { recursive: true });
-
-    // Extract tarball using tar command
-    const { execSync } = await import('child_process');
-    execSync(`tar -xzf "${tempFile}" -C "${destPath}" --strip-components=1`, {
-      stdio: 'pipe'
-    });
-
-    // Clean up temp file
-    fs.unlinkSync(tempFile);
 
     // Write runtime metadata
     fs.writeFileSync(
@@ -689,7 +720,9 @@ export async function downloadRuntime(runtime, version, destPath, options = {}) 
         version,
         platformArch,
         downloadedAt: new Date().toISOString(),
-        source: url
+        source: url,
+        ...(runtimeManifest?.commands && { commands: runtimeManifest.commands }),
+        ...(runtimeManifest?.postInstall && { postInstall: runtimeManifest.postInstall })
       }, null, 2)
     );
 
@@ -952,6 +985,46 @@ async function extractBinaryFromPath(extractedPath, binaryPattern, destPath) {
       }
     }
   }
+}
+
+/**
+ * Load a runtime manifest from the registry
+ * @param {string} runtimeName - Runtime name (e.g., 'ollama', 'node')
+ * @returns {Promise<Object|null>}
+ */
+async function loadRuntimeManifest(runtimeName) {
+  // Try local registry first
+  for (const basePath of getLocalRegistryPaths()) {
+    const registryDir = path.dirname(basePath);
+    const manifestPath = path.join(registryDir, 'catalog', 'runtimes', `${runtimeName}.json`);
+
+    if (fs.existsSync(manifestPath)) {
+      try {
+        return JSON.parse(fs.readFileSync(manifestPath, 'utf-8'));
+      } catch {
+        continue;
+      }
+    }
+  }
+
+  // Try fetching from GitHub raw
+  try {
+    const url = `https://raw.githubusercontent.com/learn-rudi/registry/main/catalog/runtimes/${runtimeName}.json`;
+    const response = await fetch(url, {
+      headers: {
+        'User-Agent': 'rudi-cli/2.0',
+        'Accept': 'application/json'
+      }
+    });
+
+    if (response.ok) {
+      return await response.json();
+    }
+  } catch {
+    // Ignore fetch errors
+  }
+
+  return null;
 }
 
 /**
