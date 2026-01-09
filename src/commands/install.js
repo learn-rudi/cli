@@ -10,6 +10,7 @@
  */
 
 import * as fs from 'fs/promises';
+import * as fsSync from 'fs';
 import * as path from 'path';
 import { execSync } from 'child_process';
 import { installPackage, resolvePackage, checkAllDependencies, formatDependencyResults, addStack, updateSecretStatus } from '@learnrudi/core';
@@ -41,7 +42,7 @@ function getBundledBinary(runtime, binary) {
       ? path.join(rudiHome, 'runtimes', 'node', 'npm.cmd')
       : path.join(rudiHome, 'runtimes', 'node', 'bin', 'npm');
 
-    if (require('fs').existsSync(npmPath)) {
+    if (fsSync.existsSync(npmPath)) {
       return npmPath;
     }
   }
@@ -51,7 +52,7 @@ function getBundledBinary(runtime, binary) {
       ? path.join(rudiHome, 'runtimes', 'python', 'Scripts', 'pip.exe')
       : path.join(rudiHome, 'runtimes', 'python', 'bin', 'pip3');
 
-    if (require('fs').existsSync(pipPath)) {
+    if (fsSync.existsSync(pipPath)) {
       return pipPath;
     }
   }
@@ -201,8 +202,8 @@ function validateStackEntryPoint(stackPath, manifest) {
     if (!looksLikeFile) continue;
 
     // This should be the entry point file
-    const entryPath = require('path').join(stackPath, arg);
-    if (!require('fs').existsSync(entryPath)) {
+    const entryPath = path.join(stackPath, arg);
+    if (!fsSync.existsSync(entryPath)) {
       return { valid: false, error: `Entry point not found: ${arg}` };
     }
     return { valid: true };
