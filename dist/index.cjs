@@ -31848,60 +31848,64 @@ USAGE
 SETUP
   init                  Bootstrap RUDI (download runtimes, create shims)
 
-INTROSPECTION
-  home                  Show ~/.rudi structure and installed packages
-  stacks                List installed stacks
-  runtimes              List installed runtimes
-  binaries              List installed binaries
-  agents                List installed agents
-  prompts               List installed prompts
-  doctor                Check system health and dependencies
-  doctor --all          Show all available runtimes/binaries from registry
-
-PACKAGE MANAGEMENT
+REGISTRY
   search <query>        Search registry for packages
   search --all          List all available packages
   install <pkg>         Install a package
   remove <pkg>          Remove a package
   update [pkg]          Update packages
-  run <stack>           Run a stack
 
-DATABASE
-  db stats              Show database statistics
-  db search <query>     Search conversation history
-  db reset --force      Delete all data
-  db vacuum             Compact and reclaim space
-  db tables             Show table row counts
+INSTALLED
+  list [kind]           List installed packages (stacks, prompts, runtimes, binaries, agents)
+  home                  Show ~/.rudi structure and status
+  doctor                Check system health and dependencies
+  which <cmd>           Show path to a command
+  info <pkg>            Show package details
 
-SESSION IMPORT
-  import sessions       Import from AI providers (claude, codex, gemini)
-  import status         Show import status
+AGENT INTEGRATION
+  integrate <agent>     Wire up RUDI router (claude, cursor, gemini, codex, all)
+  integrate --list      Show detected agents
+  index                 Rebuild tool cache for router
+
+RUN
+  run <stack>           Run a stack directly
 
 SECRETS
   secrets set <name>    Set a secret
   secrets list          List configured secrets
   secrets remove <name> Remove a secret
 
+DATABASE
+  db stats              Show database statistics
+  db search <query>     Search conversation history
+  db tables             Show table row counts
+  db vacuum             Compact and reclaim space
+
+SESSIONS
+  session list          List sessions
+  session search <q>    Search session content
+  session export <id>   Export a session
+  session index         Build search embeddings
+
 OPTIONS
   -h, --help           Show help
   -v, --version        Show version
   --verbose            Verbose output
   --json               Output as JSON
-  --force              Force operation
 
 EXAMPLES
-  rudi home                    Show ~/.rudi structure
-  rudi runtimes                List installed runtimes
-  rudi install runtime:python  Install Python in ~/.rudi
-  rudi install binary:ffmpeg   Install ffmpeg
-  rudi doctor --all            Show all available deps
+  rudi search --all              List all available packages
+  rudi install slack             Install Slack stack
+  rudi secrets set SLACK_TOKEN   Configure secret
+  rudi integrate claude          Wire up Claude Desktop/Code
+  rudi list                      Show installed packages
 
 PACKAGE TYPES
-  stack:name           MCP server stack
-  runtime:name         Node, Python, Deno, Bun
-  binary:name          ffmpeg, ripgrep, etc.
-  agent:name           Claude, Codex, Gemini CLIs
-  prompt:name          Prompt template
+  stack:<name>         MCP server stack
+  runtime:<name>       Node, Python, Deno, Bun
+  binary:<name>        ffmpeg, ripgrep, etc.
+  agent:<name>         Claude, Codex, Gemini CLIs
+  prompt:<name>        Prompt template
 `);
 }
 function printCommandHelp(command) {
@@ -32119,6 +32123,38 @@ EXAMPLES
   rudi doctor
   rudi doctor --fix
   rudi doctor --all
+`,
+    integrate: `
+rudi integrate - Wire RUDI router into agent configs
+
+USAGE
+  rudi integrate <agent>     Integrate with specific agent
+  rudi integrate all         Integrate with all detected agents
+  rudi integrate --list      Show detected agents
+
+AGENTS
+  claude       Claude Desktop + Claude Code
+  cursor       Cursor IDE
+  windsurf     Windsurf IDE
+  vscode       VS Code / GitHub Copilot
+  gemini       Gemini CLI
+  codex        OpenAI Codex CLI
+  zed          Zed Editor
+
+OPTIONS
+  --verbose    Show detailed output
+  --dry-run    Show what would be done without making changes
+
+WHAT IT DOES
+  1. Detects agent config files
+  2. Creates backup before modifying
+  3. Adds RUDI router entry (single MCP server for all stacks)
+  4. Cleans up old direct stack entries
+
+EXAMPLES
+  rudi integrate claude
+  rudi integrate all
+  rudi integrate --list
 `,
     logs: `
 rudi logs - Query agent visibility logs
