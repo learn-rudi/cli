@@ -19,6 +19,10 @@
  *   rudi import <cmd>        Import sessions from AI providers
  *   rudi secrets <cmd>       Manage secrets
  *   rudi doctor              Health check
+ *
+ *   rudi studio              Open RUDI website
+ *   rudi studio version      Show installed Studio version
+ *   rudi studio uninstall    Uninstall RUDI Studio
  */
 
 import { parseArgs } from '@learnrudi/utils/args';
@@ -50,6 +54,7 @@ import { cmdShims } from './commands/shims.js';
 import { cmdInfo } from './commands/info.js';
 import { cmdApply } from './commands/apply.js';
 import { cmdProject } from './commands/project.js';
+import { cmdStudio } from './commands/studio.js';
 
 const VERSION = '2.0.0';
 
@@ -186,6 +191,10 @@ async function main() {
       case 'pkg':
       case 'package':
         await cmdInfo(args, flags);
+        break;
+
+      case 'studio':
+        await cmdStudio(args, flags);
         break;
 
       // Shortcuts for listing specific package types

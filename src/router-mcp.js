@@ -32,6 +32,16 @@ const TOOL_INDEX_PATH = path.join(RUDI_HOME, 'cache', 'tool-index.json');
 
 const REQUEST_TIMEOUT_MS = 30000;
 const PROTOCOL_VERSION = '2024-11-05';
+const DEFAULT_IDLE_TTL_MS = 10 * 60 * 1000;
+const DEFAULT_MAX_SERVERS = 8;
+const DEFAULT_CLEANUP_INTERVAL_MS = 30000;
+const DEFAULT_FORCE_KILL_MS = 2000;
+
+const IDLE_TTL_MS = readIntEnv('RUDI_ROUTER_IDLE_TTL_MS', DEFAULT_IDLE_TTL_MS);
+const MAX_SERVERS = readIntEnv('RUDI_ROUTER_MAX_SERVERS', DEFAULT_MAX_SERVERS);
+const CLEANUP_INTERVAL_MS = readIntEnv('RUDI_ROUTER_CLEANUP_INTERVAL_MS', DEFAULT_CLEANUP_INTERVAL_MS);
+const FORCE_KILL_MS = readIntEnv('RUDI_ROUTER_FORCE_KILL_MS', DEFAULT_FORCE_KILL_MS);
+const LIVE_TOOL_LIST = readBoolEnv('RUDI_ROUTER_LIVE_TOOL_LIST', false);
 
 // =============================================================================
 // STATE
@@ -45,6 +55,7 @@ let rudiConfig = null;
 
 /** @type {Object | null} */
 let toolIndex = null;
+let cleanupTimer = null;
 
 // =============================================================================
 // TYPES (JSDoc)
@@ -57,6 +68,10 @@ let toolIndex = null;
  * @property {Map<string|number, PendingRequest>} pending
  * @property {string} buffer
  * @property {boolean} initialized
+ * @property {string} stackId
+ * @property {number} spawnedAt
+ * @property {number} lastUsedAt
+ * @property {boolean} terminating
  */
 
 /**
@@ -93,6 +108,102 @@ function log(msg) {
 function debug(msg) {
   if (process.env.DEBUG) {
     process.stderr.write(`[rudi-router:debug] ${msg}\n`);
+  }
+}
+
+// =============================================================================
+// ENV & PROCESS HELPERS
+// =============================================================================
+
+function readIntEnv(name, fallback) {
+  const raw = process.env[name];
+  if (raw === undefined) return fallback;
+  const value = Number(raw);
+  return Number.isFinite(value) && value >= 0 ? value : fallback;
+}
+
+function readBoolEnv(name, fallback) {
+  const raw = process.env[name];
+  if (raw === undefined) return fallback;
+  return ['1', 'true', 'yes', 'on'].includes(String(raw).toLowerCase());
+}
+
+function hasProcessExited(proc) {
+  return proc.exitCode !== null || proc.signalCode !== null;
+}
+
+function isProcessUsable(proc) {
+  return proc && !hasProcessExited(proc) && !proc.killed;
+}
+
+function markServerUsed(server) {
+  server.lastUsedAt = Date.now();
+}
+
+function rejectPending(server, reason) {
+  for (const [, pending] of server.pending) {
+    clearTimeout(pending.timeout);
+    pending.reject(new Error(reason));
+  }
+  server.pending.clear();
+}
+
+function terminateServer(stackId, server, reason) {
+  if (!server || server.terminating) return;
+
+  server.terminating = true;
+  serverPool.delete(stackId);
+
+  if (hasProcessExited(server.process)) {
+    rejectPending(server, `Stack ${stackId} exited`);
+    return;
+  }
+
+  log(`Stopping stack ${stackId}: ${reason}`);
+  try {
+    server.process.kill('SIGTERM');
+  } catch {
+    // Ignore kill errors; process may already be gone.
+  }
+
+  const killTimer = setTimeout(() => {
+    if (!hasProcessExited(server.process)) {
+      log(`Force killing stack ${stackId}`);
+      try {
+        server.process.kill('SIGKILL');
+      } catch {
+        // Ignore kill errors; process may already be gone.
+      }
+    }
+  }, FORCE_KILL_MS);
+  if (killTimer.unref) killTimer.unref();
+}
+
+function cleanupServerPool() {
+  const now = Date.now();
+
+  for (const [stackId, server] of serverPool) {
+    if (server.terminating) continue;
+    if (!isProcessUsable(server.process)) {
+      terminateServer(stackId, server, 'process-not-usable');
+      continue;
+    }
+    if (server.pending.size > 0) continue;
+    if (IDLE_TTL_MS > 0 && now - server.lastUsedAt > IDLE_TTL_MS) {
+      terminateServer(stackId, server, `idle ${Math.round((now - server.lastUsedAt) / 1000)}s`);
+    }
+  }
+
+  if (MAX_SERVERS > 0 && serverPool.size > MAX_SERVERS) {
+    const evictable = Array.from(serverPool.entries())
+      .filter(([, server]) => !server.terminating && server.pending.size === 0)
+      .sort((a, b) => a[1].lastUsedAt - b[1].lastUsedAt);
+
+    let index = 0;
+    while (serverPool.size > MAX_SERVERS && index < evictable.length) {
+      const [stackId, server] = evictable[index++];
+      terminateServer(stackId, server, 'pool-limit');
+    }
   }
 }
 
@@ -208,7 +319,11 @@ function spawnStackServer(stackId, stackConfig) {
     rl,
     pending: new Map(),
     buffer: '',
-    initialized: false
+    initialized: false,
+    stackId,
+    spawnedAt: Date.now(),
+    lastUsedAt: Date.now(),
+    terminating: false
   };
 
   // Handle responses from stack
@@ -227,6 +342,7 @@ function spawnStackServer(stackId, stackConfig) {
       if (pending) {
         clearTimeout(pending.timeout);
         server.pending.delete(response.id);
+        markServerUsed(server);
         pending.resolve(response);
       }
     } catch (err) {
@@ -241,11 +357,13 @@ function spawnStackServer(stackId, stackConfig) {
 
   childProcess.on('error', (err) => {
     log(`Stack process error (${stackId}): ${err.message}`);
+    rejectPending(server, `Stack ${stackId} error: ${err.message}`);
     serverPool.delete(stackId);
   });
 
   childProcess.on('exit', (code, signal) => {
     debug(`Stack ${stackId} exited: code=${code}, signal=${signal}`);
+    rejectPending(server, `Stack ${stackId} exited (code=${code}, signal=${signal || 'none'})`);
     rl.close();
     serverPool.delete(stackId);
   });
@@ -260,8 +378,12 @@ function spawnStackServer(stackId, stackConfig) {
  */
 function getOrSpawnServer(stackId) {
   const existing = serverPool.get(stackId);
-  if (existing && !existing.process.killed) {
+  if (existing && isProcessUsable(existing.process) && !existing.terminating) {
+    markServerUsed(existing);
     return existing;
+  }
+  if (existing) {
+    terminateServer(stackId, existing, 'stale');
   }
 
   const stackConfig = rudiConfig?.stacks?.[stackId];
@@ -287,6 +409,11 @@ function getOrSpawnServer(stackId) {
  */
 async function sendToStack(server, request, timeoutMs = REQUEST_TIMEOUT_MS) {
   return new Promise((resolve, reject) => {
+    if (!isProcessUsable(server.process) || server.terminating) {
+      reject(new Error(`Stack ${server.stackId} is not available`));
+      return;
+    }
+
     const timeout = setTimeout(() => {
       server.pending.delete(request.id);
       reject(new Error(`Request timeout: ${request.method}`));
@@ -296,6 +423,7 @@ async function sendToStack(server, request, timeoutMs = REQUEST_TIMEOUT_MS) {
 
     const line = JSON.stringify(request) + '\n';
     debug(`>> ${line.slice(0, 200)}`);
+    markServerUsed(server);
     server.process.stdin?.write(line);
   });
 }
@@ -307,6 +435,7 @@ async function sendToStack(server, request, timeoutMs = REQUEST_TIMEOUT_MS) {
  */
 async function initializeStack(server, stackId) {
   if (server.initialized) return;
+  markServerUsed(server);
 
   const initRequest = {
     jsonrpc: '2.0',
@@ -350,6 +479,7 @@ async function initializeStack(server, stackId) {
  */
 async function listTools() {
   const tools = [];
+  const skippedStacks = [];
 
   for (const [stackId, stackConfig] of Object.entries(rudiConfig?.stacks || {})) {
     if (!stackConfig.installed) continue;
@@ -376,6 +506,10 @@ async function listTools() {
     }
 
     // 3. Fall back to querying the stack (slow, spawns server)
+    if (!LIVE_TOOL_LIST) {
+      skippedStacks.push(stackId);
+      continue;
+    }
     try {
       const server = getOrSpawnServer(stackId);
       await initializeStack(server, stackId);
@@ -397,6 +531,10 @@ async function listTools() {
       log(`Failed to list tools from ${stackId}: ${err.message}`);
       // Continue with other stacks
     }
+  }
+
+  if (skippedStacks.length > 0) {
+    log(`Skipped live tools/list for ${skippedStacks.length} stacks (enable RUDI_ROUTER_LIVE_TOOL_LIST=1 or run "rudi index")`);
   }
 
   return tools;
@@ -521,6 +659,8 @@ async function handleRequest(request) {
  */
 async function main() {
   log('Starting RUDI Router MCP Server');
+  log(`Pool config: max=${MAX_SERVERS <= 0 ? 'unlimited' : MAX_SERVERS}, idleTTL=${IDLE_TTL_MS}ms, cleanup=${CLEANUP_INTERVAL_MS}ms`);
+  log(`Live tools/list: ${LIVE_TOOL_LIST ? 'enabled' : 'disabled'}`);
 
   // Load config
   rudiConfig = loadRudiConfig();
@@ -574,8 +714,9 @@ async function main() {
     // Clean up all spawned servers
     for (const [stackId, server] of serverPool) {
       debug(`Killing stack ${stackId}`);
-      server.process.kill();
+      terminateServer(stackId, server, 'stdin-closed');
     }
+    if (cleanupTimer) clearInterval(cleanupTimer);
     process.exit(0);
   });
 
@@ -583,18 +724,24 @@ async function main() {
   process.on('SIGTERM', () => {
     log('SIGTERM received, shutting down');
     for (const [stackId, server] of serverPool) {
-      server.process.kill();
+      terminateServer(stackId, server, 'sigterm');
     }
+    if (cleanupTimer) clearInterval(cleanupTimer);
     process.exit(0);
   });
 
   process.on('SIGINT', () => {
     log('SIGINT received, shutting down');
     for (const [stackId, server] of serverPool) {
-      server.process.kill();
+      terminateServer(stackId, server, 'sigint');
     }
+    if (cleanupTimer) clearInterval(cleanupTimer);
     process.exit(0);
   });
+
+  // Periodic pool cleanup (idle eviction, LRU capping)
+  cleanupTimer = setInterval(cleanupServerPool, CLEANUP_INTERVAL_MS);
+  if (cleanupTimer.unref) cleanupTimer.unref();
 }
 
 // Run

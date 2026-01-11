@@ -662,7 +662,7 @@ async function downloadDirectoryFromGitHub(dirUrl, destDir, onProgress) {
 async function downloadRuntime(runtime, version, destPath, options = {}) {
   const { onProgress } = options;
   const platformArch = getPlatformArch2();
-  const { execSync: execSync10 } = await import("child_process");
+  const { execSync: execSync11 } = await import("child_process");
   const runtimeManifest = await loadRuntimeManifest(runtime);
   const customDownload = runtimeManifest?.download?.[platformArch];
   const tempDir = import_path3.default.join(PATHS2.cache, "downloads");
@@ -688,7 +688,7 @@ async function downloadRuntime(runtime, version, destPath, options = {}) {
   const tempFile = import_path3.default.join(tempDir, `${runtime}-${version}-${platformArch}.download`);
   try {
     if (url.includes("github.com")) {
-      execSync10(`curl -sL "${url}" -o "${tempFile}"`, { stdio: "pipe" });
+      execSync11(`curl -sL "${url}" -o "${tempFile}"`, { stdio: "pipe" });
     } else {
       const response = await fetch(url, {
         headers: {
@@ -709,13 +709,13 @@ async function downloadRuntime(runtime, version, destPath, options = {}) {
       import_fs2.default.renameSync(tempFile, binaryPath);
       import_fs2.default.chmodSync(binaryPath, 493);
     } else if (downloadType === "tar.gz" || downloadType === "tgz") {
-      execSync10(`tar -xzf "${tempFile}" -C "${destPath}" --strip-components=1`, { stdio: "pipe" });
+      execSync11(`tar -xzf "${tempFile}" -C "${destPath}" --strip-components=1`, { stdio: "pipe" });
       import_fs2.default.unlinkSync(tempFile);
     } else if (downloadType === "tar.xz") {
-      execSync10(`tar -xJf "${tempFile}" -C "${destPath}" --strip-components=1`, { stdio: "pipe" });
+      execSync11(`tar -xJf "${tempFile}" -C "${destPath}" --strip-components=1`, { stdio: "pipe" });
       import_fs2.default.unlinkSync(tempFile);
     } else if (downloadType === "zip") {
-      execSync10(`unzip -o "${tempFile}" -d "${destPath}"`, { stdio: "pipe" });
+      execSync11(`unzip -o "${tempFile}" -d "${destPath}"`, { stdio: "pipe" });
       import_fs2.default.unlinkSync(tempFile);
     } else {
       throw new Error(`Unsupported download type: ${downloadType}`);
@@ -756,7 +756,7 @@ async function downloadTool(toolName, destPath, options = {}) {
     import_fs2.default.rmSync(destPath, { recursive: true });
   }
   import_fs2.default.mkdirSync(destPath, { recursive: true });
-  const { execSync: execSync10 } = await import("child_process");
+  const { execSync: execSync11 } = await import("child_process");
   const downloads = toolManifest.downloads?.[platformArch];
   if (downloads && Array.isArray(downloads)) {
     const downloadedUrls = /* @__PURE__ */ new Set();
@@ -785,11 +785,11 @@ async function downloadTool(toolName, destPath, options = {}) {
         onProgress?.({ phase: "extracting", tool: toolName, binary: import_path3.default.basename(binary) });
         const archiveType = type || guessArchiveType(urlFilename);
         if (archiveType === "zip") {
-          execSync10(`unzip -o "${tempFile}" -d "${destPath}"`, { stdio: "pipe" });
+          execSync11(`unzip -o "${tempFile}" -d "${destPath}"`, { stdio: "pipe" });
         } else if (archiveType === "tar.xz") {
-          execSync10(`tar -xJf "${tempFile}" -C "${destPath}"`, { stdio: "pipe" });
+          execSync11(`tar -xJf "${tempFile}" -C "${destPath}"`, { stdio: "pipe" });
         } else if (archiveType === "tar.gz" || archiveType === "tgz") {
-          execSync10(`tar -xzf "${tempFile}" -C "${destPath}"`, { stdio: "pipe" });
+          execSync11(`tar -xzf "${tempFile}" -C "${destPath}"`, { stdio: "pipe" });
         } else {
           throw new Error(`Unsupported archive type: ${archiveType}`);
         }
@@ -838,11 +838,11 @@ async function downloadTool(toolName, destPath, options = {}) {
       const stripComponents = extractConfig.strip || 0;
       const stripFlag = stripComponents > 0 ? ` --strip-components=${stripComponents}` : "";
       if (archiveType === "zip") {
-        execSync10(`unzip -o "${tempFile}" -d "${destPath}"`, { stdio: "pipe" });
+        execSync11(`unzip -o "${tempFile}" -d "${destPath}"`, { stdio: "pipe" });
       } else if (archiveType === "tar.xz") {
-        execSync10(`tar -xJf "${tempFile}" -C "${destPath}"${stripFlag}`, { stdio: "pipe" });
+        execSync11(`tar -xJf "${tempFile}" -C "${destPath}"${stripFlag}`, { stdio: "pipe" });
       } else if (archiveType === "tar.gz" || archiveType === "tgz") {
-        execSync10(`tar -xzf "${tempFile}" -C "${destPath}"${stripFlag}`, { stdio: "pipe" });
+        execSync11(`tar -xzf "${tempFile}" -C "${destPath}"${stripFlag}`, { stdio: "pipe" });
       } else {
         throw new Error(`Unsupported archive type: ${archiveType}`);
       }
@@ -1296,17 +1296,17 @@ var require_visit = __commonJS({
     visit.BREAK = BREAK;
     visit.SKIP = SKIP;
     visit.REMOVE = REMOVE;
-    function visit_(key, node, visitor, path34) {
-      const ctrl = callVisitor(key, node, visitor, path34);
+    function visit_(key, node, visitor, path35) {
+      const ctrl = callVisitor(key, node, visitor, path35);
       if (identity.isNode(ctrl) || identity.isPair(ctrl)) {
-        replaceNode(key, path34, ctrl);
-        return visit_(key, ctrl, visitor, path34);
+        replaceNode(key, path35, ctrl);
+        return visit_(key, ctrl, visitor, path35);
       }
       if (typeof ctrl !== "symbol") {
         if (identity.isCollection(node)) {
-          path34 = Object.freeze(path34.concat(node));
+          path35 = Object.freeze(path35.concat(node));
           for (let i2 = 0; i2 < node.items.length; ++i2) {
-            const ci = visit_(i2, node.items[i2], visitor, path34);
+            const ci = visit_(i2, node.items[i2], visitor, path35);
             if (typeof ci === "number")
               i2 = ci - 1;
             else if (ci === BREAK)
@@ -1317,13 +1317,13 @@ var require_visit = __commonJS({
             }
           }
         } else if (identity.isPair(node)) {
-          path34 = Object.freeze(path34.concat(node));
-          const ck = visit_("key", node.key, visitor, path34);
+          path35 = Object.freeze(path35.concat(node));
+          const ck = visit_("key", node.key, visitor, path35);
           if (ck === BREAK)
             return BREAK;
           else if (ck === REMOVE)
             node.key = null;
-          const cv = visit_("value", node.value, visitor, path34);
+          const cv = visit_("value", node.value, visitor, path35);
           if (cv === BREAK)
             return BREAK;
           else if (cv === REMOVE)
@@ -1344,17 +1344,17 @@ var require_visit = __commonJS({
     visitAsync.BREAK = BREAK;
     visitAsync.SKIP = SKIP;
     visitAsync.REMOVE = REMOVE;
-    async function visitAsync_(key, node, visitor, path34) {
-      const ctrl = await callVisitor(key, node, visitor, path34);
+    async function visitAsync_(key, node, visitor, path35) {
+      const ctrl = await callVisitor(key, node, visitor, path35);
       if (identity.isNode(ctrl) || identity.isPair(ctrl)) {
-        replaceNode(key, path34, ctrl);
-        return visitAsync_(key, ctrl, visitor, path34);
+        replaceNode(key, path35, ctrl);
+        return visitAsync_(key, ctrl, visitor, path35);
       }
       if (typeof ctrl !== "symbol") {
         if (identity.isCollection(node)) {
-          path34 = Object.freeze(path34.concat(node));
+          path35 = Object.freeze(path35.concat(node));
           for (let i2 = 0; i2 < node.items.length; ++i2) {
-            const ci = await visitAsync_(i2, node.items[i2], visitor, path34);
+            const ci = await visitAsync_(i2, node.items[i2], visitor, path35);
             if (typeof ci === "number")
               i2 = ci - 1;
             else if (ci === BREAK)
@@ -1365,13 +1365,13 @@ var require_visit = __commonJS({
             }
           }
         } else if (identity.isPair(node)) {
-          path34 = Object.freeze(path34.concat(node));
-          const ck = await visitAsync_("key", node.key, visitor, path34);
+          path35 = Object.freeze(path35.concat(node));
+          const ck = await visitAsync_("key", node.key, visitor, path35);
           if (ck === BREAK)
             return BREAK;
           else if (ck === REMOVE)
             node.key = null;
-          const cv = await visitAsync_("value", node.value, visitor, path34);
+          const cv = await visitAsync_("value", node.value, visitor, path35);
           if (cv === BREAK)
             return BREAK;
           else if (cv === REMOVE)
@@ -1398,23 +1398,23 @@ var require_visit = __commonJS({
       }
       return visitor;
     }
-    function callVisitor(key, node, visitor, path34) {
+    function callVisitor(key, node, visitor, path35) {
       if (typeof visitor === "function")
-        return visitor(key, node, path34);
+        return visitor(key, node, path35);
       if (identity.isMap(node))
-        return visitor.Map?.(key, node, path34);
+        return visitor.Map?.(key, node, path35);
       if (identity.isSeq(node))
-        return visitor.Seq?.(key, node, path34);
+        return visitor.Seq?.(key, node, path35);
       if (identity.isPair(node))
-        return visitor.Pair?.(key, node, path34);
+        return visitor.Pair?.(key, node, path35);
       if (identity.isScalar(node))
-        return visitor.Scalar?.(key, node, path34);
+        return visitor.Scalar?.(key, node, path35);
       if (identity.isAlias(node))
-        return visitor.Alias?.(key, node, path34);
+        return visitor.Alias?.(key, node, path35);
       return void 0;
     }
-    function replaceNode(key, path34, node) {
-      const parent = path34[path34.length - 1];
+    function replaceNode(key, path35, node) {
+      const parent = path35[path35.length - 1];
       if (identity.isCollection(parent)) {
         parent.items[key] = node;
       } else if (identity.isPair(parent)) {
@@ -2022,10 +2022,10 @@ var require_Collection = __commonJS({
     var createNode = require_createNode();
     var identity = require_identity();
     var Node = require_Node();
-    function collectionFromPath(schema, path34, value) {
+    function collectionFromPath(schema, path35, value) {
       let v2 = value;
-      for (let i2 = path34.length - 1; i2 >= 0; --i2) {
-        const k2 = path34[i2];
+      for (let i2 = path35.length - 1; i2 >= 0; --i2) {
+        const k2 = path35[i2];
         if (typeof k2 === "number" && Number.isInteger(k2) && k2 >= 0) {
           const a2 = [];
           a2[k2] = v2;
@@ -2044,7 +2044,7 @@ var require_Collection = __commonJS({
         sourceObjects: /* @__PURE__ */ new Map()
       });
     }
-    var isEmptyPath = (path34) => path34 == null || typeof path34 === "object" && !!path34[Symbol.iterator]().next().done;
+    var isEmptyPath = (path35) => path35 == null || typeof path35 === "object" && !!path35[Symbol.iterator]().next().done;
     var Collection = class extends Node.NodeBase {
       constructor(type, schema) {
         super(type);
@@ -2074,11 +2074,11 @@ var require_Collection = __commonJS({
        * be a Pair instance or a `{ key, value }` object, which may not have a key
        * that already exists in the map.
        */
-      addIn(path34, value) {
-        if (isEmptyPath(path34))
+      addIn(path35, value) {
+        if (isEmptyPath(path35))
           this.add(value);
         else {
-          const [key, ...rest] = path34;
+          const [key, ...rest] = path35;
           const node = this.get(key, true);
           if (identity.isCollection(node))
             node.addIn(rest, value);
@@ -2092,8 +2092,8 @@ var require_Collection = __commonJS({
        * Removes a value from the collection.
        * @returns `true` if the item was found and removed.
        */
-      deleteIn(path34) {
-        const [key, ...rest] = path34;
+      deleteIn(path35) {
+        const [key, ...rest] = path35;
         if (rest.length === 0)
           return this.delete(key);
         const node = this.get(key, true);
@@ -2107,8 +2107,8 @@ var require_Collection = __commonJS({
        * scalar values from their surrounding node; to disable set `keepScalar` to
        * `true` (collections are always returned intact).
        */
-      getIn(path34, keepScalar) {
-        const [key, ...rest] = path34;
+      getIn(path35, keepScalar) {
+        const [key, ...rest] = path35;
         const node = this.get(key, true);
         if (rest.length === 0)
           return !keepScalar && identity.isScalar(node) ? node.value : node;
@@ -2126,8 +2126,8 @@ var require_Collection = __commonJS({
       /**
        * Checks if the collection includes a value with the key `key`.
        */
-      hasIn(path34) {
-        const [key, ...rest] = path34;
+      hasIn(path35) {
+        const [key, ...rest] = path35;
         if (rest.length === 0)
           return this.has(key);
         const node = this.get(key, true);
@@ -2137,8 +2137,8 @@ var require_Collection = __commonJS({
        * Sets a value in this collection. For `!!set`, `value` needs to be a
        * boolean to add/remove the item from the set.
        */
-      setIn(path34, value) {
-        const [key, ...rest] = path34;
+      setIn(path35, value) {
+        const [key, ...rest] = path35;
         if (rest.length === 0) {
           this.set(key, value);
         } else {
@@ -4642,9 +4642,9 @@ var require_Document = __commonJS({
           this.contents.add(value);
       }
       /** Adds a value to the document. */
-      addIn(path34, value) {
+      addIn(path35, value) {
         if (assertCollection(this.contents))
-          this.contents.addIn(path34, value);
+          this.contents.addIn(path35, value);
       }
       /**
        * Create a new `Alias` node, ensuring that the target `node` has the required anchor.
@@ -4719,14 +4719,14 @@ var require_Document = __commonJS({
        * Removes a value from the document.
        * @returns `true` if the item was found and removed.
        */
-      deleteIn(path34) {
-        if (Collection.isEmptyPath(path34)) {
+      deleteIn(path35) {
+        if (Collection.isEmptyPath(path35)) {
           if (this.contents == null)
             return false;
           this.contents = null;
           return true;
         }
-        return assertCollection(this.contents) ? this.contents.deleteIn(path34) : false;
+        return assertCollection(this.contents) ? this.contents.deleteIn(path35) : false;
       }
       /**
        * Returns item at `key`, or `undefined` if not found. By default unwraps
@@ -4741,10 +4741,10 @@ var require_Document = __commonJS({
        * scalar values from their surrounding node; to disable set `keepScalar` to
        * `true` (collections are always returned intact).
        */
-      getIn(path34, keepScalar) {
-        if (Collection.isEmptyPath(path34))
+      getIn(path35, keepScalar) {
+        if (Collection.isEmptyPath(path35))
           return !keepScalar && identity.isScalar(this.contents) ? this.contents.value : this.contents;
-        return identity.isCollection(this.contents) ? this.contents.getIn(path34, keepScalar) : void 0;
+        return identity.isCollection(this.contents) ? this.contents.getIn(path35, keepScalar) : void 0;
       }
       /**
        * Checks if the document includes a value with the key `key`.
@@ -4755,10 +4755,10 @@ var require_Document = __commonJS({
       /**
        * Checks if the document includes a value at `path`.
        */
-      hasIn(path34) {
-        if (Collection.isEmptyPath(path34))
+      hasIn(path35) {
+        if (Collection.isEmptyPath(path35))
           return this.contents !== void 0;
-        return identity.isCollection(this.contents) ? this.contents.hasIn(path34) : false;
+        return identity.isCollection(this.contents) ? this.contents.hasIn(path35) : false;
       }
       /**
        * Sets a value in this document. For `!!set`, `value` needs to be a
@@ -4775,13 +4775,13 @@ var require_Document = __commonJS({
        * Sets a value in this document. For `!!set`, `value` needs to be a
        * boolean to add/remove the item from the set.
        */
-      setIn(path34, value) {
-        if (Collection.isEmptyPath(path34)) {
+      setIn(path35, value) {
+        if (Collection.isEmptyPath(path35)) {
           this.contents = value;
         } else if (this.contents == null) {
-          this.contents = Collection.collectionFromPath(this.schema, Array.from(path34), value);
+          this.contents = Collection.collectionFromPath(this.schema, Array.from(path35), value);
         } else if (assertCollection(this.contents)) {
-          this.contents.setIn(path34, value);
+          this.contents.setIn(path35, value);
         }
       }
       /**
@@ -6733,9 +6733,9 @@ var require_cst_visit = __commonJS({
     visit.BREAK = BREAK;
     visit.SKIP = SKIP;
     visit.REMOVE = REMOVE;
-    visit.itemAtPath = (cst, path34) => {
+    visit.itemAtPath = (cst, path35) => {
       let item = cst;
-      for (const [field, index] of path34) {
+      for (const [field, index] of path35) {
         const tok = item?.[field];
         if (tok && "items" in tok) {
           item = tok.items[index];
@@ -6744,23 +6744,23 @@ var require_cst_visit = __commonJS({
       }
       return item;
     };
-    visit.parentCollection = (cst, path34) => {
-      const parent = visit.itemAtPath(cst, path34.slice(0, -1));
-      const field = path34[path34.length - 1][0];
+    visit.parentCollection = (cst, path35) => {
+      const parent = visit.itemAtPath(cst, path35.slice(0, -1));
+      const field = path35[path35.length - 1][0];
       const coll = parent?.[field];
       if (coll && "items" in coll)
         return coll;
       throw new Error("Parent collection not found");
     };
-    function _visit(path34, item, visitor) {
-      let ctrl = visitor(item, path34);
+    function _visit(path35, item, visitor) {
+      let ctrl = visitor(item, path35);
       if (typeof ctrl === "symbol")
         return ctrl;
       for (const field of ["key", "value"]) {
         const token = item[field];
         if (token && "items" in token) {
           for (let i2 = 0; i2 < token.items.length; ++i2) {
-            const ci = _visit(Object.freeze(path34.concat([[field, i2]])), token.items[i2], visitor);
+            const ci = _visit(Object.freeze(path35.concat([[field, i2]])), token.items[i2], visitor);
             if (typeof ci === "number")
               i2 = ci - 1;
             else if (ci === BREAK)
@@ -6771,10 +6771,10 @@ var require_cst_visit = __commonJS({
             }
           }
           if (typeof ctrl === "function" && field === "key")
-            ctrl = ctrl(item, path34);
+            ctrl = ctrl(item, path35);
         }
       }
-      return typeof ctrl === "function" ? ctrl(item, path34) : ctrl;
+      return typeof ctrl === "function" ? ctrl(item, path35) : ctrl;
     }
     exports2.visit = visit;
   }
@@ -8059,14 +8059,14 @@ var require_parser = __commonJS({
             case "scalar":
             case "single-quoted-scalar":
             case "double-quoted-scalar": {
-              const fs34 = this.flowScalar(this.type);
+              const fs35 = this.flowScalar(this.type);
               if (atNextItem || it2.value) {
-                map.items.push({ start, key: fs34, sep: [] });
+                map.items.push({ start, key: fs35, sep: [] });
                 this.onKeyLine = true;
               } else if (it2.sep) {
-                this.stack.push(fs34);
+                this.stack.push(fs35);
               } else {
-                Object.assign(it2, { key: fs34, sep: [] });
+                Object.assign(it2, { key: fs35, sep: [] });
                 this.onKeyLine = true;
               }
               return;
@@ -8194,13 +8194,13 @@ var require_parser = __commonJS({
             case "scalar":
             case "single-quoted-scalar":
             case "double-quoted-scalar": {
-              const fs34 = this.flowScalar(this.type);
+              const fs35 = this.flowScalar(this.type);
               if (!it2 || it2.value)
-                fc.items.push({ start: [], key: fs34, sep: [] });
+                fc.items.push({ start: [], key: fs35, sep: [] });
               else if (it2.sep)
-                this.stack.push(fs34);
+                this.stack.push(fs35);
               else
-                Object.assign(it2, { key: fs34, sep: [] });
+                Object.assign(it2, { key: fs35, sep: [] });
               return;
             }
             case "flow-map-end":
@@ -8918,7 +8918,7 @@ async function installSinglePackage(pkg, options = {}) {
     onProgress?.({ phase: "downloading", package: pkg.id });
     if (pkg.npmPackage) {
       try {
-        const { execSync: execSync10 } = await import("child_process");
+        const { execSync: execSync11 } = await import("child_process");
         if (!import_fs5.default.existsSync(installPath)) {
           import_fs5.default.mkdirSync(installPath, { recursive: true });
         }
@@ -8926,11 +8926,11 @@ async function installSinglePackage(pkg, options = {}) {
         const resourcesPath = process.env.RESOURCES_PATH;
         const npmCmd = resourcesPath ? import_path6.default.join(resourcesPath, "bundled-runtimes", "node", "bin", "npm") : "npm";
         if (!import_fs5.default.existsSync(import_path6.default.join(installPath, "package.json"))) {
-          execSync10(`"${npmCmd}" init -y`, { cwd: installPath, stdio: "pipe" });
+          execSync11(`"${npmCmd}" init -y`, { cwd: installPath, stdio: "pipe" });
         }
         const shouldIgnoreScripts = pkg.source?.type === "npm" && !allowScripts;
         const installFlags = shouldIgnoreScripts ? "--ignore-scripts --no-audit --no-fund" : "--no-audit --no-fund";
-        execSync10(`"${npmCmd}" install ${pkg.npmPackage} ${installFlags}`, { cwd: installPath, stdio: "pipe" });
+        execSync11(`"${npmCmd}" install ${pkg.npmPackage} ${installFlags}`, { cwd: installPath, stdio: "pipe" });
         let bins = pkg.bins;
         if (!bins || bins.length === 0) {
           bins = discoverNpmBins(installPath, pkg.npmPackage);
@@ -8951,7 +8951,7 @@ async function installSinglePackage(pkg, options = {}) {
             /^npx\s+(\S+)/,
             `"${import_path6.default.join(installPath, "node_modules", ".bin", "$1")}"`
           );
-          execSync10(postInstallCmd, { cwd: installPath, stdio: "pipe" });
+          execSync11(postInstallCmd, { cwd: installPath, stdio: "pipe" });
         }
         const scriptsDetected = hasInstallScripts(installPath, pkg.npmPackage);
         const scriptsPolicy = installFlags.includes("--ignore-scripts") ? "ignore" : "allow";
@@ -9320,7 +9320,7 @@ async function updateAll(options = {}) {
   return results;
 }
 async function installStackDependencies(stackPath, onProgress) {
-  const { execSync: execSync10 } = await import("child_process");
+  const { execSync: execSync11 } = await import("child_process");
   const nodePath = import_path6.default.join(stackPath, "node");
   if (import_fs5.default.existsSync(nodePath)) {
     const packageJsonPath = import_path6.default.join(nodePath, "package.json");
@@ -9328,7 +9328,7 @@ async function installStackDependencies(stackPath, onProgress) {
       onProgress?.({ phase: "installing-deps", message: "Installing Node.js dependencies..." });
       try {
         const npmCmd = await findNpmExecutable();
-        execSync10(`"${npmCmd}" install`, { cwd: nodePath, stdio: "pipe" });
+        execSync11(`"${npmCmd}" install`, { cwd: nodePath, stdio: "pipe" });
       } catch (error) {
         console.warn(`Warning: Failed to install Node.js dependencies: ${error.message}`);
       }
@@ -9386,8 +9386,8 @@ function findUvExecutable() {
     return uvPath;
   }
   try {
-    const { execSync: execSync10 } = require("child_process");
-    execSync10("uv --version", { stdio: "pipe" });
+    const { execSync: execSync11 } = require("child_process");
+    execSync11("uv --version", { stdio: "pipe" });
     return "uv";
   } catch {
     return null;
@@ -9411,37 +9411,37 @@ async function ensureUv(onProgress) {
   return null;
 }
 async function installPythonPackage(installPath, pipPackage, onProgress) {
-  const { execSync: execSync10 } = await import("child_process");
+  const { execSync: execSync11 } = await import("child_process");
   const uvCmd = findUvExecutable();
   if (uvCmd) {
     onProgress?.({ phase: "installing", message: `uv pip install ${pipPackage}` });
-    execSync10(`"${uvCmd}" venv "${installPath}/venv"`, { stdio: "pipe" });
-    execSync10(`"${uvCmd}" pip install --python "${installPath}/venv/bin/python" ${pipPackage}`, { stdio: "pipe" });
+    execSync11(`"${uvCmd}" venv "${installPath}/venv"`, { stdio: "pipe" });
+    execSync11(`"${uvCmd}" pip install --python "${installPath}/venv/bin/python" ${pipPackage}`, { stdio: "pipe" });
     return { usedUv: true };
   } else {
     onProgress?.({ phase: "installing", message: `pip install ${pipPackage}` });
     const pythonCmd = await findPythonExecutable();
-    execSync10(`"${pythonCmd}" -m venv "${installPath}/venv"`, { stdio: "pipe" });
-    execSync10(`"${installPath}/venv/bin/pip" install ${pipPackage}`, { stdio: "pipe" });
+    execSync11(`"${pythonCmd}" -m venv "${installPath}/venv"`, { stdio: "pipe" });
+    execSync11(`"${installPath}/venv/bin/pip" install ${pipPackage}`, { stdio: "pipe" });
     return { usedUv: false };
   }
 }
 async function installPythonRequirements(pythonPath, onProgress) {
-  const { execSync: execSync10 } = await import("child_process");
+  const { execSync: execSync11 } = await import("child_process");
   const uvCmd = findUvExecutable();
   const isWindows = process.platform === "win32";
   const venvPython = isWindows ? import_path6.default.join(pythonPath, "venv", "Scripts", "python.exe") : import_path6.default.join(pythonPath, "venv", "bin", "python");
   if (uvCmd) {
     onProgress?.({ phase: "installing-deps", message: "Installing Python dependencies with uv..." });
-    execSync10(`"${uvCmd}" venv "${pythonPath}/venv"`, { cwd: pythonPath, stdio: "pipe" });
-    execSync10(`"${uvCmd}" pip install --python "${venvPython}" -r requirements.txt`, { cwd: pythonPath, stdio: "pipe" });
+    execSync11(`"${uvCmd}" venv "${pythonPath}/venv"`, { cwd: pythonPath, stdio: "pipe" });
+    execSync11(`"${uvCmd}" pip install --python "${venvPython}" -r requirements.txt`, { cwd: pythonPath, stdio: "pipe" });
     return { usedUv: true };
   } else {
     onProgress?.({ phase: "installing-deps", message: "Installing Python dependencies..." });
     const pythonCmd = await findPythonExecutable();
-    execSync10(`"${pythonCmd}" -m venv venv`, { cwd: pythonPath, stdio: "pipe" });
+    execSync11(`"${pythonCmd}" -m venv venv`, { cwd: pythonPath, stdio: "pipe" });
     const pipCmd = isWindows ? ".\\venv\\Scripts\\pip" : "./venv/bin/pip";
-    execSync10(`${pipCmd} install -r requirements.txt`, { cwd: pythonPath, stdio: "pipe" });
+    execSync11(`${pipCmd} install -r requirements.txt`, { cwd: pythonPath, stdio: "pipe" });
     return { usedUv: false };
   }
 }
@@ -13605,8 +13605,8 @@ var require_utils = __commonJS({
       }
       return ind;
     }
-    function removeDotSegments(path34) {
-      let input = path34;
+    function removeDotSegments(path35) {
+      let input = path35;
       const output = [];
       let nextSlash = -1;
       let len = 0;
@@ -13805,8 +13805,8 @@ var require_schemes = __commonJS({
         wsComponent.secure = void 0;
       }
       if (wsComponent.resourceName) {
-        const [path34, query] = wsComponent.resourceName.split("?");
-        wsComponent.path = path34 && path34 !== "/" ? path34 : void 0;
+        const [path35, query] = wsComponent.resourceName.split("?");
+        wsComponent.path = path35 && path35 !== "/" ? path35 : void 0;
         wsComponent.query = query;
         wsComponent.resourceName = void 0;
       }
@@ -17159,12 +17159,12 @@ var require_dist2 = __commonJS({
         throw new Error(`Unknown format "${name}"`);
       return f2;
     };
-    function addFormats2(ajv2, list, fs34, exportName) {
+    function addFormats2(ajv2, list, fs35, exportName) {
       var _a2;
       var _b;
       (_a2 = (_b = ajv2.opts.code).formats) !== null && _a2 !== void 0 ? _a2 : _b.formats = (0, codegen_1._)`require("ajv-formats/dist/formats").${exportName}`;
       for (const f2 of list)
-        ajv2.addFormat(f2, fs34[f2]);
+        ajv2.addFormat(f2, fs35[f2]);
     }
     module2.exports = exports2 = formatsPlugin;
     Object.defineProperty(exports2, "__esModule", { value: true });
@@ -18864,14 +18864,14 @@ var require_url_state_machine = __commonJS({
       return url.replace(/\u0009|\u000A|\u000D/g, "");
     }
     function shortenPath(url) {
-      const path34 = url.path;
-      if (path34.length === 0) {
+      const path35 = url.path;
+      if (path35.length === 0) {
         return;
       }
-      if (url.scheme === "file" && path34.length === 1 && isNormalizedWindowsDriveLetter(path34[0])) {
+      if (url.scheme === "file" && path35.length === 1 && isNormalizedWindowsDriveLetter(path35[0])) {
         return;
       }
-      path34.pop();
+      path35.pop();
     }
     function includesCredentials(url) {
       return url.username !== "" || url.password !== "";
@@ -24855,14 +24855,14 @@ __export(fileFromPath_exports, {
   fileFromPathSync: () => fileFromPathSync,
   isFile: () => isFile
 });
-function createFileFromPath(path34, { mtimeMs, size }, filenameOrOptions, options = {}) {
+function createFileFromPath(path35, { mtimeMs, size }, filenameOrOptions, options = {}) {
   let filename;
   if (isPlainObject_default2(filenameOrOptions)) {
     [options, filename] = [filenameOrOptions, void 0];
   } else {
     filename = filenameOrOptions;
   }
-  const file = new FileFromPath({ path: path34, size, lastModified: mtimeMs });
+  const file = new FileFromPath({ path: path35, size, lastModified: mtimeMs });
   if (!filename) {
     filename = file.name;
   }
@@ -24871,13 +24871,13 @@ function createFileFromPath(path34, { mtimeMs, size }, filenameOrOptions, option
     lastModified: file.lastModified
   });
 }
-function fileFromPathSync(path34, filenameOrOptions, options = {}) {
-  const stats = (0, import_fs16.statSync)(path34);
-  return createFileFromPath(path34, stats, filenameOrOptions, options);
+function fileFromPathSync(path35, filenameOrOptions, options = {}) {
+  const stats = (0, import_fs16.statSync)(path35);
+  return createFileFromPath(path35, stats, filenameOrOptions, options);
 }
-async function fileFromPath2(path34, filenameOrOptions, options) {
-  const stats = await import_fs16.promises.stat(path34);
-  return createFileFromPath(path34, stats, filenameOrOptions, options);
+async function fileFromPath2(path35, filenameOrOptions, options) {
+  const stats = await import_fs16.promises.stat(path35);
+  return createFileFromPath(path35, stats, filenameOrOptions, options);
 }
 var import_fs16, import_path17, import_node_domexception, __classPrivateFieldSet4, __classPrivateFieldGet5, _FileFromPath_path, _FileFromPath_start, MESSAGE, FileFromPath;
 var init_fileFromPath = __esm({
@@ -24938,13 +24938,13 @@ var init_fileFromPath = __esm({
 });
 
 // node_modules/.pnpm/openai@4.104.0/node_modules/openai/_shims/node-runtime.mjs
-async function fileFromPath3(path34, ...args) {
+async function fileFromPath3(path35, ...args) {
   const { fileFromPath: _fileFromPath } = await Promise.resolve().then(() => (init_fileFromPath(), fileFromPath_exports));
   if (!fileFromPathWarned) {
-    console.warn(`fileFromPath is deprecated; use fs.createReadStream(${JSON.stringify(path34)}) instead`);
+    console.warn(`fileFromPath is deprecated; use fs.createReadStream(${JSON.stringify(path35)}) instead`);
     fileFromPathWarned = true;
   }
-  return await _fileFromPath(path34, ...args);
+  return await _fileFromPath(path35, ...args);
 }
 async function getMultipartRequestOptions2(form, opts) {
   const encoder = new FormDataEncoder(form);
@@ -25877,29 +25877,29 @@ var init_core = __esm({
       defaultIdempotencyKey() {
         return `stainless-node-retry-${uuid4()}`;
       }
-      get(path34, opts) {
-        return this.methodRequest("get", path34, opts);
+      get(path35, opts) {
+        return this.methodRequest("get", path35, opts);
       }
-      post(path34, opts) {
-        return this.methodRequest("post", path34, opts);
+      post(path35, opts) {
+        return this.methodRequest("post", path35, opts);
       }
-      patch(path34, opts) {
-        return this.methodRequest("patch", path34, opts);
+      patch(path35, opts) {
+        return this.methodRequest("patch", path35, opts);
       }
-      put(path34, opts) {
-        return this.methodRequest("put", path34, opts);
+      put(path35, opts) {
+        return this.methodRequest("put", path35, opts);
       }
-      delete(path34, opts) {
-        return this.methodRequest("delete", path34, opts);
+      delete(path35, opts) {
+        return this.methodRequest("delete", path35, opts);
       }
-      methodRequest(method, path34, opts) {
+      methodRequest(method, path35, opts) {
         return this.request(Promise.resolve(opts).then(async (opts2) => {
           const body = opts2 && isBlobLike(opts2?.body) ? new DataView(await opts2.body.arrayBuffer()) : opts2?.body instanceof DataView ? opts2.body : opts2?.body instanceof ArrayBuffer ? new DataView(opts2.body) : opts2 && ArrayBuffer.isView(opts2?.body) ? new DataView(opts2.body.buffer) : opts2?.body;
-          return { method, path: path34, ...opts2, body };
+          return { method, path: path35, ...opts2, body };
         }));
       }
-      getAPIList(path34, Page2, opts) {
-        return this.requestAPIList(Page2, { method: "get", path: path34, ...opts });
+      getAPIList(path35, Page2, opts) {
+        return this.requestAPIList(Page2, { method: "get", path: path35, ...opts });
       }
       calculateContentLength(body) {
         if (typeof body === "string") {
@@ -25918,10 +25918,10 @@ var init_core = __esm({
       }
       buildRequest(inputOptions, { retryCount = 0 } = {}) {
         const options = { ...inputOptions };
-        const { method, path: path34, query, headers = {} } = options;
+        const { method, path: path35, query, headers = {} } = options;
         const body = ArrayBuffer.isView(options.body) || options.__binaryRequest && typeof options.body === "string" ? options.body : isMultipartBody(options.body) ? options.body.body : options.body ? JSON.stringify(options.body, null, 2) : null;
         const contentLength = this.calculateContentLength(body);
-        const url = this.buildURL(path34, query);
+        const url = this.buildURL(path35, query);
         if ("timeout" in options)
           validatePositiveInteger("timeout", options.timeout);
         options.timeout = options.timeout ?? this.timeout;
@@ -26037,8 +26037,8 @@ var init_core = __esm({
         const request = this.makeRequest(options, null);
         return new PagePromise(this, request, Page2);
       }
-      buildURL(path34, query) {
-        const url = isAbsoluteURL(path34) ? new URL(path34) : new URL(this.baseURL + (this.baseURL.endsWith("/") && path34.startsWith("/") ? path34.slice(1) : path34));
+      buildURL(path35, query) {
+        const url = isAbsoluteURL(path35) ? new URL(path35) : new URL(this.baseURL + (this.baseURL.endsWith("/") && path35.startsWith("/") ? path35.slice(1) : path35));
         const defaultQuery = this.defaultQuery();
         if (!isEmptyObj(defaultQuery)) {
           query = { ...defaultQuery, ...query };
@@ -31643,9 +31643,9 @@ async function checkProviderStatus() {
     }
   };
   try {
-    const { execSync: execSync10 } = await import("child_process");
+    const { execSync: execSync11 } = await import("child_process");
     try {
-      execSync10("which ollama", { stdio: "pipe" });
+      execSync11("which ollama", { stdio: "pipe" });
       status.ollama.installed = true;
     } catch {
     }
@@ -31721,9 +31721,9 @@ async function autoSetupOllama() {
     };
   }
   try {
-    const { execSync: execSync10 } = await import("child_process");
+    const { execSync: execSync11 } = await import("child_process");
     console.log("Pulling nomic-embed-text model...");
-    execSync10("ollama pull nomic-embed-text", { stdio: "inherit" });
+    execSync11("ollama pull nomic-embed-text", { stdio: "inherit" });
     return { success: true, message: "Ollama configured with nomic-embed-text" };
   } catch (err) {
     return { success: false, message: `Failed to pull model: ${err.message}` };
@@ -33271,11 +33271,11 @@ async function runStack(id, options = {}) {
   const startTime = Date.now();
   const packagePath = getPackagePath2(id);
   const manifestPath = import_path11.default.join(packagePath, "manifest.json");
-  const { default: fs34 } = await import("fs");
-  if (!fs34.existsSync(manifestPath)) {
+  const { default: fs35 } = await import("fs");
+  if (!fs35.existsSync(manifestPath)) {
     throw new Error(`Stack manifest not found: ${id}`);
   }
-  const manifest = JSON.parse(fs34.readFileSync(manifestPath, "utf-8"));
+  const manifest = JSON.parse(fs35.readFileSync(manifestPath, "utf-8"));
   const { command, args } = resolveCommandFromManifest(manifest, packagePath);
   const secrets = await getSecrets(manifest.requires?.secrets || []);
   const runEnv = {
@@ -36333,8 +36333,8 @@ async function ensureEmbeddingProvider(preferredProvider = "auto", options = {})
     });
     console.log("\r  \u2713 Ollama installed     ");
     console.log("  Starting ollama serve...");
-    const { spawn: spawn4 } = await import("child_process");
-    const server = spawn4("ollama", ["serve"], {
+    const { spawn: spawn5 } = await import("child_process");
+    const server = spawn5("ollama", ["serve"], {
       detached: true,
       stdio: "ignore",
       env: { ...process.env, HOME: process.env.HOME }
@@ -36342,8 +36342,8 @@ async function ensureEmbeddingProvider(preferredProvider = "auto", options = {})
     server.unref();
     await new Promise((r2) => setTimeout(r2, 2e3));
     console.log("  Pulling nomic-embed-text model (274MB)...");
-    const { execSync: execSync10 } = await import("child_process");
-    execSync10("ollama pull nomic-embed-text", { stdio: "inherit" });
+    const { execSync: execSync11 } = await import("child_process");
+    execSync11("ollama pull nomic-embed-text", { stdio: "inherit" });
     console.log("  \u2713 Model ready\n");
     return await getProvider2("ollama");
   } catch (err) {
@@ -36690,9 +36690,9 @@ async function sessionExport(args, flags) {
   };
   const json = JSON.stringify(exportData, null, 2);
   if (flags.output || flags.o) {
-    const fs34 = await import("fs");
+    const fs35 = await import("fs");
     const outputFile = flags.output || flags.o;
-    fs34.writeFileSync(outputFile, json);
+    fs35.writeFileSync(outputFile, json);
     console.log(`\u2713 Exported session to: ${outputFile}`);
   } else {
     console.log(json);
@@ -40435,6 +40435,240 @@ Project deleted: ${project.name}`);
   }
 }
 
+// src/commands/studio.js
+var import_fs29 = __toESM(require("fs"), 1);
+var import_path27 = __toESM(require("path"), 1);
+var import_os10 = __toESM(require("os"), 1);
+var import_child_process13 = require("child_process");
+var STUDIO_WEBSITE = "https://learnrudi.com";
+var STUDIO_PATHS = {
+  darwin: [
+    "/Applications/RUDI Studio.app",
+    import_path27.default.join(import_os10.default.homedir(), "Applications/RUDI Studio.app")
+  ],
+  win32: [
+    import_path27.default.join(import_os10.default.homedir(), "AppData/Local/Programs/RUDI Studio"),
+    "C:/Program Files/RUDI Studio"
+  ],
+  linux: [
+    "/opt/RUDI Studio",
+    import_path27.default.join(import_os10.default.homedir(), ".local/share/applications/rudi-studio")
+  ]
+};
+var APP_DATA_PATHS = {
+  darwin: [
+    import_path27.default.join(import_os10.default.homedir(), "Library/Application Support/RUDI Studio"),
+    import_path27.default.join(import_os10.default.homedir(), "Library/Application Support/rudi-studio"),
+    import_path27.default.join(import_os10.default.homedir(), "Library/Caches/RUDI Studio"),
+    import_path27.default.join(import_os10.default.homedir(), "Library/Caches/rudi-studio"),
+    import_path27.default.join(import_os10.default.homedir(), "Library/Preferences/com.rudi.studio.plist"),
+    import_path27.default.join(import_os10.default.homedir(), "Library/Saved Application State/com.rudi.studio.savedState")
+  ],
+  win32: [
+    import_path27.default.join(import_os10.default.homedir(), "AppData/Roaming/RUDI Studio"),
+    import_path27.default.join(import_os10.default.homedir(), "AppData/Local/RUDI Studio")
+  ],
+  linux: [
+    import_path27.default.join(import_os10.default.homedir(), ".config/RUDI Studio"),
+    import_path27.default.join(import_os10.default.homedir(), ".config/rudi-studio")
+  ]
+};
+function findStudioPath() {
+  const platform = process.platform;
+  const paths = STUDIO_PATHS[platform] || [];
+  for (const p2 of paths) {
+    if (import_fs29.default.existsSync(p2)) {
+      return p2;
+    }
+  }
+  if (platform === "darwin") {
+    try {
+      const result = (0, import_child_process13.execSync)(`mdfind "kMDItemCFBundleIdentifier == 'com.rudi.studio'" 2>/dev/null`, {
+        encoding: "utf-8",
+        timeout: 5e3
+      }).trim();
+      if (result) {
+        const foundPath = result.split("\n")[0];
+        if (import_fs29.default.existsSync(foundPath)) {
+          return foundPath;
+        }
+      }
+      const nameResult = (0, import_child_process13.execSync)(`mdfind "kMDItemDisplayName == 'RUDI Studio' && kMDItemContentType == 'com.apple.application-bundle'" 2>/dev/null`, {
+        encoding: "utf-8",
+        timeout: 5e3
+      }).trim();
+      if (nameResult) {
+        const foundPath = nameResult.split("\n")[0];
+        if (import_fs29.default.existsSync(foundPath)) {
+          return foundPath;
+        }
+      }
+    } catch {
+    }
+  }
+  return null;
+}
+function getStudioVersion(studioPath) {
+  if (process.platform === "darwin") {
+    const plistPath = import_path27.default.join(studioPath, "Contents/Info.plist");
+    if (import_fs29.default.existsSync(plistPath)) {
+      const content = import_fs29.default.readFileSync(plistPath, "utf-8");
+      const match = content.match(/<key>CFBundleShortVersionString<\/key>\s*<string>([^<]+)<\/string>/);
+      if (match) {
+        return match[1];
+      }
+    }
+  } else {
+    const pkgPath = import_path27.default.join(studioPath, "resources/app/package.json");
+    if (import_fs29.default.existsSync(pkgPath)) {
+      try {
+        const pkg = JSON.parse(import_fs29.default.readFileSync(pkgPath, "utf-8"));
+        return pkg.version;
+      } catch {
+      }
+    }
+  }
+  return null;
+}
+function openUrl(url) {
+  const platform = process.platform;
+  let cmd, args;
+  if (platform === "darwin") {
+    cmd = "open";
+    args = [url];
+  } else if (platform === "win32") {
+    cmd = "cmd";
+    args = ["/c", "start", "", url];
+  } else {
+    cmd = "xdg-open";
+    args = [url];
+  }
+  (0, import_child_process13.spawn)(cmd, args, { detached: true, stdio: "ignore" }).unref();
+}
+async function studioOpen() {
+  console.log(`Opening ${STUDIO_WEBSITE}...`);
+  openUrl(STUDIO_WEBSITE);
+}
+async function studioVersion(flags) {
+  const studioPath = findStudioPath();
+  if (!studioPath) {
+    console.log("RUDI Studio is not installed");
+    console.log(`
+Get it at: ${STUDIO_WEBSITE}`);
+    process.exit(1);
+  }
+  const version = getStudioVersion(studioPath);
+  if (version) {
+    console.log(`RUDI Studio v${version}`);
+  } else {
+    console.log("RUDI Studio installed");
+    console.log(`  Location: ${studioPath}`);
+    console.log("  Version: unknown");
+  }
+  if (flags.verbose) {
+    console.log(`
+  Path: ${studioPath}`);
+  }
+}
+async function studioUninstall(flags) {
+  const studioPath = findStudioPath();
+  const platform = process.platform;
+  const dataPaths = APP_DATA_PATHS[platform] || [];
+  const existingDataPaths = dataPaths.filter((p2) => import_fs29.default.existsSync(p2));
+  if (!studioPath && existingDataPaths.length === 0) {
+    console.log("RUDI Studio is not installed");
+    process.exit(0);
+  }
+  console.log("The following will be removed:");
+  if (studioPath) {
+    console.log(`  App: ${studioPath}`);
+  }
+  for (const p2 of existingDataPaths) {
+    console.log(`  Data: ${p2}`);
+  }
+  console.log("");
+  console.log("Note: ~/.rudi/ will NOT be removed (managed by RUDI CLI)");
+  console.log("");
+  if (!flags.force && !flags.y) {
+    console.log("Run with --force or -y to confirm uninstall");
+    process.exit(0);
+  }
+  let errors = [];
+  if (studioPath) {
+    try {
+      import_fs29.default.rmSync(studioPath, { recursive: true, force: true });
+      console.log(`Removed: ${studioPath}`);
+    } catch (err) {
+      errors.push(`Failed to remove ${studioPath}: ${err.message}`);
+    }
+  }
+  for (const p2 of existingDataPaths) {
+    try {
+      import_fs29.default.rmSync(p2, { recursive: true, force: true });
+      console.log(`Removed: ${p2}`);
+    } catch (err) {
+      errors.push(`Failed to remove ${p2}: ${err.message}`);
+    }
+  }
+  if (errors.length > 0) {
+    console.log("");
+    console.log("Some items could not be removed:");
+    for (const err of errors) {
+      console.log(`  ${err}`);
+    }
+    console.log("");
+    console.log("You may need to remove them manually or use sudo.");
+    process.exit(1);
+  }
+  console.log("");
+  console.log("RUDI Studio uninstalled successfully");
+}
+function showHelp() {
+  console.log(`rudi studio - Manage RUDI Studio
+
+Usage:
+  rudi studio              Open RUDI website
+  rudi studio version      Show installed Studio version
+  rudi studio uninstall    Uninstall RUDI Studio
+
+Options:
+  --force, -y              Skip confirmation for uninstall
+  --verbose                Show additional details
+
+Examples:
+  rudi studio              # Open learnrudi.com in browser
+  rudi studio version      # Check installed version
+  rudi studio uninstall -y # Remove Studio and app data
+`);
+}
+async function cmdStudio(args, flags) {
+  const subcommand = args[0];
+  switch (subcommand) {
+    case "version":
+    case "v":
+      await studioVersion(flags);
+      break;
+    case "uninstall":
+    case "remove":
+    case "rm":
+      await studioUninstall(flags);
+      break;
+    case "help":
+    case "-h":
+    case "--help":
+      showHelp();
+      break;
+    case "open":
+    case void 0:
+      await studioOpen();
+      break;
+    default:
+      console.error(`Unknown subcommand: ${subcommand}`);
+      console.error(`Run 'rudi studio help' for usage`);
+      process.exit(1);
+  }
+}
+
 // src/index.js
 var VERSION2 = "2.0.0";
 async function main() {
@@ -40541,6 +40775,9 @@ async function main() {
       case "pkg":
       case "package":
         await cmdInfo(args, flags);
+        break;
+      case "studio":
+        await cmdStudio(args, flags);
         break;
       // Shortcuts for listing specific package types
       case "stacks":
