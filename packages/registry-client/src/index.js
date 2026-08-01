@@ -10,6 +10,14 @@ import path from 'path';
 import crypto from 'crypto';
 import { execFileSync as defaultExecFileSync } from 'child_process';
 import { PATHS, getPlatformArch } from '@learnrudi/env';
+import {
+  detectRegistrySchema,
+  getRegistryPackage,
+  listRegistryPackages,
+  normalizeRegistryPackage,
+} from './registry-contract.js';
+
+export { resolveRegistryPackageForPlatform } from './registry-contract.js';
 
 // =============================================================================
 // CONFIGURATION
@@ -152,9 +160,7 @@ function getLocalRegistryRoots() {
  * Set RUDI_REGISTRY_ROOT for a non-standard local registry checkout.
  */
 function getLocalRegistryPaths() {
-  return getLocalRegistryRoots().map((registryRoot) => {
-    return path.join(registryRoot, 'index.json');
-  });
+  return getLocalRegistryRoots().map((registryRoot) => path.join(registryRoot, 'index.json'));
 }
 
 function getLocalRegistrySource(registryPath) {
@@ -202,6 +208,9 @@ function copyLocalRegistrySource(sourcePath, destPath, onProgress) {
       recursive: true,
       filter: shouldCopyLocalRegistryFile
     });
+    if (fs.existsSync(path.join(destPath, 'manifest.json'))) {
+      installCanonicalStackManifest(destPath);
+    }
     onProgress?.({ phase: 'downloading', source: 'local', directory: sourcePath });
     return;
   }
@@ -212,6 +221,15 @@ function copyLocalRegistrySource(sourcePath, destPath, onProgress) {
   }
   fs.copyFileSync(sourcePath, destPath);
   onProgress?.({ phase: 'downloading', source: 'local', file: sourcePath });
+}
+
+function installCanonicalStackManifest(destPath, manifest = null) {
+  const canonicalManifest = manifest || JSON.parse(
+    fs.readFileSync(path.join(destPath, 'manifest.json'), 'utf-8')
+  );
+  const normalized = normalizeRegistryPackage(canonicalManifest, 'stack');
+  fs.writeFileSync(path.join(destPath, 'manifest.json'), JSON.stringify(normalized, null, 2));
+  return normalized;
 }
 
 // =============================================================================
@@ -226,7 +244,9 @@ function copyLocalRegistrySource(sourcePath, destPath, onProgress) {
  * @returns {Promise<Object>} Registry index
  */
 export async function fetchIndex(options = {}) {
-  const { url = DEFAULT_REGISTRY_URL, force = false } = options;
+  const configuredUrl = process.env.RUDI_REGISTRY_URL;
+  const url = options.url || configuredUrl || DEFAULT_REGISTRY_URL;
+  const force = options.force ?? false;
 
   // In development, prefer local registry if it's newer than cache
   const localResult = getLocalIndex();
@@ -254,33 +274,50 @@ export async function fetchIndex(options = {}) {
     return localResult.index;
   }
 
-  // Fetch from remote
+  // Fetch the single canonical registry contract. Invalid JSON, transport
+  // failures, and unsupported schemas all fail without silent downgrade.
   try {
-    const response = await fetch(url, {
-      headers: {
-        'Accept': 'application/json',
-        'User-Agent': 'rudi-cli/2.0'
-      }
-    });
-
-    if (!response.ok) {
-      throw new Error(`HTTP ${response.status}: ${response.statusText}`);
-    }
-
-    const index = await response.json();
+    const index = await fetchRemoteRegistryIndex(url);
 
     // Cache the result
     cacheIndex(index);
 
     return index;
   } catch (error) {
-    // If remote fails, try local as last resort
-    const fallback = getLocalIndex();
-    if (fallback) {
-      return fallback.index;
-    }
     throw new Error(`Failed to fetch registry: ${error.message}`);
   }
+}
+
+async function fetchRemoteRegistryIndex(url) {
+  let response;
+  try {
+    response = await fetch(url, {
+      headers: {
+        'Accept': 'application/json',
+        'User-Agent': 'rudi-cli/2.0'
+      }
+    });
+  } catch (error) {
+    const transportError = new Error(error instanceof Error ? error.message : String(error));
+    transportError.registryTransportFailure = true;
+    throw transportError;
+  }
+
+  if (!response.ok) {
+    const transportError = new Error(`HTTP ${response.status}: ${response.statusText}`);
+    transportError.registryTransportFailure = true;
+    throw transportError;
+  }
+
+  let index;
+  try {
+    index = await response.json();
+  } catch (error) {
+    throw new Error(`Invalid registry JSON from ${url}: ${error.message}`);
+  }
+
+  detectRegistrySchema(index);
+  return index;
 }
 
 /**
@@ -396,14 +433,6 @@ export function checkCache() {
  */
 export const PACKAGE_KINDS = ['stack', 'skill', 'prompt', 'workflow', 'runtime', 'binary', 'agent'];
 
-const KIND_PLURALS = {
-  binary: 'binaries'
-};
-
-function getKindSection(kind) {
-  return KIND_PLURALS[kind] || `${kind}s`;
-}
-
 /**
  * Search packages in the registry
  * @param {string} query - Search query
@@ -421,10 +450,7 @@ export async function searchPackages(query, options = {}) {
   const kinds = kind ? [kind] : PACKAGE_KINDS;
 
   for (const k of kinds) {
-    const section = index.packages?.[getKindSection(k)];
-    if (!section) continue;
-
-    const packages = [...(section.official || []), ...(section.community || [])];
+    const packages = listRegistryPackages(index, k);
 
     for (const pkg of packages) {
       if (matchesQuery(pkg, queryLower)) {
@@ -457,26 +483,7 @@ function matchesQuery(pkg, query) {
  */
 export async function getPackage(id) {
   const index = await fetchIndex();
-  const [kind, name] = id.includes(':') ? id.split(':') : [null, id];
-
-  const kinds = kind ? [kind] : PACKAGE_KINDS;
-
-  for (const k of kinds) {
-    const section = index.packages?.[getKindSection(k)];
-    if (!section) continue;
-
-    const packages = [...(section.official || []), ...(section.community || [])];
-
-    for (const pkg of packages) {
-      const kindPrefixPattern = new RegExp(`^(${PACKAGE_KINDS.join('|')}):`);
-      const pkgShortId = pkg.id?.replace(kindPrefixPattern, '') || '';
-      if (pkgShortId === name || pkg.id === id) {
-        return { ...pkg, kind: k };
-      }
-    }
-  }
-
-  return null;
+  return getRegistryPackage(index, id, PACKAGE_KINDS);
 }
 
 /**
@@ -492,6 +499,12 @@ export async function getManifest(pkg) {
 
   const manifestPath = pkg.path;
 
+  function normalizeManifest(manifest) {
+    return manifest?.delivery && manifest?.install?.source
+      ? normalizeRegistryPackage(manifest, pkg.kind)
+      : manifest;
+  }
+
   // Try local registry first (development mode)
   if (process.env.USE_LOCAL_REGISTRY === 'true') {
     const localPaths = getLocalRegistryRoots().map((registryRoot) => {
@@ -500,15 +513,16 @@ export async function getManifest(pkg) {
 
     for (const localPath of localPaths) {
       if (fs.existsSync(localPath)) {
-        // If path is a directory, look for manifest.json inside it
-        const filePath = fs.statSync(localPath).isDirectory()
-          ? path.join(localPath, 'manifest.json')
-          : localPath;
-        try {
-          const content = fs.readFileSync(filePath, 'utf-8');
-          return JSON.parse(content);
-        } catch (err) {
-          // Skip invalid JSON or missing manifest.json
+        const candidates = fs.statSync(localPath).isDirectory()
+          ? [path.join(localPath, 'manifest.json')]
+          : [localPath];
+        for (const filePath of candidates) {
+          if (!fs.existsSync(filePath)) continue;
+          try {
+            return normalizeManifest(JSON.parse(fs.readFileSync(filePath, 'utf-8')));
+          } catch (error) {
+            throw new Error(`Invalid registry manifest ${filePath}: ${error.message}`);
+          }
         }
       }
     }
@@ -516,22 +530,30 @@ export async function getManifest(pkg) {
 
   // Fetch from remote (GitHub raw)
   try {
-    const remotePath = manifestPath.endsWith('.json') ? manifestPath : `${manifestPath}/manifest.json`;
-    const url = `${GITHUB_RAW_BASE}/${remotePath}`;
-    const response = await fetch(url, {
-      headers: {
-        'Accept': 'application/json',
-        'User-Agent': 'rudi-cli/2.0'
+    const remotePaths = manifestPath.endsWith('.json')
+      ? [manifestPath]
+      : [`${manifestPath}/manifest.json`];
+    for (const remotePath of remotePaths) {
+      const url = `${GITHUB_RAW_BASE}/${remotePath}`;
+      const response = await fetch(url, {
+        headers: {
+          'Accept': 'application/json',
+          'User-Agent': 'rudi-cli/2.0'
+        }
+      });
+      if (response.status === 404) continue;
+      if (!response.ok) {
+        throw new Error(`HTTP ${response.status}: ${response.statusText}`);
       }
-    });
-
-    if (!response.ok) {
-      return null;
+      try {
+        return normalizeManifest(await response.json());
+      } catch (error) {
+        throw new Error(`Invalid registry manifest ${remotePath}: ${error.message}`);
+      }
     }
-
-    return await response.json();
-  } catch (err) {
     return null;
+  } catch (err) {
+    throw new Error(`Failed to fetch registry manifest ${manifestPath}: ${err.message}`);
   }
 }
 
@@ -542,9 +564,7 @@ export async function getManifest(pkg) {
  */
 export async function listPackages(kind) {
   const index = await fetchIndex();
-  const section = index.packages?.[getKindSection(kind)];
-  if (!section) return [];
-  return [...(section.official || []), ...(section.community || [])];
+  return listRegistryPackages(index, kind);
 }
 
 /**
@@ -558,6 +578,151 @@ export function getPackageKinds() {
 // =============================================================================
 // PACKAGE DOWNLOAD
 // =============================================================================
+
+function resolvedBinEntries(bins, packageId) {
+  const entries = Array.isArray(bins)
+    ? bins.map((name) => ({ name, path: name }))
+    : Object.entries(bins || {}).map(([name, config]) => ({
+        name,
+        path: config?.path || name,
+      }));
+
+  if (entries.length === 0) {
+    throw new Error(`[${packageId}] download package requires at least one binary`);
+  }
+  for (const entry of entries) {
+    if (
+      typeof entry.name !== 'string' ||
+      !entry.name ||
+      path.basename(entry.name) !== entry.name ||
+      typeof entry.path !== 'string' ||
+      !entry.path ||
+      entry.path.includes('\0') ||
+      entry.path.replaceAll('\\', '/').split('/').some((segment) => segment === '..')
+    ) {
+      throw new Error(`[${packageId}] invalid binary path`);
+    }
+  }
+  return entries;
+}
+
+/**
+ * Download an already platform-resolved registry v2 package.
+ * Integrity failures are terminal and remove the incomplete destination.
+ */
+export async function downloadResolvedPackage(pkg, destPath, options = {}) {
+  const { onProgress } = options;
+  if (!pkg || pkg.install?.source !== 'download') {
+    throw new Error('downloadResolvedPackage requires install.source=download');
+  }
+  if (typeof pkg.install.url !== 'string' || pkg.install.checksum?.algo !== 'sha256') {
+    throw new Error(`[${pkg.id}] resolved download requires URL and sha256 checksum`);
+  }
+  const parsedUrl = new URL(pkg.install.url);
+  if (parsedUrl.protocol !== 'https:') {
+    throw new Error(`[${pkg.id}] download URL must use https`);
+  }
+  const expectedHash = pkg.install.checksum.value;
+  if (!/^[a-f0-9]{64}$/i.test(expectedHash || '')) {
+    throw new Error(`[${pkg.id}] resolved download requires a valid sha256 checksum`);
+  }
+  const extractType = pkg.install.extract?.type;
+  if (!['raw', 'zip', 'tar.gz', 'tar.xz'].includes(extractType)) {
+    throw new Error(`[${pkg.id}] unsupported extract type: ${extractType}`);
+  }
+
+  const bins = resolvedBinEntries(pkg.bins, pkg.id);
+  const cacheDir = path.join(PATHS.cache, 'downloads');
+  fs.mkdirSync(cacheDir, { recursive: true });
+  const safeId = String(pkg.id).replace(/[^a-zA-Z0-9._-]/g, '-');
+  const tempFile = path.join(cacheDir, `${safeId}-${crypto.randomUUID()}.download`);
+
+  try {
+    onProgress?.({ phase: 'downloading', package: pkg.id, url: parsedUrl.toString() });
+    const response = await fetch(parsedUrl, {
+      headers: {
+        'User-Agent': 'rudi-cli/2.0',
+        'Accept': 'application/octet-stream',
+      },
+    });
+    if (!response.ok) {
+      throw new Error(`Failed to download ${pkg.id}: HTTP ${response.status}`);
+    }
+    fs.writeFileSync(tempFile, Buffer.from(await response.arrayBuffer()));
+
+    if (!await verifyHash(tempFile, expectedHash)) {
+      throw new Error(`Checksum mismatch for ${pkg.id}`);
+    }
+
+    fs.rmSync(destPath, { recursive: true, force: true });
+    fs.mkdirSync(destPath, { recursive: true });
+    onProgress?.({ phase: 'extracting', package: pkg.id });
+
+    if (extractType === 'raw') {
+      if (bins.length !== 1) {
+        throw new Error(`[${pkg.id}] raw download must expose exactly one binary`);
+      }
+      installRawBinaryDownload(tempFile, destPath, bins[0].name);
+    } else {
+      runRegistryCommandPlan(createRegistryArchiveExtractCommand(extractType, tempFile, destPath, {
+        stripComponents: pkg.install.extract?.strip || 0,
+      }), { stdio: 'pipe' });
+      for (const bin of bins) {
+        if (pkg.kind === 'runtime') {
+          const runtimeBin = path.join(destPath, bin.path);
+          if (!fs.existsSync(runtimeBin)) {
+            throw new Error(`[${pkg.id}] extracted runtime binary not found: ${bin.path}`);
+          }
+          fs.chmodSync(runtimeBin, 0o755);
+          continue;
+        }
+        const direct = path.join(destPath, bin.name);
+        if (!fs.existsSync(direct)) {
+          await extractBinaryFromPath(destPath, bin.path, destPath);
+        }
+        if (!fs.existsSync(direct)) {
+          throw new Error(`[${pkg.id}] extracted binary not found: ${bin.name}`);
+        }
+        fs.chmodSync(direct, 0o755);
+      }
+    }
+
+    const installedAt = new Date().toISOString();
+    const manifest = {
+      id: pkg.id,
+      kind: pkg.kind,
+      name: pkg.name,
+      version: pkg.version,
+      installType: 'binary',
+      bins: bins.map((bin) => bin.name),
+      platformArch: getPlatformArch(),
+      source: {
+        url: parsedUrl.toString(),
+        sha256: expectedHash,
+      },
+      installedAt,
+    };
+    fs.writeFileSync(path.join(destPath, 'manifest.json'), JSON.stringify(manifest, null, 2));
+    if (pkg.kind === 'runtime') {
+      fs.writeFileSync(path.join(destPath, 'runtime.json'), JSON.stringify({
+        runtime: pkg.id.replace(/^runtime:/, ''),
+        version: pkg.version,
+        platformArch: getPlatformArch(),
+        source: parsedUrl.toString(),
+        downloadedAt: installedAt,
+        bins: manifest.bins,
+      }, null, 2));
+    }
+
+    onProgress?.({ phase: 'complete', package: pkg.id, path: destPath });
+    return { success: true, path: destPath };
+  } catch (error) {
+    fs.rmSync(destPath, { recursive: true, force: true });
+    throw error;
+  } finally {
+    if (fs.existsSync(tempFile)) fs.unlinkSync(tempFile);
+  }
+}
 
 /**
  * GitHub raw content base URL
@@ -581,7 +746,6 @@ export async function downloadPackage(pkg, destPath, options = {}) {
 
   const registryPath = pkg.path; // e.g., 'catalog/stacks/slack' or 'catalog/skills/code-review.md'
   const isSingleFilePackage = (
-    pkg.kind === 'skill' ||
     pkg.kind === 'prompt' ||
     pkg.kind === 'workflow' ||
     registryPath.endsWith('.md')
@@ -623,6 +787,11 @@ export async function downloadPackage(pkg, destPath, options = {}) {
     fs.mkdirSync(destPath, { recursive: true });
   }
 
+  if (pkg.kind === 'skill') {
+    await downloadPackageDirectoryFromGitHub(registryPath, destPath, onProgress);
+    return { success: true, path: destPath };
+  }
+
   // For stacks, download source files from GitHub raw
   if (pkg.kind === 'stack' || registryPath.includes('/stacks/')) {
     await downloadStackFromGitHub(registryPath, destPath, onProgress);
@@ -630,6 +799,98 @@ export async function downloadPackage(pkg, destPath, options = {}) {
   }
 
   throw new Error(`Unsupported package type: ${registryPath}`);
+}
+
+function assertGitHubContentName(name, registryPath) {
+  if (
+    typeof name !== 'string' ||
+    !name ||
+    name === '.' ||
+    name === '..' ||
+    path.basename(name) !== name ||
+    name.includes('\0')
+  ) {
+    throw new Error(`Invalid package entry in ${registryPath}`);
+  }
+  return name;
+}
+
+async function writeGitHubContentFile(item, destination, registryPath) {
+  if (typeof item.download_url !== 'string') {
+    throw new Error(`Package file missing download URL: ${registryPath}/${item.name}`);
+  }
+
+  const downloadUrl = new URL(item.download_url);
+  if (downloadUrl.protocol !== 'https:') {
+    throw new Error(`Unsupported package file URL: ${item.download_url}`);
+  }
+
+  const response = await fetch(downloadUrl, {
+    headers: { 'User-Agent': 'rudi-cli/2.0' }
+  });
+  if (!response.ok) {
+    throw new Error(`Failed to download ${registryPath}/${item.name}: HTTP ${response.status}`);
+  }
+
+  const content = typeof response.arrayBuffer === 'function'
+    ? Buffer.from(await response.arrayBuffer())
+    : await response.text();
+  fs.writeFileSync(destination, content);
+}
+
+async function downloadGitHubContents(apiUrl, registryPath, destPath, onProgress) {
+  const response = await fetch(apiUrl, {
+    headers: {
+      'User-Agent': 'rudi-cli/2.0',
+      'Accept': 'application/vnd.github.v3+json'
+    }
+  });
+  if (!response.ok) {
+    throw new Error(`Package directory not found: ${registryPath} (HTTP ${response.status})`);
+  }
+
+  const contents = await response.json();
+  if (!Array.isArray(contents)) {
+    throw new Error(`Invalid package directory: ${registryPath}`);
+  }
+
+  fs.mkdirSync(destPath, { recursive: true });
+  for (const item of contents) {
+    const name = assertGitHubContentName(item?.name, registryPath);
+    const destination = path.join(destPath, name);
+    const childRegistryPath = `${registryPath}/${name}`;
+
+    if (item.type === 'file') {
+      await writeGitHubContentFile(item, destination, registryPath);
+      onProgress?.({ phase: 'downloading', file: childRegistryPath });
+      continue;
+    }
+
+    if (item.type === 'dir') {
+      if (typeof item.url !== 'string' || !item.url.startsWith('https://api.github.com/repos/learnrudi/registry/contents/')) {
+        throw new Error(`Invalid package directory URL: ${childRegistryPath}`);
+      }
+      await downloadGitHubContents(item.url, childRegistryPath, destination, onProgress);
+      continue;
+    }
+
+    throw new Error(`Unsupported package entry type in ${childRegistryPath}: ${item.type}`);
+  }
+}
+
+async function downloadPackageDirectoryFromGitHub(registryPath, destPath, onProgress) {
+  const normalizedPath = String(registryPath || '').replaceAll('\\', '/');
+  if (
+    !normalizedPath ||
+    normalizedPath.startsWith('/') ||
+    normalizedPath.split('/').some(segment => !segment || segment === '.' || segment === '..')
+  ) {
+    throw new Error(`Invalid registry package path: ${registryPath}`);
+  }
+
+  const apiUrl = `https://api.github.com/repos/learnrudi/registry/contents/${normalizedPath}`;
+  fs.rmSync(destPath, { recursive: true, force: true });
+  await downloadGitHubContents(apiUrl, normalizedPath, destPath, onProgress);
 }
 
 /**
@@ -663,18 +924,21 @@ async function downloadStackFromGitHub(registryPath, destPath, onProgress) {
     existingItems.set(item.name, item);
   }
 
-  // Download manifest.json (required)
-  const manifestItem = existingItems.get('manifest.json');
+  const manifestName = 'manifest.json';
+  const manifestItem = existingItems.get(manifestName);
   if (!manifestItem) {
-    throw new Error(`Stack missing manifest.json: ${registryPath}`);
+    throw new Error(`Stack missing ${manifestName}: ${registryPath}`);
   }
 
   const manifestResponse = await fetch(manifestItem.download_url, {
     headers: { 'User-Agent': 'rudi-cli/2.0' }
   });
+  if (!manifestResponse.ok) {
+    throw new Error(`Failed to download ${registryPath}/${manifestName}: HTTP ${manifestResponse.status}`);
+  }
   const manifest = await manifestResponse.json();
-  fs.writeFileSync(path.join(destPath, 'manifest.json'), JSON.stringify(manifest, null, 2));
-  onProgress?.({ phase: 'downloading', file: 'manifest.json' });
+  installCanonicalStackManifest(destPath, manifest);
+  onProgress?.({ phase: 'downloading', file: manifestName });
 
   // Download package.json if it exists
   const pkgJsonItem = existingItems.get('package.json');
@@ -687,6 +951,30 @@ async function downloadStackFromGitHub(registryPath, destPath, onProgress) {
       fs.writeFileSync(path.join(destPath, 'package.json'), pkgJson);
       onProgress?.({ phase: 'downloading', file: 'package.json' });
     }
+  }
+
+  // Preserve root package metadata required for deterministic installs and support.
+  const additionalRootFiles = [
+    'package-lock.json',
+    'pnpm-lock.yaml',
+    'yarn.lock',
+    'bun.lock',
+    'bun.lockb',
+    'README.md',
+    'LICENSE',
+  ];
+  for (const fileName of additionalRootFiles) {
+    const item = existingItems.get(fileName);
+    if (!item || item.type !== 'file') continue;
+
+    const response = await fetch(item.download_url, {
+      headers: { 'User-Agent': 'rudi-cli/2.0' }
+    });
+    if (!response.ok) {
+      throw new Error(`Failed to download ${registryPath}/${fileName}: HTTP ${response.status}`);
+    }
+    fs.writeFileSync(path.join(destPath, fileName), await response.text());
+    onProgress?.({ phase: 'downloading', file: fileName });
   }
 
   // Download .env.example if it exists

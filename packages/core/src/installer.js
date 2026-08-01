@@ -21,7 +21,13 @@ import {
   resolveNodeRuntimeBin,
   getPlatformArch
 } from '@learnrudi/env';
-import { downloadRuntime, downloadPackage, downloadTool, verifyHash } from '@learnrudi/registry-client';
+import {
+  downloadRuntime,
+  downloadPackage,
+  downloadResolvedPackage,
+  downloadTool,
+  verifyHash,
+} from '@learnrudi/registry-client';
 import { resolvePackage, getInstallOrder } from './resolver.js';
 import { writeLockfile } from './lockfile.js';
 import { createShimsForTool, removeShims } from './shims.js';
@@ -32,6 +38,23 @@ const DEFAULT_STACK_STATE_PATHS = ['runs'];
 const NPM_PACKAGE_PATTERN = /^(?:@[a-z0-9][a-z0-9._-]*\/)?[a-z0-9][a-z0-9._-]*(?:@[a-zA-Z0-9._~^>=<:+-][a-zA-Z0-9._~^>=<:+-]*)?$/;
 const PIP_PACKAGE_PATTERN = /^[A-Za-z0-9][A-Za-z0-9._-]*(?:\[[A-Za-z0-9_,.-]+])?(?:[<>=!~]=?[A-Za-z0-9.*+!_~:-]+)?$/;
 const SHELL_CONTROL_PATTERN = /[|&;<>()`$\\\n\r]/;
+
+export function getInstallPathForPackage(pkg) {
+  if (!pkg || typeof pkg.id !== 'string') {
+    throw new Error('Package metadata requires an id');
+  }
+
+  const [kind, name] = parsePackageId(pkg.id);
+  if (
+    kind === 'skill' &&
+    typeof pkg.path === 'string' &&
+    !pkg.path.replaceAll('\\', '/').endsWith('.md')
+  ) {
+    return path.join(PATHS.skills, name);
+  }
+
+  return getPackagePath(pkg.id);
+}
 
 function assertCommandArg(value, label) {
   if (typeof value !== 'string' || value.length === 0 || value.includes('\0')) {
@@ -723,7 +746,7 @@ export async function installPackage(id, options = {}) {
     return {
       success: true,
       id: resolved.id,
-      path: getPackagePath(resolved.id),
+      path: getInstallPathForPackage(resolved),
       alreadyInstalled: true
     };
   }
@@ -765,7 +788,7 @@ export async function installPackage(id, options = {}) {
   return {
     success: true,
     id: resolved.id,
-    path: getPackagePath(resolved.id),
+    path: getInstallPathForPackage(resolved),
     installed: results.map(r => r.id)
   };
 }
@@ -874,7 +897,7 @@ async function installSinglePackage(pkg, options = {}) {
     preserveStatePaths,
     onProgress,
   } = options;
-  const installPath = getPackagePath(pkg.id);
+  const installPath = getInstallPathForPackage(pkg);
   const pkgName = pkg.id.replace(/^(runtime|binary|agent):/, '');
   const isAgentNpm = pkg.kind === 'agent' && pkg.npmPackage;
 
@@ -1180,6 +1203,24 @@ async function installSinglePackage(pkg, options = {}) {
     const version = pkg.version?.replace(/\.x$/, '.0') || '1.0.0';
 
     try {
+      if (pkg.install?.source === 'download' && pkg.install?.url) {
+        await downloadResolvedPackage(pkg, installPath, {
+          onProgress: (progress) => onProgress?.({ ...progress, package: pkg.id }),
+        });
+
+        if (pkg.kind === 'binary' && withShims) {
+          const bins = Array.isArray(pkg.bins) ? pkg.bins : Object.keys(pkg.bins || {});
+          await createShimsForTool({
+            id: pkg.id,
+            installType: 'binary',
+            installDir: installPath,
+            bins,
+            name: pkgName,
+          });
+        }
+        return { success: true, id: pkg.id, path: installPath };
+      }
+
       if (pkg.kind === 'binary') {
         // Binaries: use upstream URLs from binary manifests (e.g., evermeet.cx for ffmpeg)
         await downloadTool(pkgName, installPath, {
@@ -1351,9 +1392,14 @@ export async function uninstallPackage(id) {
       removeShims(bins);
     }
 
-    // Skills, prompts, and workflows are single files, not directories
+    // Legacy skills/prompts/workflows are files; bundled skills are directories.
     if (SINGLE_FILE_KINDS.has(kind)) {
-      fs.unlinkSync(installPath);
+      const stat = fs.statSync(installPath);
+      if (stat.isDirectory()) {
+        fs.rmSync(installPath, { recursive: true });
+      } else {
+        fs.unlinkSync(installPath);
+      }
     } else {
       fs.rmSync(installPath, { recursive: true });
     }

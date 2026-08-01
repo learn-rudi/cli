@@ -3,10 +3,30 @@
  * Resolves package dependencies and version constraints
  */
 
-import { getPackage, getManifest } from '@learnrudi/registry-client';
-import { isPackageInstalled, parsePackageId } from '@learnrudi/env';
+import {
+  getPackage,
+  getManifest,
+  resolveRegistryPackageForPlatform,
+} from '@learnrudi/registry-client';
+import { getPlatformArch, isPackageInstalled, parsePackageId } from '@learnrudi/env';
 
 const SINGLE_FILE_KINDS = new Set(['skill', 'prompt', 'workflow']);
+
+async function getInstallableRegistryPackage(id) {
+  const pkg = await getPackage(id);
+  if (!pkg) return null;
+
+  const isCanonicalV2Package = Boolean(pkg.delivery && pkg.install?.source);
+  let manifest = null;
+  if (pkg.path && !SINGLE_FILE_KINDS.has(pkg.kind) && !isCanonicalV2Package) {
+    manifest = await getManifest(pkg);
+  }
+
+  const merged = manifest ? { ...pkg, ...manifest } : pkg;
+  return isCanonicalV2Package
+    ? resolveRegistryPackageForPlatform(merged, getPlatformArch())
+    : merged;
+}
 
 /**
  * Resolve a package and all its dependencies
@@ -20,20 +40,10 @@ export async function resolvePackage(id) {
   }
 
   // 2. Get package from registry (searches all kinds if no prefix)
-  const pkg = await getPackage(id);
-  if (!pkg) {
+  const mergedPkg = await getInstallableRegistryPackage(id);
+  if (!mergedPkg) {
     throw new Error(`Package not found: ${id}`);
   }
-
-  // For curated tools (with path field), fetch canonical manifest
-  // This ensures install-critical fields (npmPackage, bins, etc.) are available
-  let manifest = null;
-  if (pkg.path && !SINGLE_FILE_KINDS.has(pkg.kind)) {
-    manifest = await getManifest(pkg);
-  }
-
-  // Merge: index metadata + canonical manifest (manifest takes precedence)
-  const mergedPkg = manifest ? { ...pkg, ...manifest } : pkg;
 
   // Build full ID
   const fullId = mergedPkg.id?.includes(':') ? mergedPkg.id : `${mergedPkg.kind}:${mergedPkg.id || id.split(':').pop()}`;
@@ -70,7 +80,17 @@ export async function resolvePackage(id) {
     installDir: mergedPkg.installDir,
     installType: mergedPkg.installType,
     nativeInstaller: mergedPkg.nativeInstaller,
-    nativeBinPath: mergedPkg.nativeBinPath
+    nativeBinPath: mergedPkg.nativeBinPath,
+    // Canonical registry fields. Installed-state aliases above remain populated
+    // at the boundary so existing local manifests continue to work.
+    delivery: mergedPkg.delivery,
+    install: mergedPkg.install,
+    detect: mergedPkg.detect,
+    auth: mergedPkg.auth,
+    installHints: mergedPkg.installHints,
+    meta: mergedPkg.meta,
+    mcp: mergedPkg.mcp,
+    _resolved: mergedPkg._resolved
   };
 }
 
@@ -188,14 +208,13 @@ async function resolveDependencies(pkg) {
 
   for (const runtime of runtimes) {
     const runtimeId = runtime.startsWith('runtime:') ? runtime : `runtime:${runtime}`;
-    const runtimePkg = await getPackage(runtimeId);
+    const runtimePkg = await getInstallableRegistryPackage(runtimeId);
 
     if (runtimePkg) {
       dependencies.push({
+        ...runtimePkg,
         id: runtimeId,
         kind: 'runtime',
-        name: runtimePkg.name,
-        version: runtimePkg.version,
         installed: isPackageInstalled(runtimeId),
         dependencies: []
       });
@@ -210,14 +229,13 @@ async function resolveDependencies(pkg) {
       : binary.startsWith('tool:')
         ? binary.replace(/^tool:/, 'binary:')
         : `binary:${binary}`;
-    const binaryPkg = await getPackage(binaryId);
+    const binaryPkg = await getInstallableRegistryPackage(binaryId);
 
     if (binaryPkg) {
       dependencies.push({
+        ...binaryPkg,
         id: binaryId,
         kind: 'binary',
-        name: binaryPkg.name,
-        version: binaryPkg.version,
         installed: isPackageInstalled(binaryId),
         dependencies: []
       });
@@ -228,14 +246,13 @@ async function resolveDependencies(pkg) {
   const agents = pkg.requires?.agents || [];
   for (const agent of agents) {
     const agentId = agent.startsWith('agent:') ? agent : `agent:${agent}`;
-    const agentPkg = await getPackage(agentId);
+    const agentPkg = await getInstallableRegistryPackage(agentId);
 
     if (agentPkg) {
       dependencies.push({
+        ...agentPkg,
         id: agentId,
         kind: 'agent',
-        name: agentPkg.name,
-        version: agentPkg.version,
         installed: isPackageInstalled(agentId),
         dependencies: []
       });
@@ -246,19 +263,16 @@ async function resolveDependencies(pkg) {
   const requiredStacks = pkg.requires?.stacks || [];
   for (const stackName of requiredStacks) {
     const stackId = stackName.startsWith('stack:') ? stackName : `stack:${stackName}`;
-    const stackPkg = await getPackage(stackId);
+    const stackPkg = await getInstallableRegistryPackage(stackId);
     if (stackPkg) {
+      const stackDependencies = await resolveDependencies(stackPkg);
       dependencies.push({
+        ...stackPkg,
         id: stackId,
         kind: 'stack',
-        name: stackPkg.name,
-        version: stackPkg.version,
         installed: isPackageInstalled(stackId),
-        dependencies: []
+        dependencies: stackDependencies
       });
-      // Recursively resolve the stack's own dependencies
-      const stackDeps = await resolveDependencies(stackPkg);
-      dependencies.push(...stackDeps);
     }
   }
 
@@ -270,13 +284,12 @@ async function resolveDependencies(pkg) {
       : skillName.startsWith('prompt:')
         ? skillName.replace(/^prompt:/, 'skill:')
         : `skill:${skillName}`;
-    const skillPkg = await getPackage(skillId);
+    const skillPkg = await getInstallableRegistryPackage(skillId);
     if (skillPkg) {
       dependencies.push({
+        ...skillPkg,
         id: skillId,
         kind: 'skill',
-        name: skillPkg.name,
-        version: skillPkg.version,
         installed: isPackageInstalled(skillId),
         dependencies: []
       });

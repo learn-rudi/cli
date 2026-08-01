@@ -19,28 +19,29 @@ test('resolvePackage surfaces related skills without adding them to dependency i
   process.env.RUDI_REGISTRY_ROOT = registryRoot;
 
   writeJson(path.join(registryRoot, 'index.json'), {
+    schemaVersion: '2',
     packages: {
-      stacks: {
-        official: [
-          {
-            id: 'stack:video-editor',
-            name: 'Video Editor',
-            version: '1.0.0',
-            path: 'catalog/stacks/video-editor'
-          }
-        ]
+      'stack:video-editor': {
+        id: 'stack:video-editor',
+        kind: 'stack',
+        name: 'Video Editor',
+        version: '1.0.0',
+        delivery: 'remote',
+        install: { source: 'catalog', path: 'catalog/stacks/video-editor' },
+        runtime: 'node',
+        provides: { tools: ['video_render'] },
+        mcp: { transport: 'stdio', command: 'node', args: ['src/index.js'] },
+        related: { skills: ['skill:shortform-your-words-script'] },
       },
-      skills: {
-        official: [
-          {
-            id: 'skill:shortform-your-words-script',
-            name: 'Shortform Your Words Script',
-            version: '1.0.0',
-            path: 'catalog/skills/shortform-your-words-script.md'
-          }
-        ]
-      }
-    }
+      'skill:shortform-your-words-script': {
+        id: 'skill:shortform-your-words-script',
+        kind: 'skill',
+        name: 'Shortform Your Words Script',
+        version: '1.0.0',
+        delivery: 'remote',
+        install: { source: 'catalog', path: 'catalog/skills/shortform-your-words-script.md' },
+      },
+    },
   });
 
   writeJson(path.join(registryRoot, 'catalog/stacks/video-editor/manifest.json'), {
@@ -87,31 +88,26 @@ test('resolvePackage installs workflow-required skills as dependencies', async (
   process.env.RUDI_REGISTRY_ROOT = registryRoot;
 
   writeJson(path.join(registryRoot, 'index.json'), {
+    schemaVersion: '2',
     packages: {
-      workflows: {
-        official: [
-          {
-            id: 'workflow:daily-brief',
-            name: 'Daily Brief',
-            version: '1.0.0',
-            kind: 'workflow',
-            path: 'catalog/workflows/daily-brief.yaml',
-            requires: {
-              skills: ['shortform-your-words-script'],
-            },
-          },
-        ],
+      'workflow:daily-brief': {
+        id: 'workflow:daily-brief',
+        name: 'Daily Brief',
+        version: '1.0.0',
+        kind: 'workflow',
+        delivery: 'remote',
+        install: { source: 'catalog', path: 'catalog/workflows/daily-brief.yaml' },
+        requires: {
+          skills: ['shortform-your-words-script'],
+        },
       },
-      skills: {
-        official: [
-          {
-            id: 'skill:shortform-your-words-script',
-            name: 'Shortform Your Words Script',
-            version: '1.0.0',
-            kind: 'skill',
-            path: 'catalog/skills/shortform-your-words-script.md',
-          },
-        ],
+      'skill:shortform-your-words-script': {
+        id: 'skill:shortform-your-words-script',
+        name: 'Shortform Your Words Script',
+        version: '1.0.0',
+        kind: 'skill',
+        delivery: 'remote',
+        install: { source: 'catalog', path: 'catalog/skills/shortform-your-words-script.md' },
       },
     },
   });

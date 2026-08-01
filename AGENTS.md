@@ -3,7 +3,7 @@
 
 Local capability CLI, daemon lifecycle manager, and MCP router for RUDI.
 Node.js, plain JavaScript.
-Repo: `/Users/hoff/dev/RUDI/apps/cli` — `@learnrudi/cli`
+Repo: this repository root — `@learnrudi/cli`
 
 RUDI owns local tools, secrets, stack/tool index, daemon health, artifacts, and
 MCP access. Claude, Codex, Gemini, and other agent hosts own normal agent
@@ -109,8 +109,10 @@ not daemon ownership.
 ## Registry
 
 - **Index URL:** `https://raw.githubusercontent.com/learnrudi/registry/main/index.json`
+- **Remote contract:** schema version 2 only; there is no fallback index
+- **Stack metadata:** canonical `catalog/stacks/{id}/manifest.json`
 - **Binaries:** GitHub Releases from package repos
-- **Local dev fallback:** `file://` paths for local stack development
+- **Local development:** `file://` paths and `RUDI_REGISTRY_ROOT` checkouts
 
 ---
 
@@ -212,7 +214,7 @@ rudi parallel "task one" "task two" [--name "Batch"] [--provider claude] [--mode
 - **Legacy DB path:** `~/.rudi/rudi.db` (SQLite via better-sqlite3, used by legacy session/run-group surfaces)
 - **Daemon routes:** Legacy routes are still defined in `src/commands/serve.js` and `src/commands/agent/routes/` while migration proceeds.
 - **MCP router:** `src/router-mcp.js` exposes installed stack tools over MCP and must remain independent of Lite being open.
-- **Legacy Lite paths:** Lite consumes the daemon API via `httpBridge.ts` — see `/Users/hoff/dev/RUDI/apps/lite/AGENTS.md`
+- **Legacy Lite paths:** Lite consumes the daemon API via `httpBridge.ts` — see `../lite/AGENTS.md`
 - **Type contracts:** CLI returns JSON; Lite types in `src/types/agent.ts` must match CLI response shapes
 - **Sessions table columns:** `total_input_tokens` + `total_output_tokens` (NOT `total_tokens`)
 - **Run-group canonical source:** Always reference `src/commands/agent/routes/run-group.js` — docs may be stale

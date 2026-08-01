@@ -51,10 +51,11 @@ These block public release.
   - Owner: CLI
   - Fixed on 2026-06-03: package `files` allowlist narrowed to required runtime artifacts.
   - Exit criteria: `npm pack --dry-run` contains only `dist/index.cjs`, router files, package manifest, templates, README, license, and `package.json`.
-- [ ] CLI and registry use one registry index contract.
+- [x] CLI and registry use one registry index contract.
   - Owner: CLI and Registry
-  - Current issue: CLI consumes legacy root `index.json` sections, while registry also compiles a keyed v2 index.
-  - Exit criteria: one documented schema supports `stack`, `skill`, and `workflow`, and both repos test against it.
+  - Fixed on 2026-08-01: CLI consumes the schema-v2 keyed package map from the
+    canonical root `index.json`, with no alternate remote index fallback.
+  - Exit criteria: both repositories test the documented root-index contract.
 - [ ] Public installs use immutable package artifacts.
   - Owner: Registry
   - Current issue: stack installs can pull mutable GitHub `main` raw files.

@@ -69,23 +69,31 @@ test('updatePackage migrates install-local stack state unless preservation is ex
   const stackSource = path.join(registryRoot, 'catalog/stacks/state-demo');
   fs.mkdirSync(stackSource, { recursive: true });
   fs.writeFileSync(path.join(registryRoot, 'index.json'), JSON.stringify({
+    schemaVersion: '2',
     packages: {
-      stacks: {
-        official: [
-          {
-            id: 'stack:state-demo',
-            name: 'State Demo',
-            version: '1.0.0',
-            path: 'catalog/stacks/state-demo',
-          },
-        ],
+      'stack:state-demo': {
+        id: 'stack:state-demo',
+        kind: 'stack',
+        name: 'State Demo',
+        version: '1.0.0',
+        delivery: 'remote',
+        install: { source: 'catalog', path: 'catalog/stacks/state-demo' },
+        runtime: 'node',
+        provides: { tools: ['state_demo'] },
+        mcp: { transport: 'stdio', command: 'node', args: ['src/index.js'] },
       },
     },
   }, null, 2));
   fs.writeFileSync(path.join(stackSource, 'manifest.json'), JSON.stringify({
     id: 'stack:state-demo',
+    kind: 'stack',
     name: 'State Demo',
     version: '1.0.0',
+    delivery: 'remote',
+    install: { source: 'catalog', path: 'catalog/stacks/state-demo' },
+    runtime: 'node',
+    provides: { tools: ['state_demo'] },
+    mcp: { transport: 'stdio', command: 'node', args: ['src/index.js'] },
   }, null, 2));
 
   try {
@@ -136,16 +144,25 @@ test('installPackage fails missing binary downloads instead of creating placehol
   const registryRoot = path.join(root, 'registry');
   fs.mkdirSync(registryRoot, { recursive: true });
   fs.writeFileSync(path.join(registryRoot, 'index.json'), JSON.stringify({
+    schemaVersion: '2',
     packages: {
-      binaries: {
-        official: [
-          {
-            id: 'binary:ghost-tool',
-            name: 'Ghost Tool',
-            version: '1.0.0',
-            kind: 'binary',
+      'binary:ghost-tool': {
+        id: 'binary:ghost-tool',
+        kind: 'binary',
+        name: 'Ghost Tool',
+        version: '1.0.0',
+        delivery: 'remote',
+        install: {
+          source: 'download',
+          platforms: {
+            default: {
+              url: 'https://127.0.0.1:1/ghost-tool',
+              checksum: { algo: 'sha256', value: 'aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa' },
+              extract: { type: 'raw' },
+            },
           },
-        ],
+        },
+        bins: ['ghost-tool'],
       },
     },
   }, null, 2));
@@ -195,28 +212,29 @@ test('installPackage registers system binaries instead of downloading them', () 
   fs.writeFileSync(fakeTool, '#!/usr/bin/env bash\necho system-tool 1.0.0\n');
   fs.chmodSync(fakeTool, 0o755);
   fs.writeFileSync(path.join(registryRoot, 'index.json'), JSON.stringify({
+    schemaVersion: '2',
     packages: {
-      binaries: {
-        official: [
-          {
-            id: 'binary:system-tool',
-            name: 'System Tool',
-            version: 'system',
-            path: 'catalog/binaries/system-tool.json',
-          },
-        ],
+      'binary:system-tool': {
+        id: 'binary:system-tool',
+        kind: 'binary',
+        name: 'System Tool',
+        version: 'system',
+        delivery: 'system',
+        install: { source: 'system' },
+        bins: ['system-tool'],
+        detect: { command: 'system-tool --version' },
       },
     },
   }, null, 2));
   fs.writeFileSync(path.join(registryRoot, 'catalog', 'binaries', 'system-tool.json'), JSON.stringify({
     id: 'binary:system-tool',
+    kind: 'binary',
     name: 'System Tool',
     version: 'system',
-    installType: 'system',
-    managed: false,
-    binary: 'system-tool',
+    delivery: 'system',
+    install: { source: 'system' },
     bins: ['system-tool'],
-    checkCommand: 'system-tool --version',
+    detect: { command: 'system-tool --version' },
   }, null, 2));
 
   try {

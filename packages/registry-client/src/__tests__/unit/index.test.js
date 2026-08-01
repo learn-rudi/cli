@@ -168,7 +168,17 @@ test('downloadPackage local registry copy excludes generated stack state and dep
     fs.mkdirSync(path.join(stackRoot, '.test-rudi'), { recursive: true });
     fs.mkdirSync(path.join(stackRoot, 'node_modules', 'dep'), { recursive: true });
     fs.mkdirSync(path.join(stackRoot, 'composer', 'public', 'media'), { recursive: true });
-    fs.writeFileSync(path.join(stackRoot, 'manifest.json'), '{"id":"stack:demo"}');
+    fs.writeFileSync(path.join(stackRoot, 'manifest.json'), JSON.stringify({
+      id: 'stack:demo',
+      kind: 'stack',
+      name: 'Demo Stack',
+      version: '1.0.0',
+      delivery: 'remote',
+      install: { source: 'catalog', path: 'catalog/stacks/demo' },
+      runtime: 'node',
+      provides: { tools: [] },
+      mcp: { transport: 'stdio', command: 'node', args: ['src/index.js'] },
+    }));
     fs.writeFileSync(path.join(stackRoot, 'src', 'index.js'), 'export {};');
     fs.writeFileSync(path.join(stackRoot, 'runs', 'run-1', 'project.json'), '{}');
     fs.writeFileSync(path.join(stackRoot, 'outputs', 'render.mp4'), 'fake');
@@ -203,6 +213,69 @@ test('downloadPackage local registry copy excludes generated stack state and dep
       delete process.env.RUDI_REGISTRY_ROOT;
     } else {
       process.env.RUDI_REGISTRY_ROOT = previousRegistryRoot;
+    }
+    fs.rmSync(root, { recursive: true, force: true });
+  }
+});
+
+test('downloadPackage remote stack preserves root lockfiles and documentation', async () => {
+  const root = fs.mkdtempSync(path.join(os.tmpdir(), 'rudi-remote-registry-copy-'));
+  const destRoot = path.join(root, 'dest');
+  const previousFetch = globalThis.fetch;
+  const previousUseLocal = process.env.USE_LOCAL_REGISTRY;
+
+  try {
+    delete process.env.USE_LOCAL_REGISTRY;
+    globalThis.fetch = async (url) => {
+      const value = String(url);
+      if (value.includes('/contents/catalog/stacks/demo')) {
+        return Response.json([
+          { name: 'manifest.json', type: 'file', download_url: 'https://download.test/manifest.json' },
+          { name: 'package.json', type: 'file', download_url: 'https://download.test/package.json' },
+          { name: 'package-lock.json', type: 'file', download_url: 'https://download.test/package-lock.json' },
+          { name: 'README.md', type: 'file', download_url: 'https://download.test/README.md' },
+        ]);
+      }
+      if (value.endsWith('/manifest.json')) {
+        return Response.json({
+          id: 'stack:demo',
+          kind: 'stack',
+          name: 'Demo Stack',
+          version: '1.0.0',
+          delivery: 'remote',
+          install: { source: 'catalog', path: 'catalog/stacks/demo' },
+          runtime: 'node',
+          provides: { tools: [] },
+          mcp: { transport: 'stdio', command: 'node', args: ['src/index.js'] },
+        });
+      }
+      if (value.endsWith('/package.json')) {
+        return new Response('{"name":"demo"}');
+      }
+      if (value.endsWith('/package-lock.json')) {
+        return new Response('{"lockfileVersion":3}');
+      }
+      if (value.endsWith('/README.md')) {
+        return new Response('# Demo');
+      }
+      return new Response('not found', { status: 404 });
+    };
+
+    await downloadPackage({
+      id: 'stack:demo',
+      kind: 'stack',
+      name: 'demo',
+      path: 'catalog/stacks/demo',
+    }, destRoot);
+
+    assert.equal(fs.existsSync(path.join(destRoot, 'package-lock.json')), true);
+    assert.equal(fs.readFileSync(path.join(destRoot, 'README.md'), 'utf8'), '# Demo');
+  } finally {
+    globalThis.fetch = previousFetch;
+    if (previousUseLocal === undefined) {
+      delete process.env.USE_LOCAL_REGISTRY;
+    } else {
+      process.env.USE_LOCAL_REGISTRY = previousUseLocal;
     }
     fs.rmSync(root, { recursive: true, force: true });
   }
