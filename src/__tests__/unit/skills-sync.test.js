@@ -42,6 +42,19 @@ test('buildCodexSkillFiles normalizes RUDI skill metadata for Codex', () => {
   assert.match(files.openaiYaml, /default_prompt: "Use \$grill-with-docs/);
 });
 
+test('buildCodexSkillFiles humanizes a portable hyphen-case skill name for display', () => {
+  const files = buildCodexSkillFiles(
+    {
+      id: 'skill:design-system-extractor',
+      name: 'design-system-extractor',
+      description: 'Extract a website design system',
+    },
+    '---\nname: design-system-extractor\ndescription: Extract a website design system\n---\n\nRun the workflow.\n'
+  );
+
+  assert.match(files.openaiYaml, /display_name: "Design System Extractor"/);
+});
+
 test('syncCodexSkills creates native Codex skill wrappers for RUDI skills', async () => {
   const root = makeTempRoot('rudi-skills-sync-');
 
@@ -155,6 +168,48 @@ test('syncClaudeSkills creates native Claude skill wrappers for RUDI skills', as
     assert.equal(fs.existsSync(skillPath), true);
     assert.equal(fs.existsSync(openaiPath), false);
     assert.match(fs.readFileSync(skillPath, 'utf-8'), /name: "?Grill With Docs"?/);
+  } finally {
+    fs.rmSync(root, { recursive: true, force: true });
+  }
+});
+
+test('native skill sync preserves supported bundled resources for Codex and Claude', async () => {
+  const root = makeTempRoot('rudi-skills-sync-bundle-');
+
+  try {
+    const sourceDir = path.join(root, 'source', 'demo-bundle');
+    const source = path.join(sourceDir, 'SKILL.md');
+    const codexRoot = path.join(root, 'codex-skills');
+    const claudeRoot = path.join(root, 'claude-skills');
+    fs.mkdirSync(path.join(sourceDir, 'scripts'), { recursive: true });
+    fs.mkdirSync(path.join(sourceDir, 'references'), { recursive: true });
+    fs.mkdirSync(path.join(sourceDir, 'assets'), { recursive: true });
+    fs.writeFileSync(source, '---\nname: Demo Bundle\ndescription: Bundled resources\n---\n\nUse the bundle.\n');
+    fs.writeFileSync(path.join(sourceDir, 'scripts', 'extract.js'), 'export const extract = true;\n');
+    fs.writeFileSync(path.join(sourceDir, 'references', 'spec.json'), '{"demo":true}\n');
+    fs.writeFileSync(path.join(sourceDir, 'assets', 'sample.txt'), 'sample\n');
+
+    const skills = [
+      {
+        id: 'skill:demo-bundle',
+        kind: 'skill',
+        name: 'Demo Bundle',
+        description: 'Bundled resources',
+        source: 'rudi',
+        path: sourceDir,
+        entryPath: source,
+      },
+    ];
+
+    await syncCodexSkills({ codexRoot, skills });
+    await syncClaudeSkills({ claudeRoot, skills });
+
+    for (const targetRoot of [codexRoot, claudeRoot]) {
+      const target = path.join(targetRoot, 'demo-bundle');
+      assert.equal(fs.readFileSync(path.join(target, 'scripts', 'extract.js'), 'utf8'), 'export const extract = true;\n');
+      assert.equal(fs.readFileSync(path.join(target, 'references', 'spec.json'), 'utf8'), '{"demo":true}\n');
+      assert.equal(fs.readFileSync(path.join(target, 'assets', 'sample.txt'), 'utf8'), 'sample\n');
+    }
   } finally {
     fs.rmSync(root, { recursive: true, force: true });
   }

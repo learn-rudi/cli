@@ -2,8 +2,10 @@ import { test } from 'node:test';
 import assert from 'node:assert/strict';
 
 import {
+  activateInstalledStack,
   buildRelatedSkillInstallPlan,
   getRelatedSkillInstallMode,
+  syncRelatedSkillWrappers,
 } from '../../commands/install.js';
 
 const resolvedStack = {
@@ -45,4 +47,60 @@ test('buildRelatedSkillInstallPlan only installs missing related skills when exp
   const offer = buildRelatedSkillInstallPlan(resolvedStack, {});
   assert.equal(offer.mode, 'offer');
   assert.deepEqual(offer.toInstall, []);
+});
+
+test('activateInstalledStack indexes immediately when configured and defers when secrets are missing', async () => {
+  const calls = [];
+  const indexed = await activateInstalledStack(
+    'stack:rudi-share',
+    { missingSecrets: [] },
+    {
+      async indexAllStacks(options) {
+        calls.push(options);
+        return { indexed: 1, failed: 0, index: { byStack: {} } };
+      },
+    }
+  );
+
+  assert.equal(indexed.status, 'indexed');
+  assert.deepEqual(calls[0].stacks, ['stack:rudi-share']);
+  assert.equal(typeof calls[0].log, 'function');
+
+  const deferred = await activateInstalledStack(
+    'stack:rudi-share',
+    { missingSecrets: ['RUDI_SHARE_TOKEN'] },
+    { indexAllStacks: async () => assert.fail('must not index without required secrets') }
+  );
+  assert.deepEqual(deferred, {
+    status: 'pending_secrets',
+    missingSecrets: ['RUDI_SHARE_TOKEN'],
+  });
+});
+
+test('syncRelatedSkillWrappers creates non-destructive Codex and Claude wrappers for newly installed skills', async () => {
+  const calls = [];
+  const result = await syncRelatedSkillWrappers(
+    resolvedStack.relatedSkills,
+    [{
+      id: 'skill:shortform-your-words-script',
+      success: true,
+      path: '/tmp/shortform-your-words-script.md',
+    }],
+    [{ id: 'codex' }, { id: 'claude-code' }, { id: 'cursor' }],
+    {
+      async syncCodexSkills(options) {
+        calls.push(['codex', options]);
+        return { results: [{ action: 'created' }] };
+      },
+      async syncClaudeSkills(options) {
+        calls.push(['claude', options]);
+        return { results: [{ action: 'created' }] };
+      },
+    }
+  );
+
+  assert.deepEqual(calls.map((call) => call[0]), ['codex', 'claude']);
+  assert.equal(calls[0][1].force, false);
+  assert.equal(calls[0][1].skills[0].entryPath, '/tmp/shortform-your-words-script.md');
+  assert.deepEqual(result.targets, ['codex', 'claude']);
 });

@@ -12,10 +12,11 @@
 import * as fs from 'fs/promises';
 import * as fsSync from 'fs';
 import * as path from 'path';
-import { fetchIndex, installPackage, resolvePackage, checkAllDependencies, formatDependencyResults, addStack, removeStack, updateSecretStatus } from '@learnrudi/core';
+import { fetchIndex, installPackage, resolvePackage, checkAllDependencies, formatDependencyResults, addStack, removeStack, updateSecretStatus, indexAllStacks } from '@learnrudi/core';
 import { hasSecret, listSecrets, setSecret, getSecret } from '@learnrudi/secrets';
 import { getInstalledAgents } from '@learnrudi/mcp';
 import { runCommand } from '../utils/subprocess.js';
+import { syncClaudeSkills, syncCodexSkills } from './skills.js';
 
 /**
  * Load manifest from installed stack path
@@ -232,6 +233,77 @@ export function buildRelatedSkillInstallPlan(resolved, flags = {}) {
     missing,
     toInstall: mode === 'include' ? missing : [],
   };
+}
+
+export async function activateInstalledStack(stackId, options = {}, dependencies = {}) {
+  const missingSecrets = Array.isArray(options.missingSecrets)
+    ? [...new Set(options.missingSecrets.filter(Boolean))]
+    : [];
+  if (missingSecrets.length > 0) {
+    return { status: 'pending_secrets', missingSecrets };
+  }
+
+  const rebuild = dependencies.indexAllStacks || indexAllStacks;
+  const result = await rebuild({
+    stacks: [stackId],
+    log: typeof options.log === 'function' ? options.log : () => {},
+    timeout: 20000,
+  });
+  if (!result || result.failed > 0 || result.indexed !== 1) {
+    throw new Error(`Tool indexing failed for ${stackId}`);
+  }
+  return { status: 'indexed', result };
+}
+
+export async function syncRelatedSkillWrappers(
+  relatedSkills,
+  installResults,
+  installedAgents,
+  dependencies = {}
+) {
+  const successful = new Map(
+    (installResults || [])
+      .filter((result) => result?.success && result.path)
+      .map((result) => [result.id, result])
+  );
+  const skills = (relatedSkills || [])
+    .filter((skill) => successful.has(skill.id))
+    .map((skill) => {
+      const installed = successful.get(skill.id);
+      return {
+        ...skill,
+        source: 'rudi',
+        path: installed.path,
+        entryPath: installed.path,
+      };
+    });
+  if (skills.length === 0) return { targets: [], results: {}, errors: {} };
+
+  const agentIds = new Set((installedAgents || []).map((agent) => agent.id));
+  const targets = [];
+  const results = {};
+  const errors = {};
+  const codexSync = dependencies.syncCodexSkills || syncCodexSkills;
+  const claudeSync = dependencies.syncClaudeSkills || syncClaudeSkills;
+
+  if (agentIds.has('codex')) {
+    targets.push('codex');
+    try {
+      results.codex = await codexSync({ skills, force: false });
+    } catch (error) {
+      errors.codex = error instanceof Error ? error.message : String(error);
+    }
+  }
+  if ([...agentIds].some((id) => id === 'claude-code' || id === 'claude-desktop')) {
+    targets.push('claude');
+    try {
+      results.claude = await claudeSync({ skills, force: false });
+    } catch (error) {
+      errors.claude = error instanceof Error ? error.message : String(error);
+    }
+  }
+
+  return { targets, results, errors };
 }
 
 function printRelatedSkillSummary(plan) {
@@ -685,6 +757,13 @@ export async function cmdInstall(args, flags) {
       });
       stackRegistered = true;
       console.log(`  ✓ Updated rudi.json`);
+
+      const activation = await activateInstalledStack(result.id, {
+        missingSecrets: secretsCheck.missing,
+      });
+      if (activation.status === 'indexed') {
+        console.log(`  ✓ Indexed MCP tools`);
+      }
     } catch (stackError) {
       await cleanupFailedStackInstall(result.id, result.path, stackRegistered);
       throw stackError;
@@ -713,6 +792,20 @@ export async function cmdInstall(args, flags) {
         } else {
           console.log(`    - ${relatedResult.id} failed: ${relatedResult.error}`);
         }
+      }
+    }
+
+    const wrapperSync = await syncRelatedSkillWrappers(
+      relatedSkillPlan.relatedSkills,
+      relatedSkillResults,
+      getInstalledAgents()
+    );
+    for (const target of wrapperSync.targets) {
+      if (wrapperSync.errors[target]) {
+        console.log(`    - ${target} native skill sync failed: ${wrapperSync.errors[target]}`);
+        console.log(`      Retry with: rudi skills sync ${target}`);
+      } else {
+        console.log(`    - ${target} native skill wrapper synced`);
       }
     }
 
@@ -775,6 +868,7 @@ export async function cmdInstall(args, flags) {
           console.log(`     # Get yours: ${helpUrl}`);
         }
       }
+      console.log(`\n     Activate tools after configuring secrets: rudi index ${result.id}`);
       console.log(`\n     Check status: rudi secrets list`);
     } else if (found.length > 0) {
       console.log(`\n  1. Secrets: ✓ ${found.length} configured`);

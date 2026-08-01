@@ -21,6 +21,15 @@ function lowerFirst(value) {
   return `${value[0].toLowerCase()}${value.slice(1)}`;
 }
 
+function humanizeSkillDisplayName(value) {
+  const compact = compactText(value, 80);
+  if (!/^[a-z0-9]+(?:-[a-z0-9]+)*$/.test(compact)) return compact;
+  return compact
+    .split('-')
+    .map(part => `${part[0].toUpperCase()}${part.slice(1)}`)
+    .join(' ');
+}
+
 function yamlString(value) {
   return JSON.stringify(String(value || ''));
 }
@@ -59,6 +68,35 @@ function parseSimpleFrontmatter(frontmatter = '') {
   }
 
   return metadata;
+}
+
+const BUNDLED_SKILL_RESOURCE_DIRS = ['scripts', 'references', 'assets'];
+
+function copyBundledSkillResources(sourcePath, targetDir) {
+  if (path.basename(sourcePath) !== 'SKILL.md') return;
+
+  const sourceDir = path.dirname(sourcePath);
+  for (const resourceDir of BUNDLED_SKILL_RESOURCE_DIRS) {
+    const sourceResource = path.join(sourceDir, resourceDir);
+    const targetResource = path.join(targetDir, resourceDir);
+    fs.rmSync(targetResource, { recursive: true, force: true });
+
+    if (!fs.existsSync(sourceResource)) continue;
+    const rootStat = fs.lstatSync(sourceResource);
+    if (!rootStat.isDirectory() || rootStat.isSymbolicLink()) {
+      throw new Error(`Bundled skill resource must be a directory: ${sourceResource}`);
+    }
+
+    fs.cpSync(sourceResource, targetResource, {
+      recursive: true,
+      filter(candidate) {
+        if (fs.lstatSync(candidate).isSymbolicLink()) {
+          throw new Error(`Bundled skill resources cannot contain symbolic links: ${candidate}`);
+        }
+        return true;
+      },
+    });
+  }
 }
 
 function normalizeSkillName(pkg) {
@@ -100,7 +138,7 @@ export function buildCodexSkillFiles(pkg, sourceContent) {
   const baseFiles = buildClaudeSkillFiles(pkg, sourceContent);
   const { skillName } = baseFiles;
   const parsed = stripFrontmatter(sourceContent);
-  const displayName = compactText(parsed.metadata.name || pkg.name || skillName, 80);
+  const displayName = humanizeSkillDisplayName(parsed.metadata.name || pkg.name || skillName);
   const description = compactText(
     pkg.description || parsed.metadata.description || `${displayName} RUDI skill`,
     320
@@ -201,6 +239,7 @@ export async function syncCodexSkills(options = {}) {
 
     if (!dryRun) {
       fs.mkdirSync(path.dirname(openaiYamlPath), { recursive: true });
+      copyBundledSkillResources(sourcePath, targetDir);
       fs.writeFileSync(skillMdPath, files.skillMd);
       fs.writeFileSync(openaiYamlPath, files.openaiYaml);
     }
@@ -276,6 +315,7 @@ export async function syncClaudeSkills(options = {}) {
 
     if (!dryRun) {
       fs.mkdirSync(targetDir, { recursive: true });
+      copyBundledSkillResources(sourcePath, targetDir);
       fs.writeFileSync(skillMdPath, files.skillMd);
     }
 
