@@ -10,6 +10,7 @@ test('home json explains active lifecycle categories without secret values', asy
   process.env.RUDI_HOME = rudiHome;
 
   fs.mkdirSync(path.join(rudiHome, 'stacks', 'google-workspace'), { recursive: true });
+  fs.mkdirSync(path.join(rudiHome, 'apps', 'service-desk'), { recursive: true });
   fs.mkdirSync(path.join(rudiHome, 'state', 'stacks', 'google-workspace'), { recursive: true });
   fs.mkdirSync(path.join(rudiHome, 'logs'), { recursive: true });
   fs.mkdirSync(path.join(rudiHome, 'bins'), { recursive: true });
@@ -41,6 +42,9 @@ test('home json explains active lifecycle categories without secret values', asy
   assert.doesNotMatch(rendered, /do-not-print/u, 'secret values must not appear in home output');
 
   const data = JSON.parse(rendered);
+  assert.equal(data.entries.apps.lifecycle, 'installed-application');
+  assert.equal(data.entries.apps.cleanable, 'application-specific');
+  assert.equal(data.entries.apps.items, 1);
   assert.equal(data.entries.state.lifecycle, 'persistent-state');
   assert.equal(data.entries.state.sensitivity, 'sensitive');
   assert.equal(data.entries.secretsJson.lifecycle, 'secret-store');

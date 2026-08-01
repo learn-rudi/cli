@@ -59,6 +59,7 @@ workflows, but they are not the default RUDI product surface:
 ```
 ~/.rudi/                        # RUDI home directory
 ├── secrets.json                # Secrets file
+├── apps/                       # Installed machine-local application builds
 ├── stacks/                     # Installed stacks (MCP servers)
 ├── skills/                     # Installed skills
 ├── workflows/                  # Installed workflow definitions

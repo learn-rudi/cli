@@ -37,6 +37,9 @@ export const PATHS = {
   // Root
   home: RUDI_HOME,
 
+  // Installed machine-local applications
+  apps: path.join(RUDI_HOME, 'apps'),
+
   // Installed packages - shared with Studio for unified discovery
   packages: path.join(RUDI_HOME, 'packages'),
   stacks: path.join(RUDI_HOME, 'stacks'),     // Shared with Studio
@@ -225,6 +228,7 @@ export function isWindows() {
  */
 export function ensureDirectories() {
   const dirs = [
+    PATHS.apps,        // Installed machine-local applications
     PATHS.stacks,      // MCP servers (google-ai, notion-workspace, etc.)
     PATHS.skills,      // Reusable skills (formerly prompts)
     PATHS.workflows,   // Repeatable workflow definitions

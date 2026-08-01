@@ -11,6 +11,17 @@ import { PATHS, getInstalledPackages } from '@learnrudi/core';
 
 const HOME_LAYOUT = [
   {
+    key: 'apps',
+    name: 'apps/',
+    type: 'directory',
+    section: 'Installed Applications',
+    path: () => PATHS.apps,
+    lifecycle: 'installed-application',
+    sensitivity: 'normal',
+    cleanable: 'application-specific',
+    description: 'Installed machine-local RUDI application builds; use each application lifecycle command for changes.'
+  },
+  {
     key: 'stacks',
     name: 'stacks/',
     type: 'directory',
