@@ -13,6 +13,10 @@ const WORKDIR = process.cwd();
 
 const DEFAULT_TEST_ARGS = [
   '--test',
+  // Several integration-style unit tests intentionally override process-global
+  // RUDI registry/home variables. Run files serially so those isolated fixtures
+  // cannot redirect another file's resolver or installer mid-test.
+  '--test-concurrency=1',
   'src/__tests__/unit/*.test.js',
   'src/__tests__/e2e/*.test.js',
   'packages/*/src/__tests__/unit/*.test.js',
