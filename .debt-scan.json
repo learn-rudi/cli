@@ -144,6 +144,7 @@
         "packages/utils/src/index.js",
         "scripts/agent-debt-runner.mjs",
         "scripts/generate-manifest.js",
+        "scripts/generate-daemon-openapi.js",
         "scripts/generate-sidecar-openapi.js",
         "scripts/run-tests.js"
       ],
