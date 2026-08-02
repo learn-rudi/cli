@@ -9,7 +9,7 @@
         "kind": "runtime",
         "installDir": "bun",
         "basePath": "runtimes",
-        "installType": "binary",
+        "installType": "download",
         "commands": [
           {
             "name": "bun",
@@ -24,7 +24,7 @@
         "kind": "runtime",
         "installDir": "deno",
         "basePath": "runtimes",
-        "installType": "binary",
+        "installType": "download",
         "commands": [
           {
             "name": "deno",
@@ -39,7 +39,7 @@
         "kind": "runtime",
         "installDir": "node",
         "basePath": "runtimes",
-        "installType": "binary",
+        "installType": "download",
         "commands": [
           {
             "name": "node",
@@ -54,7 +54,7 @@
         "kind": "runtime",
         "installDir": "ollama",
         "basePath": "runtimes",
-        "installType": "binary",
+        "installType": "download",
         "commands": [
           {
             "name": "ollama",
@@ -69,7 +69,7 @@
         "kind": "runtime",
         "installDir": "python",
         "basePath": "runtimes",
-        "installType": "binary",
+        "installType": "download",
         "commands": [
           {
             "name": "python",
@@ -81,12 +81,27 @@
     ],
     "agents": [
       {
+        "id": "antigravity",
+        "name": "Antigravity CLI",
+        "kind": "agent",
+        "installDir": "antigravity",
+        "basePath": "agents",
+        "installType": "system",
+        "commands": [
+          {
+            "name": "agy",
+            "bin": "agy",
+            "args": null
+          }
+        ]
+      },
+      {
         "id": "claude",
         "name": "Claude Code",
         "kind": "agent",
         "installDir": "claude",
         "basePath": "agents",
-        "installType": "binary",
+        "installType": "system",
         "commands": [
           {
             "name": "claude",
@@ -99,13 +114,13 @@
         "id": "codex",
         "name": "OpenAI Codex",
         "kind": "agent",
-        "installDir": "codex",
-        "basePath": "agents",
-        "installType": "binary",
+        "installDir": "node",
+        "basePath": "runtimes",
+        "installType": "npm-global",
         "commands": [
           {
             "name": "codex",
-            "bin": "codex",
+            "bin": "bin/codex",
             "args": null
           }
         ]
@@ -114,18 +129,18 @@
         "id": "copilot",
         "name": "GitHub Copilot",
         "kind": "agent",
-        "installDir": "copilot",
-        "basePath": "agents",
-        "installType": "binary",
+        "installDir": "node",
+        "basePath": "runtimes",
+        "installType": "npm-global",
         "commands": [
           {
             "name": "copilot",
-            "bin": "copilot",
+            "bin": "bin/copilot",
             "args": null
           },
           {
             "name": "github-copilot-cli",
-            "bin": "github-copilot-cli",
+            "bin": "bin/github-copilot-cli",
             "args": null
           }
         ]
@@ -134,13 +149,13 @@
         "id": "gemini",
         "name": "Gemini CLI",
         "kind": "agent",
-        "installDir": "gemini",
-        "basePath": "agents",
-        "installType": "binary",
+        "installDir": "node",
+        "basePath": "runtimes",
+        "installType": "npm-global",
         "commands": [
           {
             "name": "gemini",
-            "bin": "gemini",
+            "bin": "bin/gemini",
             "args": null
           }
         ]
@@ -153,7 +168,7 @@
         "kind": "binary",
         "installDir": "chromium",
         "basePath": "binaries",
-        "installType": "binary",
+        "installType": "system",
         "commands": [
           {
             "name": "chromium",
@@ -168,7 +183,7 @@
         "kind": "binary",
         "installDir": "docker",
         "basePath": "binaries",
-        "installType": "binary",
+        "installType": "system",
         "commands": [
           {
             "name": "docker",
@@ -183,7 +198,7 @@
         "kind": "binary",
         "installDir": "ffmpeg",
         "basePath": "binaries",
-        "installType": "binary",
+        "installType": "system",
         "commands": [
           {
             "name": "ffmpeg",
@@ -198,7 +213,7 @@
         "kind": "binary",
         "installDir": "flyio",
         "basePath": "binaries",
-        "installType": "binary",
+        "installType": "npm",
         "commands": [
           {
             "name": "flyctl",
@@ -218,7 +233,7 @@
         "kind": "binary",
         "installDir": "git",
         "basePath": "binaries",
-        "installType": "binary",
+        "installType": "system",
         "commands": [
           {
             "name": "git",
@@ -233,7 +248,7 @@
         "kind": "binary",
         "installDir": "httpie",
         "basePath": "binaries",
-        "installType": "binary",
+        "installType": "pip",
         "commands": [
           {
             "name": "http",
@@ -253,7 +268,7 @@
         "kind": "binary",
         "installDir": "imagemagick",
         "basePath": "binaries",
-        "installType": "binary",
+        "installType": "system",
         "commands": [
           {
             "name": "imagemagick",
@@ -268,7 +283,7 @@
         "kind": "binary",
         "installDir": "jq",
         "basePath": "binaries",
-        "installType": "binary",
+        "installType": "download",
         "commands": [
           {
             "name": "jq",
@@ -283,7 +298,7 @@
         "kind": "binary",
         "installDir": "neonctl",
         "basePath": "binaries",
-        "installType": "binary",
+        "installType": "npm",
         "commands": [
           {
             "name": "neonctl",
@@ -303,7 +318,7 @@
         "kind": "binary",
         "installDir": "netlify",
         "basePath": "binaries",
-        "installType": "binary",
+        "installType": "npm",
         "commands": [
           {
             "name": "netlify",
@@ -323,7 +338,7 @@
         "kind": "binary",
         "installDir": "pandoc",
         "basePath": "binaries",
-        "installType": "binary",
+        "installType": "download",
         "commands": [
           {
             "name": "pandoc",
@@ -338,7 +353,7 @@
         "kind": "binary",
         "installDir": "pdftoppm",
         "basePath": "binaries",
-        "installType": "binary",
+        "installType": "system",
         "commands": [
           {
             "name": "pdftoppm",
@@ -353,7 +368,7 @@
         "kind": "binary",
         "installDir": "pdftotext",
         "basePath": "binaries",
-        "installType": "binary",
+        "installType": "system",
         "commands": [
           {
             "name": "pdftotext",
@@ -368,7 +383,7 @@
         "kind": "binary",
         "installDir": "playwright",
         "basePath": "binaries",
-        "installType": "binary",
+        "installType": "npm",
         "commands": [
           {
             "name": "playwright",
@@ -383,7 +398,7 @@
         "kind": "binary",
         "installDir": "psql",
         "basePath": "binaries",
-        "installType": "binary",
+        "installType": "system",
         "commands": [
           {
             "name": "psql",
@@ -398,7 +413,7 @@
         "kind": "binary",
         "installDir": "railway",
         "basePath": "binaries",
-        "installType": "binary",
+        "installType": "npm",
         "commands": [
           {
             "name": "railway",
@@ -413,7 +428,7 @@
         "kind": "binary",
         "installDir": "rclone",
         "basePath": "binaries",
-        "installType": "binary",
+        "installType": "download",
         "commands": [
           {
             "name": "rclone",
@@ -428,7 +443,7 @@
         "kind": "binary",
         "installDir": "ripgrep",
         "basePath": "binaries",
-        "installType": "binary",
+        "installType": "download",
         "commands": [
           {
             "name": "rg",
@@ -443,7 +458,7 @@
         "kind": "binary",
         "installDir": "sqlite",
         "basePath": "binaries",
-        "installType": "binary",
+        "installType": "system",
         "commands": [
           {
             "name": "sqlite3",
@@ -458,7 +473,7 @@
         "kind": "binary",
         "installDir": "supabase",
         "basePath": "binaries",
-        "installType": "binary",
+        "installType": "npm",
         "commands": [
           {
             "name": "supabase",
@@ -473,7 +488,7 @@
         "kind": "binary",
         "installDir": "tesseract",
         "basePath": "binaries",
-        "installType": "binary",
+        "installType": "system",
         "commands": [
           {
             "name": "tesseract",
@@ -488,7 +503,7 @@
         "kind": "binary",
         "installDir": "uv",
         "basePath": "binaries",
-        "installType": "binary",
+        "installType": "download",
         "commands": [
           {
             "name": "uv",
@@ -508,7 +523,7 @@
         "kind": "binary",
         "installDir": "vercel",
         "basePath": "binaries",
-        "installType": "binary",
+        "installType": "npm",
         "commands": [
           {
             "name": "vercel",
@@ -528,7 +543,7 @@
         "kind": "binary",
         "installDir": "whisper",
         "basePath": "binaries",
-        "installType": "binary",
+        "installType": "system",
         "commands": [
           {
             "name": "whisper",
@@ -543,7 +558,7 @@
         "kind": "binary",
         "installDir": "wrangler",
         "basePath": "binaries",
-        "installType": "binary",
+        "installType": "npm",
         "commands": [
           {
             "name": "wrangler",
@@ -558,7 +573,7 @@
         "kind": "binary",
         "installDir": "yq",
         "basePath": "binaries",
-        "installType": "binary",
+        "installType": "download",
         "commands": [
           {
             "name": "yq",
@@ -573,7 +588,7 @@
         "kind": "binary",
         "installDir": "yt-dlp",
         "basePath": "binaries",
-        "installType": "binary",
+        "installType": "download",
         "commands": [
           {
             "name": "yt-dlp",
