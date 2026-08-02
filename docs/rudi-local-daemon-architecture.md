@@ -2,7 +2,7 @@
 
 Date: 2026-05-17
 
-Status: planning document for a dedicated daemon hardening session
+Status: accepted target architecture and historical migration record
 
 Canonical repo: `/Users/hoff/dev/RUDI/apps/cli`
 
@@ -19,9 +19,23 @@ repositories, expose storage health, and coordinate safe maintenance, but it
 should not blur daemon lifecycle with database ownership or session-store
 repair policy.
 
-This document defines the target daemon shape and the checklist for migrating
-from the current sidecar implementation without breaking Lite, the CLI, or MCP
-agent integrations.
+This document defines the target daemon shape and records the earlier sidecar
+migration. [ADR 0001](adr/0001-retire-legacy-agent-execution.md) is authoritative
+for the accepted legacy-agent retirement boundary.
+
+## 2026-08-02 Retirement Reconciliation
+
+ADR 0001 supersedes every historical checklist item below that preserves or
+extends legacy agent execution, imported sessions, run groups, spawn-child,
+orchestration, spawn MCP, `/agent/*`, or `/sessions/*`. Those references remain
+only as migration history and are not compatibility requirements.
+
+The target is a slim internal daemon for health, auth, capability operations,
+and `/agent-host/v1`. It retains Agent Host detached RUDI workers, isolated
+workspaces, minimal launch/group projections in `agent-hosts.db`, bounded
+reconnect events, and durable artifacts. Provider-native sessions and
+transcripts remain authoritative. Existing `rudi.db` files remain on disk, but
+the CLI stops touching them.
 
 ## Core Decision
 
@@ -54,24 +68,26 @@ The daemon owns the local substrate:
 - local auth token and security boundary
 - storage health and repository access through a separate storage layer
 
-Claude, Codex, Gemini, and other agent products own agent execution:
+Claude, Codex, Gemini, and other agent products own provider execution:
 
 - prompt loops
-- agent process launch
-- agent session lifecycle
+- native model loops and provider session lifecycle
+- provider transcripts
 - model selection
-- run orchestration
 - permission UX inside their own agent surfaces
 
-RUDI should give those agents durable local tools, secrets, artifacts, and stack
-MCP access. It should not compete with them as an agent runner.
+RUDI gives those agents durable local tools, secrets, artifacts, stack MCP
+access, and the Agent Host launch boundary. Agent Host may dispatch detached
+RUDI workers and native CLI processes, but it owns only the isolated workspace,
+launch lifecycle, bounded reconnect cache, and launch/group projection. It does
+not own provider sessions, transcripts, or a cross-provider orchestration loop.
 
-Legacy compatibility surfaces remain in the current sidecar:
+The following current sidecar surfaces are retired, not compatibility surfaces:
 
-- Lite active-session views
-- imported Claude/Codex session history
-- existing `/agent/*`, `/sessions/*`, and run-group routes
-- old local agent spawn paths
+- imported Claude/Codex session history and session-only CLI commands
+- existing `/agent/*`, `/sessions/*`, and legacy run-group routes/events
+- legacy agent process supervision, spawn-child, orchestration, and spawn MCP
+- the checked-in Bot's legacy `/agent/*` client
 
 Stacks own domain behavior:
 
@@ -140,9 +156,17 @@ Lite UI       CLI commands       Claude / Codex / Gemini
 - Business logic lives in named operations, not route handlers.
 - MCP router compatibility must not depend on Lite being open.
 - Storage remains a separate layer from daemon lifecycle.
-- The target daemon must not deploy or supervise external AI agent processes.
-  Existing agent/run-group routes are compatibility debt until retired or
-  reduced to read-only/import surfaces.
+- The daemon may supervise Agent Host's detached RUDI workers, but it must not
+  own provider sessions, transcripts, model loops, or legacy orchestration.
+- No legacy agent or imported-session command, route, event, or process manager
+  remains callable after retirement.
+- `agent-hosts.db` stores only minimal launch/group projection. Normalized
+  content-bearing events are a bounded reconnect cache, not a transcript store.
+- Existing user `rudi.db` files are never automatically deleted; the CLI stops
+  reading or writing them.
+- `packages/db` remains only as an isolated Studio compatibility package until
+  Studio is retired or migrated. The CLI runtime and `@learnrudi/runner` do not
+  import it.
 - Installed stacks remain independently runnable through `rudi mcp <stack>`.
 - Provider-specific behavior stays in stacks unless a shared ownership decision
   is documented.
@@ -178,8 +202,7 @@ src/daemon/schemas/
   packages.js
   tools.js
   secrets.js
-  run-groups.js
-  sessions.js
+  agent-host.js
   jobs.js
   artifacts.js
   events.js
@@ -214,9 +237,8 @@ Checklist:
 
 - [x] Define stable error envelope.
 - [x] Define stable success envelope.
-- [ ] Keep current legacy responses compatible until Lite is migrated.
-- [ ] Add adapter helpers so old route handlers can return old shapes while new
-      operations use the standard envelope internally.
+- [ ] Apply the envelope to retained `/agent-host/v1` and capability routes.
+- [ ] Test retained response contracts before deleting legacy route schemas.
 - [x] Document all stable error codes.
 
 ### Request Context
@@ -253,7 +275,8 @@ Fields:
 - `toolIndexStatus`
 - `dbStatus`
 - `packageCounts`
-- `activeSessionCount`
+- `activeAgentHostLaunchCount`
+- `activeAgentHostWorkerCount`
 - `activeJobCount`
 
 Checklist:
@@ -336,78 +359,12 @@ Checklist:
 - [x] Return provider readiness as boolean status only.
 - [x] Preserve `rudi secrets` CLI compatibility.
 
-### Legacy Run Group
+### Retired Legacy Run Groups and Sessions
 
-Run groups are a compatibility surface from the older RUDI-as-agent-runner
-direction. They should stay documented and tested while Lite/CLI still consume
-them, but they are not a target daemon responsibility. New agent execution
-belongs to Claude, Codex, Gemini, or another agent host.
-
-Fields:
-
-- `id`
-- `name`
-- `status`
-- `cwd`
-- `provider`
-- `model`
-- `executionMode`
-- `createdAt`
-- `startedAt`
-- `completedAt`
-- `sessionIds`
-- `errors`
-- `aggregate`
-
-Statuses:
-
-- `queued`
-- `starting`
-- `running`
-- `completed`
-- `partial`
-- `failed`
-- `stopping`
-- `stopped`
-
-Checklist:
-
-- [ ] Classify run-group routes as legacy, read-only/import, or retired.
-- [ ] Avoid adding new daemon-owned agent deployment features here.
-- [ ] Keep stop idempotent while compatibility routes exist.
-- [x] Preserve current run-group REST contract.
-- [ ] Add contract tests for legacy response compatibility.
-
-### Legacy Agent Session
-
-Agent sessions are also a compatibility/import surface. The target daemon may
-index, search, and display imported Claude/Codex session history through the
-separate storage layer, but it should not own the running agent process.
-
-Fields:
-
-- `id`
-- `provider`
-- `model`
-- `cwd`
-- `status`
-- `pid`
-- `startedAt`
-- `endedAt`
-- `lastActivityAt`
-- `permissionMode`
-- `mcpConfig`
-- `cost`
-- `turns`
-- `lastError`
-
-Checklist:
-
-- [ ] Split imported session history from live process supervision.
-- [ ] Keep provider-specific parsing behind provider adapters.
-- [ ] Make legacy stop idempotent while compatibility routes exist.
-- [ ] Prevent session maintenance failures from blocking daemon readiness.
-- [ ] Define retirement path for daemon-launched agent processes.
+Legacy run-group and imported-session schemas are not part of the target daemon
+contract. Their commands, routes, events, process supervision, templates, and
+focused compatibility tests are deleted after the `/agent-host/v1` contract
+and tests are published. Existing `rudi.db` files are left untouched.
 
 ### Job
 
@@ -474,14 +431,14 @@ Event envelope:
 
 ```json
 {
-  "type": "run_group.session.started",
-  "id": "evt_...",
-  "ts": "2026-05-17T20:00:00.000Z",
-  "resource": {
-    "kind": "agent_session",
-    "id": "sess_..."
-  },
-  "data": {}
+  "type": "agent.event",
+  "launchId": "launch_...",
+  "provider": "codex",
+  "delta": false,
+  "event": {
+    "type": "assistant",
+    "content": []
+  }
 }
 ```
 
@@ -489,7 +446,7 @@ Checklist:
 
 - [ ] Define event names and payload schemas.
 - [ ] Version event payloads.
-- [ ] Keep WebSocket messages backward-compatible until Lite migrates.
+- [ ] Bound reconnect-cache retention and exclude raw provider transcripts.
 - [ ] Add tests for event serialization.
 
 ## Operation Layer
@@ -502,8 +459,7 @@ src/daemon/operations/
   packages.js
   tool-index.js
   secrets.js
-  run-groups.js
-  sessions.js
+  agent-host.js
   jobs.js
   artifacts.js
 ```
@@ -543,22 +499,23 @@ Secrets:
 - `listSecretStatus()`
 - `getSecretStatus(name)`
 
-Run groups:
+Agent Host:
 
-- `createRunGroup(input)`
-- `getRunGroup(id)`
-- `listRunGroups(filter)`
-- `stopRunGroup(id)`
-- `mergeRunGroup(id, input)`
-- `cleanupRunGroup(id, input)`
-
-Sessions:
-
-- `startAgentSession(input)`
-- `getAgentSession(id)`
-- `listAgentSessions(filter)`
-- `stopAgentSession(id)`
-- `repairStaleSessions()`
+- `listAgentHosts()`
+- `getAgentModels(provider)`
+- `dispatchAgentLaunch(input)`
+- `resumeAgentLaunch(id, input)`
+- `getAgentLaunch(id)`
+- `listAgentLaunches(filter)`
+- `readAgentLaunchEvents(id, cursor)`
+- `stopAgentLaunch(id)`
+- `diffAgentLaunch(id)`
+- `promoteAgentLaunch(id)`
+- `discardAgentLaunch(id)`
+- `dispatchAgentGroup(input)`
+- `getAgentGroup(id)`
+- `listAgentGroups(filter)`
+- `stopAgentGroup(id)`
 
 Jobs:
 
@@ -576,8 +533,8 @@ Artifacts:
 
 Checklist:
 
-- [ ] Move one operation at a time out of existing route files.
-- [ ] Keep old routes calling new operations.
+- [ ] Keep retained Agent Host operations independent of retired modules.
+- [ ] Delete old route adapters when the `/agent-host/v1` contract tests pass.
 - [ ] Add operation-level unit tests without HTTP.
 - [ ] Add route-level contract tests with HTTP mocks.
 - [ ] Document side effects for every operation.
@@ -594,8 +551,7 @@ src/daemon/routes/
   packages.js
   tools.js
   secrets.js
-  run-groups.js
-  sessions.js
+  agent-host.js
   jobs.js
   artifacts.js
   events.js
@@ -629,22 +585,23 @@ Secrets:
 
 - `GET /secrets/status`
 
-Run groups:
+Agent Host:
 
-- `POST /agent/run-group`
-- `GET /agent/run-groups`
-- `GET /agent/run-group/:id`
-- `GET /agent/run-group/:id/live`
-- `GET /agent/run-group/:id/diffs`
-- `POST /agent/run-group/:id/stop`
-- `POST /agent/run-group/:id/merge`
-- `POST /agent/run-group/:id/cleanup`
-
-Sessions:
-
-- `GET /sessions`
-- `GET /sessions/:id`
-- `POST /sessions/:id/stop`
+- `GET /agent-host/v1/hosts`
+- `GET /agent-host/v1/models/:provider`
+- `POST /agent-host/v1/launches`
+- `GET /agent-host/v1/launches`
+- `GET /agent-host/v1/launches/:id`
+- `POST /agent-host/v1/launches/:id/resume`
+- `GET /agent-host/v1/launches/:id/events`
+- `POST /agent-host/v1/launches/:id/stop`
+- `GET /agent-host/v1/launches/:id/diff`
+- `POST /agent-host/v1/launches/:id/promote`
+- `POST /agent-host/v1/launches/:id/discard`
+- `POST /agent-host/v1/groups`
+- `GET /agent-host/v1/groups`
+- `GET /agent-host/v1/groups/:id`
+- `POST /agent-host/v1/groups/:id/stop`
 
 Artifacts:
 
@@ -658,8 +615,9 @@ Events:
 
 Checklist:
 
-- [ ] Preserve current paths used by Lite.
-- [ ] Add new daemon paths as additive APIs.
+- [ ] Publish `/agent-host/v1` request, response, error, and event schemas.
+- [ ] Add contract tests for every retained `/agent-host/v1` endpoint before
+      deleting the old sidecar contracts.
 - [ ] Document every endpoint in OpenAPI.
 - [ ] Validate request schemas at ingress.
 - [ ] Return structured, stable errors.
@@ -705,43 +663,35 @@ Checklist:
 
 ## Storage Integration
 
-Storage remains separate from daemon lifecycle. The daemon should depend on a
-storage module/package through repositories and diagnostics; it should not own
-database repair policy inline with HTTP routes or launchd lifecycle.
+Storage remains separate from daemon lifecycle. Target Agent Host state is:
 
-Current storage owner:
+- `~/.rudi/state/agent-hosts.db` for the minimal launch/group projection;
+- `~/.rudi/artifacts/agent-launches/` for owned workspaces, bounded reconnect
+  events, stderr, diffs, and durable launch artifacts.
 
-- `@learnrudi/db` and related repository modules
-
-Potential future location:
-
-```text
-packages/storage/
-  db.js
-  migrations/
-  repositories/
-```
+`@learnrudi/db` and `rudi.db` are historical session storage, not target daemon
+storage. `packages/db` remains isolated only because checked-in Studio depends
+on it; the CLI entrypoint/runtime and `@learnrudi/runner` must not import it.
+Existing user `rudi.db` files remain untouched.
 
 Storage rules:
 
-- SQLite remains the local authoritative store.
+- Provider-native sessions and transcripts remain authoritative.
+- `agent-hosts.db` is an Agent Host lifecycle projection, not a transcript or
+  imported-session database.
 - Use WAL mode where appropriate.
-- Migrations are explicit and reversible where practical.
-- Filesystem-derived state can be cached, but the source of truth must be clear.
-- Integrity checks should be operational diagnostics, not part of hot request
-  paths.
-- Daemon readiness may report storage health, but storage maintenance failures
-  should not prevent unrelated tool/router functionality from starting.
+- Normalized content-bearing events use an explicit bounded retention policy.
+- Durable artifacts have explicit ownership and safe cleanup rules.
+- Studio compatibility storage cannot become a CLI or daemon dependency again.
 
 Checklist:
 
-- [ ] Document current database tables used by sidecar.
-- [ ] Add schema ownership map.
-- [ ] Add migration checklist.
-- [ ] Add `PRAGMA integrity_check` diagnostic command or health detail.
-- [ ] Define how stale process/session rows are repaired.
-- [ ] Define backup/restore expectations before destructive repair.
-- [ ] Split session import/search maintenance from daemon boot readiness.
+- [ ] Document and test the minimal `agent-hosts.db` projection.
+- [ ] Define and test reconnect-event retention bounds.
+- [ ] Test that CLI and daemon startup do not open `rudi.db` or import
+      `packages/db`.
+- [ ] Coordinate final `packages/db` deletion with Studio migration or
+      retirement.
 
 ## Security
 
@@ -779,7 +729,7 @@ Required signals:
 - auth failure logs without token values
 - operation logs for package install/update/remove
 - stack index success/failure logs
-- legacy agent/run-group compatibility logs while those routes exist
+- Agent Host launch and detached-worker lifecycle logs
 - job lifecycle logs
 - startup/shutdown logs
 
@@ -827,7 +777,8 @@ Checklist:
 
 - [x] Inventory every Lite API call.
 - [x] Map each Lite call to a daemon endpoint.
-- [x] Preserve existing response shapes until UI migration is complete.
+- [x] Preserve response shapes only for retained nonlegacy Lite routes during UI
+      migration.
 - [x] Add typed Lite client types generated from or validated against daemon
       schemas.
 - [x] Add UI fallback behavior for daemon unavailable.
@@ -841,8 +792,8 @@ CLI commands should either:
 - call the daemon when they need local service status, package/tool state,
   artifact handoffs, or storage-backed read models.
 
-CLI commands should not create new daemon-owned agent deployment paths. Claude,
-Codex, and other agent hosts own live agent execution.
+CLI Agent Host commands may launch native providers directly or through
+detached RUDI workers. Provider sessions and transcripts remain provider-owned.
 
 Checklist:
 
@@ -860,7 +811,8 @@ Checklist:
 - [ ] Add a higher-level onboarding wrapper, for example `rudi connect
       <agent>`, that runs MCP integration, instruction dry-run/install, router
       smoke, and daemon status checks as one user-facing flow.
-- [ ] Mark legacy agent-launch commands as compatibility or retire them.
+- [ ] Remove every legacy command and expose only core commands, advanced
+      commands, and internal daemon entrypoints.
 
 ## Always-On Lifecycle
 
@@ -977,28 +929,28 @@ Checklist:
 
 | ID | Area | Status | Severity | Debt | Cleanup Trigger |
 |---|---|---|---|---|---|
-| DAEMON-DEBT-001 | `serve.js` size | Open | P1 | Sidecar routing, startup, runtime wiring, and some policy live in one large command file. | Extract schemas, operations, routes, and runtime modules while preserving routes. |
+| DAEMON-DEBT-001 | `serve.js` size | Open | P1 | Sidecar routing, startup, runtime wiring, and some policy live in one large command file. | Extract schemas, operations, routes, and runtime modules while preserving only retained routes. |
 | DAEMON-DEBT-002 | Contract drift | Open | P1 | OpenAPI, route handlers, tests, and Lite client expectations can drift. | Shared schema source or schema snapshot tests. |
 | DAEMON-DEBT-003 | Lifecycle naming | Open | P2 | "Lite sidecar" name undersells the actual daemon/control-plane role. | Rename docs and internal modules to daemon while preserving `rudi serve`. |
 | DAEMON-DEBT-004 | Tool index failure UX | Open | P2 | `rudi index` reports some stack failures but not enough structured status for UI/agents. | Add index failure schema and daemon status endpoint. |
 | DAEMON-DEBT-005 | Remote mode ambiguity | Open | P1 | Another MacBook can be a worker, but current daemon is localhost/local-state only. | Remote-worker design before host binding changes. |
 | DAEMON-DEBT-006 | Shim drift | Open | P2 | User shell shim can point at stale CLI paths. | Add doctor check and shim repair validation. |
-| DAEMON-DEBT-007 | Route contract drift | Open | P1 | Implemented routes exceed `src/contracts/sidecar-openapi.js` coverage, especially permissions, packages, orchestration, admin, analytics, and parts of agent lifecycle. | Bring all stable routes under shared schemas and OpenAPI snapshots before route relocation. |
+| DAEMON-DEBT-007 | Route contract drift | Open | P1 | Retained daemon routes, especially `/agent-host/v1`, exceed current shared schema and OpenAPI coverage; legacy orchestration routes are retired. | Publish and test retained contracts, then delete legacy routes and their sidecar contract entries under ADR 0001. |
 | DAEMON-DEBT-008 | Token-in-URL serving | Open | P1 | Lite builds `/fs/serve?path=...&token=...`, which violates the target rule that secrets never appear in URLs. | Replace with header-authenticated blob/artifact serving or short-lived non-secret artifact URLs. |
 | DAEMON-DEBT-009 | WebSocket event drift | Open | P2 | Lite listens for `terminal:error`, but the server does not currently broadcast it; package events are emitted without a known Lite consumer; `ws:*` events are client-internal. | Define server event schemas and separate daemon events from Lite bridge lifecycle events. |
-| DAEMON-DEBT-010 | Legacy status vocabulary drift | Open | P2 | Legacy run-group schemas mention `queued`, `starting`, and `stopping`, while current DB schema uses `pending`, `running`, `completed`, `partial`, `failed`, `stopped`. | Define compatibility adapters or retire the route family before changing persistent schema. |
-| DAEMON-DEBT-011 | Admin endpoint classification | Open | P2 | Backfill and repair endpoints are authenticated but ad hoc and not represented in the baseline API contract. | Classify as internal admin operations or hide behind a daemon admin contract. |
+| DAEMON-DEBT-010 | Legacy status vocabulary drift | Superseded | P2 | Legacy run-group schemas and DB statuses disagree. ADR 0001 retires both from the CLI runtime. | Delete the route family, schemas, and focused tests; do not add compatibility adapters. |
+| DAEMON-DEBT-011 | Admin endpoint classification | Retirement approved | P2 | Legacy session backfill and repair endpoints are authenticated but ad hoc and outside the target daemon boundary. | Delete session backfill/repair endpoints under ADR 0001; classify only retained admin operations. |
 | DAEMON-DEBT-012 | RUDI-owned process supervisor split | Open | P1 | Terminal tasks, package jobs, stack probes, and file watchers are in memory, while SQLite stores durable runtime state; restart repair is partial. Target architecture excludes external AI agent process ownership. | Extract supervisor boundaries for RUDI-owned jobs only and define restart ownership/repair semantics. |
 | DAEMON-DEBT-013 | Package job durability | Open | P2 | Package install jobs are stored in an in-memory map, but target jobs require bounded, inspectable lifecycle state. | Persist long-running daemon jobs or explicitly classify package jobs as ephemeral. |
-| DAEMON-DEBT-014 | Legacy route module location | Open | P2 | Several Lite-facing route modules still physically live under `src/commands/serve/routes` and are re-exported through `src/daemon/routes/index.js`. The daemon ownership boundary exists, but the files have not all moved. | Move legacy route modules to `src/daemon/routes` in small slices, preserve route behavior, update imports/tests, and remove the transitional re-export once callers no longer need it. |
+| DAEMON-DEBT-014 | Legacy route module location | Superseded | P2 | Retired route modules still live under `src/commands/serve` and transitional re-exports blur the daemon boundary. | Delete retired modules and re-exports under ADR 0001; move only retained daemon routes when necessary. |
 | DAEMON-DEBT-015 | LaunchAgent lifecycle verification | Open | P2 | `rudi daemon install`, `uninstall`, managed `status`, `start`, `stop`, and `restart` are implemented and live-smoked. Remaining gaps are reboot/login verification, packaged-binary version checks, and active child-process restart semantics. | Run reboot/login smoke and close remaining restart-ownership questions. |
 | DAEMON-DEBT-016 | Runtime smoke coverage | Open | P2 | Phase 4 and Phase 5 have isolated manual smoke commands and the LaunchAgent path has a live manual smoke, but this is not yet committed as an automated or repeatable manual runbook. | Add a non-flaky isolated `RUDI_HOME` integration test or CI-safe/manual smoke script for daemon lifecycle. |
 | DAEMON-DEBT-017 | Codex desktop app verification | Open | P2 | `rudi integrate codex` now targets Codex `~/.codex/config.toml`, matching current Codex CLI and IDE extension MCP docs, but the macOS Codex desktop app integration path still needs a real app smoke test. | Verify Codex desktop app discovers the `rudi` MCP server from `config.toml` or document any separate app-server integration path. |
-| DAEMON-DEBT-018 | Session DB maintenance warnings | Open | P1 | The daemon reports DB readiness and `sqlite3 PRAGMA integrity_check` returned `ok`, but startup reconciliation and session ingestion still log `database disk image is malformed` for Codex/Claude session maintenance. | Isolate the failing table/index/query, add a repair or rebuild path, and prevent maintenance jobs from delaying daemon readiness. |
+| DAEMON-DEBT-018 | Session DB maintenance warnings | Retirement approved | P1 | Legacy startup reconciliation and session ingestion can log `database disk image is malformed` even when `sqlite3 PRAGMA integrity_check` returns `ok`. | Remove session maintenance from daemon startup; leave existing `rudi.db` files untouched. |
 | DAEMON-DEBT-019 | Residual stack index failures | Open | P2 | Tool index improved from 3 failures to 2 after local config repair. Remaining failures are expected missing `SLACK_BOT_TOKEN` and `stack:codebase-memory` timing out on MCP `tools/list` even after 60s with large scan logs. | Improve missing-secret UX and update/isolate the codebase-memory stack so it responds to MCP discovery within daemon index budgets. |
 | DAEMON-DEBT-020 | Legacy LaunchAgent migration | Open | P2 | A legacy `com.rudi.sidecar` LaunchAgent can run a second `rudi serve` alongside `com.learnrudi.daemon`, causing port-file and SQLite contention. The new install path stops legacy labels and this machine's legacy plist was disabled, but migration still needs a doctor check/release note. | Add `rudi doctor` detection and a documented cleanup path for legacy LaunchAgents. |
-| DAEMON-DEBT-021 | Legacy agent deployment retirement | Open | P1 | Existing `/agent/*`, run-group, spawn-child, orchestration, and active-session routes reflect the older RUDI-as-agent-runner direction. Target architecture delegates live agent execution to Claude, Codex, Gemini, and other agent hosts. | Classify each route/CLI command as retire, read-only/import, or compatibility; stop adding daemon-owned agent launch features. |
-| DAEMON-DEBT-022 | Storage boundary hardening | Open | P1 | Storage health, session import/search, and repair concerns are currently interleaved with daemon startup and readiness. Target architecture keeps storage as a separate layer used by the daemon, not owned by daemon lifecycle. | Define storage owner modules, health contract, repair commands, and startup isolation tests. |
+| DAEMON-DEBT-021 | Legacy agent deployment retirement | Retirement approved | P1 | Existing `/agent/*`, run-group, spawn-child, orchestration, and active-session routes reflect the older RUDI-as-agent-runner direction. | Apply ADR 0001 after extracting retained Agent Host dependencies and publishing the `/agent-host/v1` contract tests. |
+| DAEMON-DEBT-022 | Storage boundary hardening | Retirement approved | P1 | Legacy `rudi.db` session import/search and repair are interleaved with daemon startup; Studio still depends on `packages/db`. | Remove legacy storage work from the daemon, isolate `packages/db` for Studio only, and test that CLI runtime no longer imports or opens it. |
 | DAEMON-DEBT-023 | Agent onboarding wrapper | Open | P2 | `rudi integrate <agent>` now owns MCP router config and `rudi instructions <agent>` owns the managed instruction block, but a new user still needs to know the sequence. | Add `rudi connect <agent>` or installer onboarding that performs integration, instruction install/print, daemon status, router smoke, and restart guidance. |
 
 Debt tracking rule:
@@ -1181,7 +1133,7 @@ Current storage tables touched by sidecar surfaces:
 - Current `sessions.status` values are `active`, `archived`, and `deleted`;
   process liveness is represented separately in runtime state tables.
 
-Current contract and compatibility constraints:
+Historical contract and compatibility inventory (non-normative):
 
 - `src/contracts/sidecar-openapi.js` exists, but it covers only part of the
   implemented sidecar surface. It currently omits or under-specifies multiple
@@ -1190,8 +1142,9 @@ Current contract and compatibility constraints:
 - `src/commands/agent/index.js` composes agent route modules in this order:
   start, lifecycle, permissions, worktree, run-group, orchestrate, spawn-child.
 - `ensurePermissionHook(log)` is installed when agent handlers are created.
-- Lite path compatibility must be preserved until `httpBridge.ts` is migrated
-  to generated or schema-validated daemon client types.
+- Lite path compatibility was preserved during the earlier `httpBridge.ts`
+  migration. ADR 0001 supersedes that requirement for retired routes; only
+  retained nonlegacy daemon routes keep stable client contracts.
 - The MCP router must stay independent from daemon uptime. The daemon may add
   index operations, but the router must still read the cache and launch stacks
   directly.
@@ -1278,13 +1231,13 @@ Exit gate:
   protocol selection, connection logging, JSON message dispatch, and disconnect
   cleanup.
 - `src/daemon/runtime/process-manager.js` currently owns legacy in-memory
-  agent-process and resume-session indexes. Target architecture should narrow
-  this to RUDI-owned local jobs, stack probes, terminals, and compatibility
-  cleanup while Claude/Codex own live agent execution.
+  agent-process and resume-session indexes. ADR 0001 deletes those indexes and
+  their cleanup; retained supervision is limited to detached Agent Host workers
+  and RUDI-owned jobs or stack probes.
 - `src/daemon/runtime/shutdown.js` closes the HTTP server and WebSocket server
-  before running bounded cleanup for connection files, legacy agent processes
-  while compatibility routes exist, terminal sessions, file watchers,
-  suggestion timers, package jobs, session watchers, and the idle reaper.
+  before bounded cleanup. The target cleanup covers daemon connection files,
+  detached Agent Host workers, and RUDI-owned jobs or resources. Legacy agent
+  processes, session watchers, resume indexes, and the idle reaper are deleted.
 - No new bounded durable job queue was added in this slice. Package install jobs
   remain explicitly tracked as `DAEMON-DEBT-013` until the package-job durability
   decision is made.
@@ -1436,27 +1389,18 @@ Exit gate:
   `database disk image is malformed` warnings despite `PRAGMA integrity_check`
   returning `ok`. This remains `DAEMON-DEBT-018`.
 
-#### Boundary Update: Agents and Storage (2026-05-17)
+#### Accepted Boundary Update: Agents and Storage (2026-08-02)
 
-- Storage and daemon lifecycle are separate. The daemon should expose storage
-  status and use storage repositories, but session-store maintenance and repair
-  belong to the storage layer.
-- RUDI is moving away from deploying agents. Live agent execution should be
-  owned by Claude, Codex, Gemini, and other agent hosts. RUDI's role is to
-  expose local MCP tools, secrets, artifacts, and stack capabilities to those
-  hosts.
-- Existing agent-launch, run-group, orchestration, spawn-child, and active
-  session routes remain compatibility debt until each route is classified as
-  retired, read-only/import, or temporarily supported.
-- Tests still needed:
-  - daemon boot/readiness continues when session import or storage maintenance
-    fails
-  - storage health and repair commands are tested separately from daemon
-    lifecycle
-  - Codex and Claude can discover `rudi` MCP tools through the router without
-    any daemon-owned agent launch path
-  - legacy `/agent/*` and run-group routes keep current response compatibility
-    until retired
+- ADR 0001 retires legacy agent execution and imported-session ownership; there
+  is no read-only or temporary compatibility tier.
+- Before deletion, retained provider helpers and normalizers move under
+  `src/agent-host/`, the neutral repo-root helper is extracted, and
+  `sidecar-client` becomes a daemon-only client.
+- The current `/agent-host/v1` contract and tests must be published before old
+  sidecar contracts and focused tests are deleted.
+- `packages/db` stays only as an isolated Studio compatibility package until
+  Studio migrates or retires. The checked-in Bot is a retired `/agent/*`
+  consumer. Existing user `rudi.db` files are left in place and ignored.
 
 #### Phase 5 Lite and MCP Integration (2026-05-17)
 
@@ -1470,9 +1414,8 @@ Exit gate:
 - Lite tests cover the daemon client and offline connection gate state.
 - MCP router independence was verified by source scan and syntax check:
   `src/router-mcp.js` continues to read local config/tool-index directly and has
-  no sidecar daemon dependency. `src/spawn-mcp.js` remains intentionally
-  sidecar-bound through explicit `RUDI_SIDECAR_URL`, `RUDI_SIDECAR_TOKEN`, and
-  `RUDI_SESSION_ID` environment variables.
+  no sidecar daemon dependency. The legacy sidecar-bound `src/spawn-mcp.js` is
+  retired by ADR 0001.
 
 ### Phase 6: Remote Worker Design
 
@@ -1507,18 +1450,11 @@ Run before declaring daemon work complete:
 - [ ] Secrets are not printed in logs or responses.
 - [ ] Invalid auth returns stable error.
 - [ ] Stale port/token behavior is handled.
-- [ ] Database integrity diagnostic documented.
+- [ ] `agent-hosts.db` integrity diagnostic documented without opening or
+      repairing legacy `rudi.db`.
 
 ## Next Session Starting Point
 
-Start the implementation session with Phase 0.
-
-Suggested first task:
-
-> Inventory current `rudi serve` routes, WebSocket messages, Lite consumers, CLI
-> consumers, and MCP router/tool-index dependencies. Update this document with
-> exact file paths and current behavior before moving code.
-
-Do not begin the daemon refactor by rewriting the server. The first safe change
-is to define schemas and extract one low-risk operation, then prove compatibility
-with tests.
+Execute ADR 0001 in dependency order: extract the retained Agent Host helpers,
+publish and test the `/agent-host/v1` contract, then delete the legacy surface.
+Do not add compatibility shims or touch existing user `rudi.db` files.
