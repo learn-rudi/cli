@@ -1,7 +1,7 @@
 import {
   buildArgs,
   buildSubcommandArgs,
-} from '../../commands/agent/providers/index.js';
+} from './catalog.js';
 import {
   finishPlan,
   permissionArgs,

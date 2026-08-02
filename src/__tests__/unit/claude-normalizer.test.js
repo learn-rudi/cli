@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict';
 import { describe, test } from 'node:test';
 
-import { normalize } from '../../commands/agent/normalizers/claude.js';
+import { normalize } from '../../agent-host/events/providers/claude.js';
 
 describe('claude normalizer', () => {
   test('normalizes native rate-limit events with typed reset and overage metadata', () => {

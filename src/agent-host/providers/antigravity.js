@@ -1,4 +1,4 @@
-import { buildArgs } from '../../commands/agent/providers/index.js';
+import { buildArgs } from './catalog.js';
 import {
   finishPlan,
   permissionArgs,

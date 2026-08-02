@@ -1,7 +1,7 @@
 import {
   createNormalizer,
   normalizeEvent,
-} from '../../commands/agent/normalizers/index.js';
+} from './providers/index.js';
 import { normalizeAntigravityEvent } from './antigravity.js';
 import { normalizeGeminiEvent } from './gemini.js';
 

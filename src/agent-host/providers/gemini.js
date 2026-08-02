@@ -1,7 +1,7 @@
 import fs from 'node:fs';
 import path from 'node:path';
 
-import { buildArgs } from '../../commands/agent/providers/index.js';
+import { buildArgs } from './catalog.js';
 import {
   buildProviderEnvironment,
   finishPlan,

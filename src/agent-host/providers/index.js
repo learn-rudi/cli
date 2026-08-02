@@ -2,7 +2,7 @@ import {
   listProviders,
   loadProviderConfig,
   resolveProviderBinary,
-} from '../../commands/agent/providers/index.js';
+} from './catalog.js';
 
 import { buildAntigravityPlan } from './antigravity.js';
 import { buildClaudePlan } from './claude.js';

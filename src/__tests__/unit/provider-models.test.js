@@ -9,7 +9,7 @@ import {
   listProviders,
   loadProviderConfig,
   resolveModel,
-} from '../../commands/agent/providers/index.js';
+} from '../../agent-host/providers/catalog.js';
 
 describe('frontier agent provider registry', () => {
   test('registers all native frontier host contracts', () => {

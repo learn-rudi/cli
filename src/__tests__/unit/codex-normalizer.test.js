@@ -2,7 +2,7 @@ import assert from 'node:assert/strict';
 import { describe, test } from 'node:test';
 import { EventEmitter } from 'node:events';
 
-import { normalize } from '../../commands/agent/normalizers/codex.js';
+import { normalize } from '../../agent-host/events/providers/codex.js';
 import { attachStdoutHandler } from '../../commands/agent/process-io.js';
 import {
   flushDbWrites,

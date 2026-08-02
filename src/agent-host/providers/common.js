@@ -8,7 +8,7 @@ import {
   getPermissionArgs,
   loadProviderConfig,
   resolveModel,
-} from '../../commands/agent/providers/index.js';
+} from './catalog.js';
 
 const MAX_PROMPT_BYTES = 10 * 1024 * 1024;
 
