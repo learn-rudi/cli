@@ -2,7 +2,7 @@
 
 Date: 2026-08-02
 
-Status: In progress
+Status: Complete
 
 Architecture decision: [ADR 0001](../adr/0001-retire-legacy-agent-execution.md)
 
@@ -111,10 +111,14 @@ Implementation evidence:
   client, and daemon lifecycle responsibilities. The Agent Host command fell
   from 567 to 357 lines, its route from 459 to 255, and the daemon command from
   542 to 170 without changing their contracts.
-- Current retained suite after retirement/decomposition: 604 tests, all green.
+- Current retained suite after retirement/decomposition and CI portability fixes:
+  606 tests across 42 suites, all green.
 - Current build: pass, bundled CLI approximately 1.3 MB.
-- Current package smoke: pass; retired spawn MCP and run-group templates are
-  absent.
+- Normal builds now consume the checked-in package manifest and do not require
+  the sibling registry repository. Explicit regeneration remains available as
+  `pnpm generate:manifest`.
+- Current package smoke: pass with exactly six published files and approximately
+  1.38 MB unpacked; retired spawn MCP and run-group templates are absent.
 - Current focused debt scan: 0 findings.
 
 ## Phase 5: Full Verification
@@ -131,14 +135,56 @@ Implementation evidence:
   - GitHub workflow completes on the pushed branch and `main` requires its check.
 - Exit criteria: all proofs pass or an explicit external limitation and residual risk are recorded.
 
+Verification evidence:
+
+- Red: GitHub Quality run
+  [30758886495](https://github.com/learnrudi/cli/actions/runs/30758886495)
+  failed because `checkIndexed` depended on a developer-home tool index. The
+  focused red command `node --test packages/core/src/__tests__/unit/stack-lifecycle.test.js`
+  then reproduced the missing injection boundary locally with 2 failures.
+- Green: the same focused command passed 19/19 after an explicit temporary
+  `indexPath` seam separated missing-index and missing-stack behavior.
+- Red: GitHub Quality run
+  [30759057362](https://github.com/learnrudi/cli/actions/runs/30759057362)
+  passed 605 tests and then failed because `pnpm build` assumed a sibling
+  registry checkout. The focused contract test reproduced the unwanted
+  `prebuild` coupling locally.
+- Green: `node --test src/__tests__/unit/quality-workflow-contract.test.js`
+  passed 3/3 after normal build and explicit manifest generation were separated.
+- Full local verification: `pnpm test` -> 606 tests, 42 suites, 0 failures;
+  `pnpm build` -> pass; `git diff --exit-code -- dist src/packages-manifest.json`
+  -> pass; `git diff --check` -> pass.
+- Debt: edited-file scans and
+  `node scripts/agent-debt-runner.mjs --changed-since origin/main --no-log`
+  -> 0 findings.
+- Package: `npm pack --dry-run --json` -> pass, six files only: license,
+  readme, package metadata, CLI bundle, router bundle, and package manifest.
+- Runtime smoke: source and bundled help expose all four command groups;
+  retired commands exit nonzero; isolated daemon health/readiness/auth/start/stop
+  passes without creating `rudi.db`; bundled Agent Host provider discovery passes.
+- GitHub: Quality run
+  [30759300296](https://github.com/learnrudi/cli/actions/runs/30759300296)
+  passed tests, build, distribution drift, debt scan, and package verification
+  on the current Node 24 GitHub action runtime while testing the CLI on Node 20.
+- Protection: `main` now requires strict `quality` status checks, enforces them
+  for administrators, requires conversation resolution, and disallows force
+  pushes and deletion.
+
 ## Phase 6: Docs, Contracts, And Closure
 
 - Docs or API contracts to update: CLI command inventory, Agent Host/daemon ownership, `/agent-host/v1` contract, retired Bot/Studio boundary, home layout, generated/package file list, and this checklist.
-- Final files touched: record exact list from Git after all targeted commits.
-- Commands run and results: record red/green commands, full suite, build, debt scan, package smoke, live daemon/Agent Host smoke, GitHub check, and branch protection response.
+- Final files touched: 321 paths. The exact auditable inventory, including
+  rename similarity and deletion status, is produced by
+  `git diff --name-status origin/main...HEAD`.
+- Commands run and results: recorded in Phase 5 with the red/green commands,
+  full suite, build, debt scan, package smoke, daemon/Agent Host smoke, GitHub
+  check, and branch protection response.
 - Accepted debt:
   - `packages/db` remains only for checked-in Studio compatibility and is not imported by CLI runtime/runner.
-  - Any provider live-smoke limitation caused by local auth/quota is recorded separately from code correctness.
+  - No billable live-provider prompt was sent. Provider discovery, argv/env
+    contracts, event normalization, detached process behavior, and lifecycle
+    failure paths are covered without making external provider state part of
+    repository verification.
 - Definition of Done:
   - Targeted and full tests pass.
   - Build and packaging pass reproducibly.
@@ -148,3 +194,13 @@ Implementation evidence:
   - No callable legacy command, route, build asset, or runtime import remains.
   - Docs/contracts match verified behavior.
   - Targeted commits are pushed to the existing PR branch.
+
+Closure evidence:
+
+- Consolidation work is split by concern across commits `cf75b03`, `97ff647`,
+  `df66353`, `60fee08`, `83a04bc`, `3f985b8`, `e4b7da7`, `db35673`,
+  `89d32c5`, `952c69c`, `bcdbb43`, `a384721`, `580a7ae`, and `d167780`.
+- Pull request: [#9](https://github.com/learnrudi/cli/pull/9).
+- All Definition of Done items are satisfied. Existing user data remains
+  untouched, and the only retained legacy storage code is the explicitly
+  isolated `packages/db` boundary for Studio.
