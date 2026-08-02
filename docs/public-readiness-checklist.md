@@ -162,7 +162,9 @@ requires:
 - [x] `rudi remove workflow:<id>` works.
 - [ ] `rudi run workflow:<id>` validates required stacks and skills before execution.
 - [ ] `rudi index` indexes installed stack tools without requiring the daemon.
-- [ ] The DB is used for workflow runs, artifacts, session history, daemon state, and analytics, not for package definitions.
+- [ ] Durable workflow outputs use canonical output/artifact paths; package
+  definitions remain in the registry and public CLI workflows do not depend on
+  the retired `rudi.db` session store.
 
 ## P4: Workflow Runner
 
@@ -173,8 +175,8 @@ Start with a small, deterministic runner.
 - [ ] Resolves installed stack tools from the local tool index.
 - [ ] Resolves installed skills from `~/.rudi/skills/`.
 - [ ] Creates one run directory per workflow execution.
-- [ ] Persists run metadata to the DB when the DB is initialized.
-- [ ] Continues to run without DB only when configured for stateless mode.
+- [ ] Persists run metadata under canonical durable outputs when required.
+- [ ] Runs without the retired session database.
 - [ ] Records outputs and artifacts.
 - [ ] Runs output validation after each relevant step.
 - [ ] Fails with structured errors.

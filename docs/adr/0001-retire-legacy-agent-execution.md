@@ -2,7 +2,7 @@
 
 Date: 2026-08-02
 
-Status: Accepted
+Status: Implemented
 
 ## Context
 
@@ -51,9 +51,10 @@ cache. It must not copy provider transcripts into `agent-hosts.db`, import them
 into another RUDI session store, or treat an Agent Host group as a provider
 session or orchestration runtime.
 
-After retirement, CLI help and dispatch use three categories: core commands,
-advanced commands, and internal daemon entrypoints. There is no callable
-legacy-command category.
+After retirement, CLI help uses four visually distinct categories: core,
+advanced, internal daemon entrypoints, and retired names. Retired names are
+bounded migration notices that exit nonzero and never import or dispatch to
+the removed implementation.
 
 ## Migration and retirement boundary
 
@@ -81,9 +82,9 @@ not a compatibility constraint; this change intentionally ends that contract.
 
 ## Consequences
 
-- Existing callers of the removed commands and endpoints must migrate to
-  native provider sessions or `/agent-host/v1`; the old contracts receive no
-  compatibility shim.
+- Existing callers of the removed behavior and endpoints must migrate to
+  native provider sessions or `/agent-host/v1`. CLI names provide notice text
+  only; removed HTTP contracts receive no compatibility shim.
 - Existing user `rudi.db` files are never automatically deleted. The CLI simply
   stops reading, writing, importing into, repairing, or supervising work from
   them.

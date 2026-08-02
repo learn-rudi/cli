@@ -43,7 +43,7 @@ rudi agent group launch \
 ```
 
 Use `--` to pass validated native argv after RUDI's modeled arguments. The
-foreground workflow does not require Lite or the daemon. Writable Git launches
+foreground workflow does not require the daemon. Writable Git launches
 use a new worktree; writable non-Git launches use an isolated copy; read-only
 launches use the project directly. Isolation failures are terminal and never
 fall back to shared writes.
@@ -54,10 +54,9 @@ workspace artifacts under `~/.rudi/artifacts/agent-launches/`; raw provider
 events and prompts are not copied into the launch database or reconnect log.
 
 Detached launches run in dedicated RUDI workers. The background service only
-dispatches and controls those workers, so jobs survive the invoking terminal,
-Lite closing, and service restarts. Lite is an optional client of the
-versioned `/agent-host/v1` API backed by the same core the CLI calls directly.
-Groups are projections over
+dispatches and controls those workers, so jobs survive the invoking terminal
+and service restarts. The versioned `/agent-host/v1` API is backed by the same
+core the CLI calls directly. Groups are projections over
 independent child launches, preserving each provider's native session and each
 launch's own workspace, events, diff, promotion, and discard lifecycle.
 

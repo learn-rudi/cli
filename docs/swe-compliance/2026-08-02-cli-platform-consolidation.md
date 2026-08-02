@@ -29,7 +29,8 @@ Architecture decision: [ADR 0001](../adr/0001-retire-legacy-agent-execution.md)
 
 - In scope:
   - `.github/workflows/quality.yml` with tests, build reproducibility, debt scan, and package smoke checks; configure `main` to require the resulting check after it runs on GitHub.
-  - Core/advanced/internal CLI help sections and tests; remove every callable legacy command.
+  - Core/advanced/internal/retired CLI help sections and tests; replace every
+    legacy implementation with a bounded nonzero migration notice.
   - Current `/agent-host/v1` contract and contract tests before old sidecar contract removal.
   - Move retained provider config/argv helpers and Claude/Codex normalizers into `src/agent-host/`.
   - Rename `sidecar-client` to `daemon-client`; extract neutral Git repo-root behavior used by `lanes`.
@@ -50,7 +51,8 @@ Architecture decision: [ADR 0001](../adr/0001-retire-legacy-agent-execution.md)
   - `AGENTS.md`, `CLAUDE.md`, `README.md`, `docs/frontier-agent-hosts.md`, `docs/rudi-local-daemon-architecture.md`, ADR/checklist records, and `dist/**`.
 - External inputs and trust boundaries: CLI argv/stdin, provider JSONL, daemon HTTP body/path/query/auth token, filesystem paths, Git workspaces, environment variables, GitHub Actions events, and package registry inputs remain validated at ingress.
 - Failure behavior to define:
-  - Removed commands fail as unknown commands with migration guidance only in release docs, not runtime shims.
+  - Retired command names fail nonzero with migration guidance and never load
+    removed implementation code.
   - Removed endpoints return the normal authenticated 404; no compatibility adapter remains.
   - Daemon readiness cannot depend on `rudi.db`, provider session discovery, or legacy cleanup.
   - Agent Host rejects invalid provider args, workspace paths, launch IDs, lifecycle transitions, and destructive disposition requests exactly as before.
@@ -60,7 +62,8 @@ Architecture decision: [ADR 0001](../adr/0001-retire-legacy-agent-execution.md)
 
 - Observable behavior to prove:
   1. CI workflow exists and invokes the canonical test/build/debt/package proofs.
-  2. Help visibly labels core, advanced, and internal command groups and exposes no legacy help topics.
+  2. Help visibly labels core, advanced, internal, and retired command groups;
+     retired topics expose migration text only.
   3. Legacy commands are absent from entrypoint dispatch and legacy endpoints/modules/build assets are absent.
   4. `/agent-host/v1` retained endpoints are represented in a current contract.
   5. Agent Host has no imports from the retired `src/commands/agent` namespace.
@@ -93,6 +96,26 @@ Architecture decision: [ADR 0001](../adr/0001-retire-legacy-agent-execution.md)
   - Refactors cannot expand Agent Host ownership into provider sessions, transcript storage, or automatic cross-provider delegation.
 - Regression checks: combined Agent Host, daemon, CLI/help, integration, and package tests after every extraction/deletion cluster.
 - Exit criteria: relevant suites stay green after refactor and architecture-boundary tests prevent legacy recoupling.
+
+Implementation evidence:
+
+- `e4b7da7 refactor: remove legacy execution runtime` deleted the imported
+  session/run-group/spawn-child/orchestration runtime, old daemon route families,
+  schemas/templates/contracts, spawn MCP, unused embeddings package, and their
+  focused tests. `packages/db` remains isolated for Studio compatibility.
+- The isolated daemon-process smoke passes public health, authenticated
+  readiness, mode-0600 connection files, clean shutdown cleanup, and proves
+  that startup does not create `rudi.db`.
+- `db35673 refactor: decompose agent host lifecycle` split CLI input, daemon
+  transport, HTTP validation, process lifecycle, workspace lifecycle, daemon
+  client, and daemon lifecycle responsibilities. The Agent Host command fell
+  from 567 to 357 lines, its route from 459 to 255, and the daemon command from
+  542 to 170 without changing their contracts.
+- Current retained suite after retirement/decomposition: 604 tests, all green.
+- Current build: pass, bundled CLI approximately 1.3 MB.
+- Current package smoke: pass; retired spawn MCP and run-group templates are
+  absent.
+- Current focused debt scan: 0 findings.
 
 ## Phase 5: Full Verification
 
