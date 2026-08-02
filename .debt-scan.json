@@ -131,6 +131,7 @@
         "src/index.js",
         "src/router-mcp.js",
         "src/spawn-mcp.js",
+        "scripts/agent-debt-scan.cjs",
         "packages/core/src/index.js",
         "packages/db/src/index.js",
         "packages/embeddings/src/index.js",

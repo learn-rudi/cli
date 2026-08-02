@@ -1,6 +1,7 @@
 {
   "name": "@learnrudi/cli",
   "version": "1.10.12",
+  "packageManager": "pnpm@10.22.0",
   "description": "RUDI CLI - Install and manage local MCP stacks, runtimes, daemon lifecycle, and agent router integrations",
   "type": "module",
   "main": "dist/index.cjs",
@@ -36,10 +37,11 @@
     "@learnrudi/manifest": "workspace:*",
     "@learnrudi/mcp": "workspace:*",
     "@learnrudi/registry-client": "workspace:*",
-    "@learnrudi/secrets": "workspace:*",
     "@learnrudi/runner": "workspace:*",
+    "@learnrudi/secrets": "workspace:*",
     "@learnrudi/utils": "workspace:*",
-    "esbuild": "^0.27.2"
+    "esbuild": "^0.27.2",
+    "typescript": "^5.9.3"
   },
   "engines": {
     "node": ">=18.0.0"
