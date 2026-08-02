@@ -24,7 +24,7 @@ import {
 } from '../agent-host/providers/index.js';
 import { resumeAgent } from '../agent-host/resume.js';
 import { startDaemonLifecycle } from './daemon.js';
-import { readSidecarInfo, sidecarRequest } from './sidecar-client.js';
+import { daemonRequest, readDaemonInfo } from './daemon-client.js';
 
 const MAX_PROMPT_BYTES = 10 * 1024 * 1024;
 
@@ -254,11 +254,11 @@ async function requestAgentHostService(pathname, {
   method = 'GET',
 } = {}, dependencies = {}) {
   const startDaemonImpl = dependencies.startDaemonImpl || startDaemonLifecycle;
-  const readSidecarInfoImpl = dependencies.readSidecarInfoImpl || readSidecarInfo;
-  const sidecarRequestImpl = dependencies.sidecarRequestImpl || sidecarRequest;
+  const readDaemonInfoImpl = dependencies.readDaemonInfoImpl || readDaemonInfo;
+  const daemonRequestImpl = dependencies.daemonRequestImpl || daemonRequest;
   await startDaemonImpl();
-  const sidecar = readSidecarInfoImpl();
-  return sidecarRequestImpl({ ...sidecar, body, method, pathname, timeoutMs: 120_000 });
+  const daemon = readDaemonInfoImpl();
+  return daemonRequestImpl({ ...daemon, body, method, pathname, timeoutMs: 120_000 });
 }
 
 async function dispatchDetachedThroughService(request, dependencies = {}) {

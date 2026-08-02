@@ -5,20 +5,20 @@ import { describe, test } from 'node:test';
 import assert from 'node:assert/strict';
 
 import {
-  getSidecarDaemonStatus,
-  readSidecarInfo,
-  sidecarRequest,
-} from '../../commands/sidecar-client.js';
+  daemonRequest,
+  getDaemonStatus,
+  readDaemonInfo,
+} from '../../commands/daemon-client.js';
 
-describe('readSidecarInfo', () => {
+describe('readDaemonInfo', () => {
   test('reads port and token from explicit connection files', () => {
-    const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'rudi-sidecar-info-'));
+    const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'rudi-daemon-info-'));
     const portFile = path.join(tmp, '.rudi-lite-port');
     const tokenFile = path.join(tmp, '.rudi-lite-token');
     fs.writeFileSync(portFile, '8123');
     fs.writeFileSync(tokenFile, 'secret-token');
 
-    assert.deepEqual(readSidecarInfo({ portFile, tokenFile }), {
+    assert.deepEqual(readDaemonInfo({ portFile, tokenFile }), {
       port: 8123,
       token: 'secret-token',
       portFile,
@@ -27,37 +27,37 @@ describe('readSidecarInfo', () => {
   });
 
   test('classifies missing, invalid port, and missing token files', () => {
-    const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'rudi-sidecar-info-'));
+    const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'rudi-daemon-info-'));
     const portFile = path.join(tmp, '.rudi-lite-port');
     const tokenFile = path.join(tmp, '.rudi-lite-token');
 
     assert.throws(
-      () => readSidecarInfo({ portFile, tokenFile }),
-      { code: 'SIDECAR_NOT_RUNNING' },
+      () => readDaemonInfo({ portFile, tokenFile }),
+      { code: 'DAEMON_NOT_RUNNING' },
     );
 
     fs.writeFileSync(portFile, 'not-a-port');
     fs.writeFileSync(tokenFile, 'secret-token');
     assert.throws(
-      () => readSidecarInfo({ portFile, tokenFile }),
-      { code: 'SIDECAR_INVALID_PORT_FILE' },
+      () => readDaemonInfo({ portFile, tokenFile }),
+      { code: 'DAEMON_INVALID_PORT_FILE' },
     );
 
     fs.writeFileSync(portFile, '8123');
     fs.writeFileSync(tokenFile, '');
     assert.throws(
-      () => readSidecarInfo({ portFile, tokenFile }),
-      { code: 'SIDECAR_MISSING_TOKEN_FILE' },
+      () => readDaemonInfo({ portFile, tokenFile }),
+      { code: 'DAEMON_MISSING_TOKEN_FILE' },
     );
   });
 });
 
-describe('sidecarRequest', () => {
+describe('daemonRequest', () => {
   test('sends x-rudi-token and attaches HTTP failure metadata', async () => {
     const calls = [];
 
     await assert.rejects(
-      () => sidecarRequest({
+      () => daemonRequest({
         port: 8123,
         token: 'secret-token',
         pathname: '/missing',
@@ -84,12 +84,12 @@ describe('sidecarRequest', () => {
   });
 });
 
-describe('getSidecarDaemonStatus', () => {
+describe('getDaemonStatus', () => {
   test('reports offline when connection files are absent', async () => {
-    const status = await getSidecarDaemonStatus({
-      readSidecarInfo: () => {
+    const status = await getDaemonStatus({
+      readDaemonInfo: () => {
         const error = new Error('not running');
-        error.code = 'SIDECAR_NOT_RUNNING';
+        error.code = 'DAEMON_NOT_RUNNING';
         throw error;
       },
     });
@@ -101,9 +101,9 @@ describe('getSidecarDaemonStatus', () => {
   });
 
   test('combines readiness and daemon status payloads', async () => {
-    const status = await getSidecarDaemonStatus({
-      readSidecarInfo: () => ({ port: 8123, token: 'secret-token' }),
-      sidecarRequest: async ({ pathname }) => {
+    const status = await getDaemonStatus({
+      readDaemonInfo: () => ({ port: 8123, token: 'secret-token' }),
+      daemonRequest: async ({ pathname }) => {
         if (pathname === '/ready') {
           return {
             ready: true,
@@ -136,9 +136,9 @@ describe('getSidecarDaemonStatus', () => {
   });
 
   test('reports stale/unreachable connection files when requests fail', async () => {
-    const status = await getSidecarDaemonStatus({
-      readSidecarInfo: () => ({ port: 8123, token: 'secret-token' }),
-      sidecarRequest: async () => {
+    const status = await getDaemonStatus({
+      readDaemonInfo: () => ({ port: 8123, token: 'secret-token' }),
+      daemonRequest: async () => {
         throw new Error('connect ECONNREFUSED');
       },
     });

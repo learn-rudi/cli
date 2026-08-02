@@ -2,8 +2,7 @@ import fs from 'fs';
 import path from 'path';
 import { execFileSync } from 'child_process';
 
-import { getRepoRoot } from './agent/worktree.js';
-import { parseWorktreeList } from './serve/git.js';
+import { getRepoRoot, parseWorktreeList } from '../utils/git-repository.js';
 
 function printLanesHelp() {
   console.log(`

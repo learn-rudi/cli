@@ -16,7 +16,7 @@ import { PATHS, getInstalledPackages, isPackageInstalled, resolveNodeRuntimeBin 
 import fs from 'fs';
 import path from 'path';
 import os from 'os';
-import { getSidecarDaemonStatus } from './sidecar-client.js';
+import { getDaemonStatus } from './daemon-client.js';
 import { createWhichCommand, runCommand, runCommandPlan } from '../utils/subprocess.js';
 
 // Agent definitions with credential check info
@@ -268,7 +268,7 @@ export async function getFullStatus(options = {}) {
   const agents = AGENTS.map(getAgentStatus);
   const runtimes = RUNTIMES.map(getRuntimeStatus);
   const binaries = BINARIES.map(getBinaryStatus);
-  const daemonStatusProvider = options.daemonStatusProvider || getSidecarDaemonStatus;
+  const daemonStatusProvider = options.daemonStatusProvider || getDaemonStatus;
   const daemon = await daemonStatusProvider();
 
   // Get installed stacks and skills
@@ -330,7 +330,7 @@ export async function getFullStatus(options = {}) {
 }
 
 export async function getDaemonOnlyStatus(options = {}) {
-  const daemonStatusProvider = options.daemonStatusProvider || getSidecarDaemonStatus;
+  const daemonStatusProvider = options.daemonStatusProvider || getDaemonStatus;
   const daemon = await daemonStatusProvider();
   return {
     timestamp: new Date().toISOString(),

@@ -5,24 +5,17 @@
 import fs from 'fs';
 import path from 'path';
 import crypto from 'crypto';
-import { execFileSync } from 'child_process';
 import { getDb } from '@learnrudi/db';
 import { runGit } from '../../utils/subprocess.js';
+import { getRepoRoot } from '../../utils/git-repository.js';
+
+export { getRepoRoot } from '../../utils/git-repository.js';
 
 /**
  * Get the actual repository root, even when called from inside a worktree.
  * git rev-parse --show-toplevel returns the worktree root (wrong for our purposes).
  * git rev-parse --git-common-dir returns the shared .git dir → parent = real repo root.
  */
-export function getRepoRoot(cwd) {
-  const gitCommonDir = execFileSync('git', ['rev-parse', '--git-common-dir'], {
-    cwd, stdio: 'pipe',
-  }).toString().trim();
-  // Resolve relative path (e.g., ".git" → absolute)
-  const absGitDir = path.resolve(cwd, gitCommonDir);
-  return path.dirname(absGitDir);
-}
-
 /**
  * Create a branch-attached worktree for a new parent session.
  * Returns { worktreePath, worktreeBranch, gitignoreWarning } or

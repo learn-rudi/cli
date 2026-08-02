@@ -2,6 +2,9 @@ import fs from 'fs';
 import path from 'path';
 import { execFileSync } from 'child_process';
 import { rejectMissingDestructiveConfirmation } from './validation.js';
+import { parseWorktreeList } from '../../utils/git-repository.js';
+
+export { parseWorktreeList } from '../../utils/git-repository.js';
 
 function runGit(projectPath, args, options = {}) {
   return execFileSync('git', args, {
@@ -85,40 +88,6 @@ export function getProjectGitStatus(projectPath) {
  *
  * Bare worktrees show "bare" instead of branch. Detached HEADs show "detached".
  */
-export function parseWorktreeList(output) {
-  if (!output || !output.trim()) return [];
-
-  const worktrees = [];
-  const blocks = output.trim().split('\n\n');
-
-  for (const block of blocks) {
-    if (!block.trim()) continue;
-    const lines = block.trim().split('\n');
-    const entry = { path: '', head: '', branch: '', bare: false, detached: false };
-
-    for (const line of lines) {
-      if (line.startsWith('worktree ')) {
-        entry.path = line.slice('worktree '.length);
-      } else if (line.startsWith('HEAD ')) {
-        entry.head = line.slice('HEAD '.length);
-      } else if (line.startsWith('branch ')) {
-        // refs/heads/main → main
-        entry.branch = line.slice('branch '.length).replace('refs/heads/', '');
-      } else if (line === 'bare') {
-        entry.bare = true;
-      } else if (line === 'detached') {
-        entry.detached = true;
-      }
-    }
-
-    if (entry.path) {
-      worktrees.push(entry);
-    }
-  }
-
-  return worktrees;
-}
-
 export function createGitHandler({ readBody, error, json, invalidField }) {
   return async function handleGit(req, res, url) {
     // GET /git/status?path=... — get git status for a directory

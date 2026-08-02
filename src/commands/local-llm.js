@@ -17,9 +17,9 @@ import {
   resolveLocalLlmConfig,
 } from '../daemon/operations/local-llm.js';
 import {
-  readSidecarInfo,
-  sidecarRequest,
-} from './sidecar-client.js';
+  daemonRequest,
+  readDaemonInfo,
+} from './daemon-client.js';
 
 export {
   extractModelIds,
@@ -33,7 +33,7 @@ export {
 const DEFAULT_RUNTIME = 'ollama';
 const DEFAULT_TARGET = 'mac_host';
 const DEFAULT_TIMEOUT_MS = 5000;
-const SIDECAR_TIMEOUT_BUFFER_MS = 1000;
+const DAEMON_TIMEOUT_BUFFER_MS = 1000;
 
 function parseTimeout(flags) {
   const value = flags.timeout || flags['timeout-ms'];
@@ -93,7 +93,7 @@ function appendQuery(pathname, entries) {
   return suffix ? `${pathname}?${suffix}` : pathname;
 }
 
-export function buildLocalLlmSidecarPath(subcommand, options = {}) {
+export function buildLocalLlmDaemonPath(subcommand, options = {}) {
   const query = {
     runtime: options.runtime || DEFAULT_RUNTIME,
     target: options.target || DEFAULT_TARGET,
@@ -116,8 +116,8 @@ export function buildLocalLlmSidecarPath(subcommand, options = {}) {
   });
 }
 
-function canFallbackFromSidecarError(error) {
-  if (error?.code?.startsWith?.('SIDECAR_')) return true;
+function canFallbackFromDaemonError(error) {
+  if (error?.code?.startsWith?.('DAEMON_')) return true;
   if (error?.name === 'AbortError') return true;
   if (error?.statusCode === 404) return true;
   const message = String(error?.message || '');
@@ -155,32 +155,32 @@ async function getDirectLocalLlmResult(subcommand, options, deps) {
   return getLocalLlmStatus(options, deps);
 }
 
-async function getSidecarLocalLlmResult(subcommand, options, deps) {
-  const readInfo = deps.readSidecarInfo || readSidecarInfo;
-  const request = deps.sidecarRequest || sidecarRequest;
-  const sidecar = readInfo(deps);
-  const pathname = buildLocalLlmSidecarPath(subcommand, options);
+async function getDaemonLocalLlmResult(subcommand, options, deps) {
+  const readInfo = deps.readDaemonInfo || readDaemonInfo;
+  const request = deps.daemonRequest || daemonRequest;
+  const daemon = readInfo(deps);
+  const pathname = buildLocalLlmDaemonPath(subcommand, options);
   const requestTimeoutMs = Math.max(
-    Number(options.timeoutMs || DEFAULT_TIMEOUT_MS) + SIDECAR_TIMEOUT_BUFFER_MS,
+    Number(options.timeoutMs || DEFAULT_TIMEOUT_MS) + DAEMON_TIMEOUT_BUFFER_MS,
     1500,
   );
 
   return request({
-    ...sidecar,
+    ...daemon,
     pathname,
     timeoutMs: requestTimeoutMs,
   });
 }
 
 export async function resolveLocalLlmCommandResult(subcommand, options, deps = {}) {
-  if (deps.useSidecar !== false) {
+  if (deps.useDaemon !== false) {
     try {
       return {
-        source: 'sidecar',
-        result: await getSidecarLocalLlmResult(subcommand, options, deps),
+        source: 'daemon',
+        result: await getDaemonLocalLlmResult(subcommand, options, deps),
       };
     } catch (error) {
-      if (!canFallbackFromSidecarError(error)) {
+      if (!canFallbackFromDaemonError(error)) {
         throw error;
       }
     }

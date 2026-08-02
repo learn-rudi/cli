@@ -11,10 +11,10 @@ import { spawn } from 'child_process';
 import { PATHS } from '@learnrudi/env';
 
 import {
-  SIDECAR_PORT_FILE,
-  SIDECAR_TOKEN_FILE,
-  getSidecarDaemonStatus,
-} from './sidecar-client.js';
+  DAEMON_PORT_FILE,
+  DAEMON_TOKEN_FILE,
+  getDaemonStatus,
+} from './daemon-client.js';
 import {
   assertCanManageLaunchAgent,
   buildLaunchAgentPlan,
@@ -74,8 +74,8 @@ export function formatLaunchAgentState(status) {
 }
 
 export function removeDaemonConnectionFiles({
-  portFile = SIDECAR_PORT_FILE,
-  tokenFile = SIDECAR_TOKEN_FILE,
+  portFile = DAEMON_PORT_FILE,
+  tokenFile = DAEMON_TOKEN_FILE,
 } = {}) {
   try { fs.unlinkSync(portFile); } catch {}
   try { fs.unlinkSync(tokenFile); } catch {}
@@ -131,7 +131,7 @@ export function spawnDaemonProcess({
 
 export async function waitForDaemonReady({
   intervalMs = DEFAULT_POLL_INTERVAL_MS,
-  statusProvider = getSidecarDaemonStatus,
+  statusProvider = getDaemonStatus,
   timeoutMs = DEFAULT_START_TIMEOUT_MS,
 } = {}) {
   const started = Date.now();
@@ -152,7 +152,7 @@ export async function waitForDaemonReady({
 
 export async function waitForDaemonStopped({
   intervalMs = DEFAULT_POLL_INTERVAL_MS,
-  statusProvider = getSidecarDaemonStatus,
+  statusProvider = getDaemonStatus,
   timeoutMs = DEFAULT_STOP_TIMEOUT_MS,
 } = {}) {
   const started = Date.now();
@@ -172,7 +172,7 @@ export async function waitForDaemonStopped({
 }
 
 export async function startDaemon(options = {}) {
-  const statusProvider = options.statusProvider || getSidecarDaemonStatus;
+  const statusProvider = options.statusProvider || getDaemonStatus;
   const current = await statusProvider();
 
   if (isReachableStatus(current)) {
@@ -214,7 +214,7 @@ export async function startDaemonLifecycle(options = {}) {
     const launched = startLaunchAgent(options);
     const status = await waitForDaemonReady({
       intervalMs: options.intervalMs,
-      statusProvider: options.statusProvider || getSidecarDaemonStatus,
+      statusProvider: options.statusProvider || getDaemonStatus,
       timeoutMs: options.timeoutMs,
     });
     return {
@@ -228,7 +228,7 @@ export async function startDaemonLifecycle(options = {}) {
 }
 
 export async function stopDaemon(options = {}) {
-  const statusProvider = options.statusProvider || getSidecarDaemonStatus;
+  const statusProvider = options.statusProvider || getDaemonStatus;
   const current = await statusProvider();
 
   if (current.reason === 'not_running') {
@@ -277,7 +277,7 @@ export async function stopDaemonLifecycle(options = {}) {
     const stopped = stopLaunchAgent(options);
     const status = await waitForDaemonStopped({
       intervalMs: options.intervalMs,
-      statusProvider: options.statusProvider || getSidecarDaemonStatus,
+      statusProvider: options.statusProvider || getDaemonStatus,
       timeoutMs: options.timeoutMs,
     });
     removeDaemonConnectionFiles(options);
@@ -297,7 +297,7 @@ export async function restartDaemonLifecycle(options = {}) {
     const restarted = restartLaunchAgent(options);
     const status = await waitForDaemonReady({
       intervalMs: options.intervalMs,
-      statusProvider: options.statusProvider || getSidecarDaemonStatus,
+      statusProvider: options.statusProvider || getDaemonStatus,
       timeoutMs: options.timeoutMs,
     });
     return {
@@ -330,7 +330,7 @@ export async function installDaemon(options = {}) {
     };
   }
 
-  const statusProvider = options.statusProvider || getSidecarDaemonStatus;
+  const statusProvider = options.statusProvider || getDaemonStatus;
   let stopped = null;
 
   if (isManagedByLaunchAgent(launchAgent)) {
@@ -379,12 +379,12 @@ export async function uninstallDaemon(options = {}) {
   }
 
   const removed = uninstallLaunchAgent(options);
-  let status = await (options.statusProvider || getSidecarDaemonStatus)();
+  let status = await (options.statusProvider || getDaemonStatus)();
 
   if (launchAgent.loaded) {
     status = await waitForDaemonStopped({
       intervalMs: options.intervalMs,
-      statusProvider: options.statusProvider || getSidecarDaemonStatus,
+      statusProvider: options.statusProvider || getDaemonStatus,
       timeoutMs: options.timeoutMs,
     });
     removeDaemonConnectionFiles(options);
@@ -476,7 +476,7 @@ export async function cmdDaemon(args, flags) {
   };
 
   if (subcommand === 'status') {
-    const status = await getSidecarDaemonStatus();
+    const status = await getDaemonStatus();
     const launchAgent = getLaunchAgentStatus();
     if (flags.json) {
       console.log(JSON.stringify(buildStatusJson(status, launchAgent), null, 2));

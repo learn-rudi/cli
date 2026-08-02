@@ -2,16 +2,16 @@ import fs from 'fs';
 import path from 'path';
 import { PATHS } from '@learnrudi/env';
 
-export const SIDECAR_PORT_FILE = path.join(PATHS.home, '.rudi-lite-port');
-export const SIDECAR_TOKEN_FILE = path.join(PATHS.home, '.rudi-lite-token');
+export const DAEMON_PORT_FILE = path.join(PATHS.home, '.rudi-lite-port');
+export const DAEMON_TOKEN_FILE = path.join(PATHS.home, '.rudi-lite-token');
 
-export function readSidecarInfo(options = {}) {
-  const portFile = options.portFile || SIDECAR_PORT_FILE;
-  const tokenFile = options.tokenFile || SIDECAR_TOKEN_FILE;
+export function readDaemonInfo(options = {}) {
+  const portFile = options.portFile || DAEMON_PORT_FILE;
+  const tokenFile = options.tokenFile || DAEMON_TOKEN_FILE;
 
   if (!fs.existsSync(portFile) || !fs.existsSync(tokenFile)) {
-    const error = new Error('RUDI sidecar is not running. Start it with: rudi serve');
-    error.code = 'SIDECAR_NOT_RUNNING';
+    const error = new Error('RUDI daemon is not running. Start it with: rudi daemon start');
+    error.code = 'DAEMON_NOT_RUNNING';
     error.portFile = portFile;
     error.tokenFile = tokenFile;
     throw error;
@@ -22,14 +22,14 @@ export function readSidecarInfo(options = {}) {
   const port = Number.parseInt(portRaw, 10);
 
   if (!Number.isFinite(port) || port <= 0) {
-    const error = new Error('Invalid sidecar port file. Restart sidecar with: rudi serve');
-    error.code = 'SIDECAR_INVALID_PORT_FILE';
+    const error = new Error('Invalid daemon port file. Restart it with: rudi daemon restart');
+    error.code = 'DAEMON_INVALID_PORT_FILE';
     error.portFile = portFile;
     throw error;
   }
   if (!token) {
-    const error = new Error('Missing sidecar token. Restart sidecar with: rudi serve');
-    error.code = 'SIDECAR_MISSING_TOKEN_FILE';
+    const error = new Error('Missing daemon token. Restart it with: rudi daemon restart');
+    error.code = 'DAEMON_MISSING_TOKEN_FILE';
     error.tokenFile = tokenFile;
     throw error;
   }
@@ -37,7 +37,7 @@ export function readSidecarInfo(options = {}) {
   return { port, token, portFile, tokenFile };
 }
 
-export async function sidecarRequest({
+export async function daemonRequest({
   port,
   token,
   method = 'GET',
@@ -106,27 +106,27 @@ function buildDaemonProbeResult(patch = {}) {
   };
 }
 
-export async function getSidecarDaemonStatus(options = {}) {
-  const readInfo = options.readSidecarInfo || readSidecarInfo;
-  const request = options.sidecarRequest || sidecarRequest;
+export async function getDaemonStatus(options = {}) {
+  const readInfo = options.readDaemonInfo || readDaemonInfo;
+  const request = options.daemonRequest || daemonRequest;
   const timeoutMs = Number.isFinite(options.timeoutMs) && options.timeoutMs > 0
     ? options.timeoutMs
     : 1500;
 
-  let sidecar;
+  let daemon;
   try {
-    sidecar = readInfo(options);
+    daemon = readInfo(options);
   } catch (error) {
     return buildDaemonProbeResult({
-      reason: error.code === 'SIDECAR_NOT_RUNNING' ? 'not_running' : 'invalid_connection_files',
+      reason: error.code === 'DAEMON_NOT_RUNNING' ? 'not_running' : 'invalid_connection_files',
       error: error.message,
     });
   }
 
   try {
     const [readiness, status] = await Promise.all([
-      request({ ...sidecar, pathname: '/ready', timeoutMs }),
-      request({ ...sidecar, pathname: '/daemon/status', timeoutMs }),
+      request({ ...daemon, pathname: '/ready', timeoutMs }),
+      request({ ...daemon, pathname: '/daemon/status', timeoutMs }),
     ]);
     const ready = readiness?.ready === true;
 
@@ -136,7 +136,7 @@ export async function getSidecarDaemonStatus(options = {}) {
       healthy: ready,
       ready,
       reason: ready ? 'ok' : 'not_ready',
-      port: sidecar.port,
+      port: daemon.port,
       version: status?.version || null,
       readiness,
       status,
@@ -153,7 +153,7 @@ export async function getSidecarDaemonStatus(options = {}) {
       ready: false,
       reason: 'unreachable',
       error: error.name === 'AbortError' ? `Timed out after ${timeoutMs}ms` : error.message,
-      port: sidecar.port,
+      port: daemon.port,
     });
   }
 }

@@ -1,4 +1,4 @@
-import { readSidecarInfo, sidecarRequest } from './sidecar-client.js';
+import { daemonRequest, readDaemonInfo } from './daemon-client.js';
 
 function printRunGroupHelp() {
   console.log(`
@@ -79,7 +79,7 @@ export function selectDefaultMergeSessionIds(sessions) {
 }
 
 async function fetchRunGroupDetail(sidecar, groupId) {
-  return sidecarRequest({
+  return daemonRequest({
     ...sidecar,
     method: 'GET',
     pathname: `/agent/run-group/${encodeURIComponent(groupId)}`,
@@ -87,7 +87,7 @@ async function fetchRunGroupDetail(sidecar, groupId) {
 }
 
 async function runGroupList(flags) {
-  const sidecar = readSidecarInfo();
+  const sidecar = readDaemonInfo();
   const params = new URLSearchParams();
   if (typeof flags.status === 'string' && flags.status.trim()) params.set('status', flags.status.trim());
   if (typeof flags['project-path'] === 'string' && flags['project-path'].trim()) {
@@ -100,7 +100,7 @@ async function runGroupList(flags) {
   if (typeof flags.offset === 'string' && flags.offset.trim()) params.set('offset', flags.offset.trim());
 
   const query = params.toString();
-  const response = await sidecarRequest({
+  const response = await daemonRequest({
     ...sidecar,
     method: 'GET',
     pathname: `/agent/run-groups${query ? `?${query}` : ''}`,
@@ -135,7 +135,7 @@ async function runGroupShow(args, flags) {
     throw new Error('Usage: rudi run-group show <group-id>');
   }
 
-  const sidecar = readSidecarInfo();
+  const sidecar = readDaemonInfo();
   const response = await fetchRunGroupDetail(sidecar, groupId);
 
   if (flags.json) {
@@ -176,8 +176,8 @@ async function runGroupStop(args, flags) {
     throw new Error('Usage: rudi run-group stop <group-id>');
   }
 
-  const sidecar = readSidecarInfo();
-  const response = await sidecarRequest({
+  const sidecar = readDaemonInfo();
+  const response = await daemonRequest({
     ...sidecar,
     method: 'POST',
     pathname: `/agent/run-group/${encodeURIComponent(groupId)}/stop`,
@@ -197,7 +197,7 @@ async function runGroupMerge(args, flags) {
     throw new Error('Usage: rudi run-group merge <group-id> [--to <branch>] [--session-ids <a,b,c>]');
   }
 
-  const sidecar = readSidecarInfo();
+  const sidecar = readDaemonInfo();
   const detail = await fetchRunGroupDetail(sidecar, groupId);
   const explicitSessionIds = normalizeCsvFlag(flags['session-ids'] || flags.sessionIds);
   const sessionIds = explicitSessionIds.length > 0
@@ -209,7 +209,7 @@ async function runGroupMerge(args, flags) {
   }
 
   const targetBranch = resolveMergeTarget(flags);
-  const response = await sidecarRequest({
+  const response = await daemonRequest({
     ...sidecar,
     method: 'POST',
     pathname: `/agent/run-group/${encodeURIComponent(groupId)}/merge`,
@@ -246,8 +246,8 @@ async function runGroupCleanup(args, flags) {
     throw new Error('Usage: rudi run-group cleanup <group-id> [--delete-branches]');
   }
 
-  const sidecar = readSidecarInfo();
-  const response = await sidecarRequest({
+  const sidecar = readDaemonInfo();
+  const response = await daemonRequest({
     ...sidecar,
     method: 'POST',
     pathname: `/agent/run-group/${encodeURIComponent(groupId)}/cleanup`,

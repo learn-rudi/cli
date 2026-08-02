@@ -5,7 +5,7 @@
  *   rudi parallel "task one" "task two" --name "Batch A"
  */
 
-import { readSidecarInfo, sidecarRequest } from './sidecar-client.js';
+import { daemonRequest, readDaemonInfo } from './daemon-client.js';
 import {
   listRunGroupTemplates,
   loadRunGroupTemplate,
@@ -121,7 +121,7 @@ export async function cmdParallel(args, flags) {
 
   let sidecar;
   try {
-    sidecar = readSidecarInfo();
+    sidecar = readDaemonInfo();
   } catch (err) {
     console.error(`Error: ${err.message}`);
     process.exit(1);
@@ -178,7 +178,7 @@ export async function cmdParallel(args, flags) {
 
   let created;
   try {
-    created = await sidecarRequest({
+    created = await daemonRequest({
       ...sidecar,
       method: 'POST',
       pathname: '/agent/run-group',
@@ -198,7 +198,7 @@ export async function cmdParallel(args, flags) {
   let latest = null;
   while (true) {
     try {
-      latest = await sidecarRequest({
+      latest = await daemonRequest({
         ...sidecar,
         method: 'GET',
         pathname: `/agent/run-group/${encodeURIComponent(groupId)}`,
