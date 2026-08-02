@@ -41,10 +41,20 @@ INSTALLED
   daemon <cmd>          Start, stop, restart, or inspect the local daemon
 
 AGENT INTEGRATION
-  integrate <agent>     Wire up RUDI router (claude, cursor, gemini, codex, all)
+  integrate <agent>     Wire up RUDI router (claude, gemini, antigravity, codex, all)
   integrate --list      Show detected agents
   instructions [agent]  Print or install RUDI agent instruction blocks
   index                 Rebuild tool cache for router
+
+AGENT HOST
+  agent hosts           Inspect native hosts, auth, router, skills, and versions
+  agent models <host>   List declared models for a native host
+  agent launch <host>   Launch foreground or detached native host work
+  agent resume <id>     Resume the same provider-owned native session
+  agent list            List persisted Agent Host launch pointers
+  agent status <id>     Inspect one launch pointer
+  agent attach <id>     Replay and follow normalized launch events
+  agent group <cmd>     Launch and manage cross-provider groups
 
 RUN
   run <stack>           Run a stack directly
@@ -71,6 +81,8 @@ EXAMPLES
   rudi instructions codex        Print Codex instruction block
   rudi skills sync codex         Create native Codex wrappers for RUDI skills
   rudi skills sync claude        Create native Claude wrappers for RUDI skills
+  rudi skills sync gemini        Create native Gemini wrappers for RUDI skills
+  rudi skills sync antigravity   Create native Antigravity wrappers for RUDI skills
   rudi leverage frontend         Calculate frontend workflow leverage
   rudi list                      Show installed packages
 
@@ -78,7 +90,7 @@ PACKAGE TYPES
   stack:<name>         MCP server stack
   runtime:<name>       Node, Python, Deno, Bun
   binary:<name>        ffmpeg, ripgrep, etc.
-  agent:<name>         Claude, Codex, Gemini CLIs
+  agent:<name>         Claude, Codex, Gemini, Antigravity CLIs
   skill:<name>         Skill (prompt with optional stack requirements)
   workflow:<name>      Repeatable workflow definition
 `);
@@ -142,6 +154,56 @@ OPTIONS
 EXAMPLES
   rudi run pdf-creator
   rudi run pdf-creator --input '{"file": "doc.html"}'
+`,
+    agent: `
+rudi agent - Run and inspect native headless agent hosts
+
+USAGE
+  rudi agent hosts [--json]
+  rudi agent models <claude|codex|google|gemini> [--json]
+  rudi agent launch <provider> --prompt <text> [options] [-- <provider-args...>]
+  rudi agent resume <launch-id> --prompt <text> [options] [-- <provider-args...>]
+  rudi agent list [--status <status>] [--limit <n>] [--json]
+  rudi agent status <launch-id> [--json]
+  rudi agent attach <launch-id> [--json] [--no-follow]
+  rudi agent stop <launch-id> [--json]
+  rudi agent diff <launch-id> [--json]
+  rudi agent promote <launch-id> [--json]
+  rudi agent discard <launch-id> [--json]
+  rudi agent group launch --workspace <path> --task <provider:file> --task <provider:file> --detach
+  rudi agent group list [--limit <n>] [--json]
+  rudi agent group status <group-id> [--json]
+  rudi agent group stop <group-id> [--json]
+
+WORKSPACE OPTIONS
+  --workspace <path>           Project path (default: originating directory)
+  --workspace-mode <mode>      auto, read-only, worktree, or isolated-copy
+  --read-only                  Direct project access with read-only provider controls
+
+PROMPT AND PROVIDER OPTIONS
+  --prompt <text>              Prompt argument
+  --prompt-file <path>         Read prompt from a file
+  --model <model>              Model ID or declared alias
+  --permission-mode <mode>     Provider-native permission profile
+  --approval-mode <mode>       Codex approval policy
+  --image <a,b>                Image or attachment paths where modeled
+  --timeout-ms <ms>            Bounded runtime (maximum 24 hours)
+  --json                       Emit normalized JSONL events
+  --detach                     Dispatch through the local background service
+
+EXAMPLES
+  rudi agent hosts
+  rudi agent models codex
+  rudi agent launch claude --workspace . --prompt "Fix the failing tests"
+  rudi agent launch codex --workspace . --prompt-file task.md --detach
+  printf '%s' "Explain this repository" | rudi agent launch codex --workspace . --read-only
+  rudi agent resume launch_abc123 --prompt "Continue with the next failure"
+  rudi agent attach launch_abc123
+  rudi agent group launch --workspace . --task claude:review.md --task codex:implement.md --detach
+
+Foreground execution requires neither the daemon nor Lite. Detached workers are
+service-dispatched, survive terminal/Lite closure and daemon restarts, and remain
+controllable through attach, status, stop, diff, promote, and discard.
 `,
     parallel: `
 rudi parallel - Launch grouped parallel agent sessions
@@ -344,11 +406,13 @@ rudi skills - List or sync installed RUDI skills
 
 USAGE
   rudi skills
-  rudi skills sync <codex|claude> [--force] [--dry-run] [--json]
+  rudi skills sync <codex|claude|gemini|antigravity> [--force] [--dry-run] [--json]
 
 COMMANDS
   sync codex       Create native ~/.codex/skills wrappers for installed RUDI skills
   sync claude      Create native ~/.claude/skills wrappers for installed RUDI skills
+  sync gemini      Create native ~/.gemini/skills wrappers for installed RUDI skills
+  sync antigravity Create native ~/.gemini/antigravity-cli/skills wrappers for installed RUDI skills
 
 OPTIONS
   --force          Overwrite existing native skill wrappers
@@ -359,6 +423,8 @@ EXAMPLES
   rudi skills
   rudi skills sync codex
   rudi skills sync claude
+  rudi skills sync gemini
+  rudi skills sync antigravity
   rudi skills sync codex --force
 `,
     secrets: `
@@ -557,6 +623,7 @@ AGENTS
   windsurf     Windsurf IDE
   vscode       VS Code / GitHub Copilot
   gemini       Gemini CLI
+  antigravity  Antigravity CLI
   codex        OpenAI Codex CLI
   zed          Zed Editor
 

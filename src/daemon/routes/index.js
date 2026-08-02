@@ -5,6 +5,7 @@ import {
 import { buildEnvRoutes } from './env.js';
 import { buildAdminRoutes } from './admin.js';
 import { buildLocalLlmRoutes } from './local-llm.js';
+import { buildAgentHostRoutes } from './agent-host.js';
 
 import { buildAnalyticsRoutes } from '../../commands/serve/routes/analytics.js';
 import { buildAuthRoutes } from '../../commands/serve/routes/auth.js';
@@ -21,6 +22,7 @@ import { buildTerminalRoutes } from '../../commands/serve/routes/terminal.js';
 
 export {
   buildAdminRoutes,
+  buildAgentHostRoutes,
   buildAnalyticsRoutes,
   buildAuthRoutes,
   buildDaemonHealthRoutes,

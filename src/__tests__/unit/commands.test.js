@@ -133,6 +133,11 @@ test('commands: leverage exports cmdLeverage function', async () => {
   assert.strictEqual(typeof cmdLeverage, 'function');
 });
 
+test('commands: agent exports cmdAgent function', async () => {
+  const { cmdAgent } = await import('../../commands/agent-host.js');
+  assert.strictEqual(typeof cmdAgent, 'function');
+});
+
 // =============================================================================
 // UTILS EXPORTS
 // =============================================================================

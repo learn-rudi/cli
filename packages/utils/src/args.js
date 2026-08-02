@@ -5,33 +5,47 @@
 /**
  * Parse command line arguments
  * @param {string[]} argv - Arguments from process.argv.slice(2)
- * @returns {{ command: string, args: string[], flags: Object }}
+ * @returns {{ command: string, args: string[], flags: Object, passthrough: string[] }}
  */
 export function parseArgs(argv) {
   const flags = {};
   const args = [];
+  const passthrough = [];
   let command = null;
+
+  function setLongFlag(key, value) {
+    if (!Object.hasOwn(flags, key)) {
+      flags[key] = value;
+      return;
+    }
+    flags[key] = Array.isArray(flags[key])
+      ? [...flags[key], value]
+      : [flags[key], value];
+  }
 
   for (let i = 0; i < argv.length; i++) {
     const arg = argv[i];
 
-    if (arg.startsWith('--')) {
+    if (arg === '--') {
+      passthrough.push(...argv.slice(i + 1));
+      break;
+    } else if (arg.startsWith('--')) {
       // Long flag: --key=value or --key value
       const eqIndex = arg.indexOf('=');
       if (eqIndex !== -1) {
         // --key=value format
         const key = arg.slice(2, eqIndex);
         const value = arg.slice(eqIndex + 1);
-        flags[key] = value;
+        setLongFlag(key, value);
       } else {
         // --key value format (check if next arg is a value)
         const key = arg.slice(2);
         const nextArg = argv[i + 1];
         if (nextArg && !nextArg.startsWith('-')) {
-          flags[key] = nextArg;
+          setLongFlag(key, nextArg);
           i++; // Skip the value
         } else {
-          flags[key] = true;
+          setLongFlag(key, true);
         }
       }
     } else if (arg.startsWith('-') && arg.length > 1) {
@@ -49,7 +63,7 @@ export function parseArgs(argv) {
     }
   }
 
-  return { command, args, flags };
+  return { command, args, flags, passthrough };
 }
 
 /**

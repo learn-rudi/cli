@@ -88,7 +88,9 @@ function buildStatusPayload(deps, options) {
     dbStatus: deps.getDbStatus(),
     packageCounts: deps.getPackageCounts(),
     activeSessionCount: countActiveAgentProcesses(options.agentProcesses),
-    activeJobCount: Number.isInteger(options.activeJobCount) ? options.activeJobCount : 0,
+    activeJobCount: typeof options.getActiveJobCount === 'function'
+      ? options.getActiveJobCount()
+      : Number.isInteger(options.activeJobCount) ? options.activeJobCount : 0,
   });
 }
 

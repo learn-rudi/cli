@@ -73,6 +73,25 @@ test('parseArgs: boolean flag when next arg is another flag', () => {
   assert.strictEqual(result.flags.json, true);
 });
 
+test('parseArgs: preserves repeated long flags as an ordered array', () => {
+  const result = parseArgs([
+    'agent',
+    'group',
+    'launch',
+    '--task',
+    'claude:security.md',
+    '--task=codex:implementation.md',
+    '--task',
+    'google:ux.md',
+  ]);
+
+  assert.deepStrictEqual(result.flags.task, [
+    'claude:security.md',
+    'codex:implementation.md',
+    'google:ux.md',
+  ]);
+});
+
 // =============================================================================
 // PARSE ARGS - SHORT FLAGS
 // =============================================================================
@@ -119,6 +138,25 @@ test('parseArgs: complex real-world example', () => {
   assert.strictEqual(result.flags.limit, '10');
   assert.strictEqual(result.flags.v, true);
   assert.strictEqual(result.flags.json, true);
+});
+
+test('parseArgs: preserves provider arguments after the passthrough delimiter', () => {
+  const result = parseArgs([
+    'agent',
+    'launch',
+    'codex',
+    '--workspace',
+    '.',
+    '--',
+    '--provider-specific-flag',
+    '-x',
+    'value',
+  ]);
+
+  assert.strictEqual(result.command, 'agent');
+  assert.deepStrictEqual(result.args, ['launch', 'codex']);
+  assert.deepStrictEqual(result.flags, { workspace: '.' });
+  assert.deepStrictEqual(result.passthrough, ['--provider-specific-flag', '-x', 'value']);
 });
 
 // =============================================================================
@@ -208,4 +246,3 @@ test('formatDuration: boundary at 1 minute', () => {
   const result = formatDuration(60000);
   assert.strictEqual(result, '1m 0s');
 });
-

@@ -1,0 +1,124 @@
+import crypto from 'node:crypto';
+
+import {
+  appendLaunchEvent,
+  getAgentHostPaths,
+  getLaunchArtifactFiles,
+} from './artifacts.js';
+import { executeForegroundLaunch } from './events/stream.js';
+import { createLaunchStore } from './launch-store.js';
+import { assertAgentHostReady } from './preflight.js';
+import {
+  buildProviderProcessPlan,
+  resolveAgentProviderBinary,
+  resolveAgentProviderId,
+} from './providers/index.js';
+import {
+  cleanupUnstartedWorkspace,
+  resolveAgentWorkspace,
+} from './workspace.js';
+
+export function createLaunchId() {
+  return `launch_${crypto.randomUUID().replaceAll('-', '')}`;
+}
+
+export async function launchAgent(options, dependencies = {}) {
+  const {
+    artifactsRoot = getAgentHostPaths().artifactsRoot,
+    eventSink = null,
+    idFactory = createLaunchId,
+    ownerPid = null,
+    onSpawn = null,
+    preflightImpl = assertAgentHostReady,
+    resolveBinaryImpl = resolveAgentProviderBinary,
+    spawnImpl,
+    stderr = process.stderr,
+    stdout = process.stdout,
+    signalEmitter = process,
+    workspaceResolver = resolveAgentWorkspace,
+  } = dependencies;
+
+  const launchId = idFactory();
+  const provider = resolveAgentProviderId(options?.provider);
+  const binaryPath = resolveBinaryImpl(provider);
+  if (!binaryPath) {
+    throw new Error(`${provider} host is not installed. Run: rudi install agent:${provider}`);
+  }
+  await preflightImpl({ binaryPath, provider });
+
+  const workspace = workspaceResolver({
+    artifactsRoot,
+    launchId,
+    mode: options.workspaceMode || 'auto',
+    originDirectory: options.originDirectory || process.cwd(),
+    outputDirectory: options.outputDirectory || null,
+    workspace: options.workspace || null,
+  });
+  const resolvedEventSink = eventSink || (event => appendLaunchEvent(
+    getLaunchArtifactFiles(workspace.outputDestination).events,
+    event,
+  ));
+  let plan;
+  try {
+    plan = buildProviderProcessPlan({
+      approvalMode: options.approvalMode,
+      binaryPath,
+      cwd: workspace.executionWorkspace,
+      extraArgs: options.extraArgs,
+      images: options.images,
+      model: options.model,
+      permissionMode: options.permissionMode,
+      prompt: options.prompt,
+      provider,
+      runtimeDirectory: workspace.outputDestination,
+      workspaceMode: workspace.mode,
+    });
+  } catch (error) {
+    cleanupUnstartedWorkspace(workspace);
+    throw error;
+  }
+
+  const ownsStore = !dependencies.store;
+  const store = dependencies.store || createLaunchStore();
+  try {
+    store.create({
+      baseRef: workspace.baseRef,
+      executionKind: options.executionKind || 'foreground',
+      executionWorkspace: workspace.executionWorkspace,
+      launchId,
+      model: plan.model,
+      originDirectory: workspace.originDirectory,
+      ownerPid,
+      outputDestination: workspace.outputDestination,
+      projectRoot: workspace.projectRoot,
+      provider,
+      status: 'starting',
+      workspaceMode: workspace.mode,
+      worktreeBranch: workspace.worktreeBranch,
+    });
+
+    return await executeForegroundLaunch({
+      eventSink: resolvedEventSink,
+      jsonOutput: options.json === true,
+      launchId,
+      onSpawn,
+      plan,
+      spawnImpl,
+      stderr,
+      stdout,
+      store,
+      signalEmitter,
+      timeoutMs: options.timeoutMs || plan.timeouts.runtimeMs,
+    });
+  } catch (error) {
+    const current = store.get(launchId);
+    if (current?.status === 'starting' || current?.status === 'running') {
+      store.transition(launchId, 'failed', { lastError: error.message });
+    } else if (!current) {
+      cleanupUnstartedWorkspace(workspace);
+    }
+    throw error;
+  } finally {
+    if (ownsStore) store.close();
+  }
+}

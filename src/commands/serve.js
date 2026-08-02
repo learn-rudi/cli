@@ -26,6 +26,7 @@ import { createInfrastructure } from './serve/ctx.js';
 import { runStartupTasks } from './serve/startup.js';
 import {
   buildAnalyticsRoutes,
+  buildAgentHostRoutes,
   buildAuthRoutes,
   buildFsRoutes,
   buildLogsRoutes,
@@ -38,6 +39,7 @@ import {
   buildSuggestRoutes,
   buildTerminalRoutes,
 } from '../daemon/routes/index.js';
+import { createLaunchStore } from '../agent-host/launch-store.js';
 import {
   buildDaemonHealthRoutes,
 } from '../daemon/routes/health.js';
@@ -204,8 +206,18 @@ export async function cmdServe(args, flags) {
   const plansRoutes = buildPlansRoutes(ctx);
   const packageRoutes = buildPackageRoutes(ctx);
   const localLlmRoutes = buildLocalLlmRoutes(ctx);
+  const agentHostRoutes = buildAgentHostRoutes(ctx);
   const daemonHealthRoutes = buildDaemonHealthRoutes(ctx, {
     agentProcesses,
+    getActiveJobCount: () => {
+      const store = createLaunchStore();
+      try {
+        return store.list({ limit: 1000, status: 'starting' }).length
+          + store.list({ limit: 1000, status: 'running' }).length;
+      } finally {
+        store.close();
+      }
+    },
     getPort: () => sidecarPort,
     startedAtMs,
   });
@@ -291,6 +303,9 @@ export async function cmdServe(args, flags) {
         if (await providerRoutes.handle(req, res, url)) return;
         if (await suggestRoutes.handle(req, res, url)) return;
         if (await handleAgent(req, res, url)) return;
+      }
+      if (url.pathname.startsWith('/agent-host/v1/')) {
+        if (await agentHostRoutes.handle(req, res, url)) return;
       }
       if (url.pathname.startsWith('/shell/')) {
         if (await shellRoutes.handle(req, res, url)) return;

@@ -6,7 +6,7 @@ RUDI provides a unified installation and management system for:
 - **MCP Stacks** - Model Context Protocol servers for Claude, Codex, and Gemini
 - **CLI Tools** - Any npm package or upstream binary (ffmpeg, ripgrep, etc.)
 - **Runtimes** - Node.js, Python, Deno, Bun
-- **AI Agents** - Claude Code, Codex CLI, Gemini CLI
+- **AI Agents** - Claude Code, Codex CLI, Gemini CLI, Antigravity CLI
 
 ## Installation
 
@@ -101,26 +101,108 @@ rudi secrets remove SLACK_BOT_TOKEN    # Remove a secret
 
 ### Integrating with AI Agents
 
+See [Frontier Agent Hosts](docs/frontier-agent-hosts.md) for the complete
+Claude, Codex, Antigravity, and Gemini headless command matrix, current model
+aliases, resume/workspace/JSON controls, and the Google authentication split.
+
 ```bash
 rudi shims rebuild     # Create rudi-router and rudi-mcp shims (opt-in)
 rudi integrate claude    # Add stacks to Claude Desktop config
 rudi integrate codex     # Add stacks to Codex config
 rudi integrate gemini    # Add stacks to Gemini config
+rudi integrate antigravity # Add stacks to Antigravity config
 rudi integrate all       # Add to all detected agents
 ```
 
 This modifies the agent's MCP configuration file (e.g., `~/Library/Application Support/Claude/claude_desktop_config.json`) to include your installed stacks with proper secret injection.
 
-Claude and Codex have separate native skill directories. After installing RUDI
-skills, sync editable native wrappers when you want them to appear in the
-agent's skill/slash UI:
+Each native host has its own skill directory. After installing RUDI skills,
+sync editable native wrappers when you want them to appear in the host's
+skill/slash UI:
 
 ```bash
 rudi skills sync codex
 rudi skills sync claude
+rudi skills sync gemini
+rudi skills sync antigravity
 rudi skills sync codex --force   # overwrite existing generated wrappers
 rudi skills sync claude --force  # overwrite existing generated wrappers
 ```
+
+### Running Headless Agent Hosts
+
+`rudi agent` is the supported headless execution surface. Foreground launches
+run directly through the shared CLI core and require neither Lite nor the
+daemon. Native providers continue to own their complete transcripts; RUDI
+stores only launch/workspace/session pointers.
+
+```bash
+# Inspect native installations, auth, RUDI router wiring, skills, and versions
+rudi agent hosts
+rudi agent models claude
+rudi agent models codex
+rudi agent models google
+rudi agent models gemini
+
+# Writable Git projects automatically receive a dedicated worktree
+rudi agent launch codex \
+  --workspace . \
+  --prompt "Fix the failing tests"
+
+# Read-only work uses the project directly
+rudi agent launch claude \
+  --workspace . \
+  --read-only \
+  --prompt-file task.md
+
+# stdin and provider-specific argv are supported
+printf '%s' "Explain this repository" | \
+  rudi agent launch google --workspace . --read-only --json
+
+rudi agent launch codex \
+  --workspace . \
+  --prompt "Review the installer" \
+  -- --strict-config
+
+# Resume the same provider-owned native session
+rudi agent resume <launch-id> --prompt "Continue with the next failure"
+
+# Inspect minimal persisted launch projections
+rudi agent list --json
+rudi agent status <launch-id> --json
+```
+
+Workspace defaults fail closed:
+
+| Project | Access | Execution workspace |
+| --- | --- | --- |
+| Git repository | Writable | New Git worktree |
+| Git repository | Read-only | Project root directly |
+| Non-Git directory | Writable | Isolated copied workspace |
+| Non-Git directory | Read-only | Directory directly |
+
+RUDI never initializes Git, never falls back to `$HOME`, and never degrades a
+failed isolated write launch into shared write access. Detached launches,
+reconnect, stop, diff, promote/discard, and provider-neutral groups use the
+local background service and dedicated workers:
+
+```bash
+rudi agent launch codex --workspace . --prompt-file task.md --detach
+rudi agent attach <launch-id>
+rudi agent diff <launch-id>
+rudi agent promote <launch-id>   # or: rudi agent discard <launch-id>
+
+rudi agent group launch \
+  --workspace . \
+  --task claude:security.md \
+  --task codex:implementation.md \
+  --task google:ux.md \
+  --detach
+```
+
+These jobs survive terminal or Lite closure and daemon restarts. Lite is an
+optional GUI client of the same versioned Agent Host service; it is not the
+owner or source of truth for launches, workspaces, or native sessions.
 
 ### Inspecting Packages
 
@@ -174,6 +256,7 @@ initialize or require `rudi.db`.
 ├── router/               # Local MCP router and permission-hook runtime files
 │
 ├── state/                # Persistent per-stack runtime state
+│   ├── agent-hosts.db    # Minimal Agent Host launch/session pointers
 │   └── stacks/
 │       └── google-workspace/
 │           └── accounts/ # OAuth tokens and selected account state
@@ -187,6 +270,8 @@ initialize or require `rudi.db`.
 ├── cache/                # Rebuildable registry/package/tool-index cache
 ├── locks/                # Package install lock files
 ├── logs/                 # Daemon and runtime logs
+├── artifacts/
+│   └── agent-launches/   # Per-launch worktrees or isolated copied workspaces
 ├── notes/                # Local user artifacts from RUDI workflows
 ├── archive/              # Manual cleanup archives
 ├── prompts/              # Legacy prompt directory; new assets map to skills/

@@ -19,6 +19,7 @@
  *
  *   rudi secrets <cmd>       Manage secrets
  *   rudi doctor              Health check
+ *   rudi agent <cmd>         Run and inspect native headless agent hosts
  *
  *   rudi studio              Open RUDI website
  *   rudi studio version      Show installed Studio version
@@ -72,13 +73,14 @@ import { cmdDaemon } from './commands/daemon.js';
 import { cmdInstructions } from './commands/instructions.js';
 import { cmdLeverage } from './commands/leverage.js';
 import { cmdSkills } from './commands/skills.js';
+import { cmdAgent } from './commands/agent-host.js';
 
 const VERSION = typeof __RUDI_CLI_VERSION__ === 'string'
   ? __RUDI_CLI_VERSION__
   : (process.env.npm_package_version || '0.0.0');
 
 async function main() {
-  const { command, args, flags } = parseArgs(process.argv.slice(2));
+  const { command, args, flags, passthrough } = parseArgs(process.argv.slice(2));
 
   // Global flags
   if (flags.version || flags.v) {
@@ -252,6 +254,10 @@ async function main() {
 
       case 'leverage':
         await cmdLeverage(args, flags);
+        break;
+
+      case 'agent':
+        await cmdAgent(args, flags, passthrough);
         break;
 
       // Shortcuts for listing specific package types

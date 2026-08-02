@@ -112,6 +112,7 @@
     },
     "boundaries": {
       "paths": [
+        "src/__tests__/unit/agent-host-routes.test.js",
         "src/__tests__/unit/*-contract.test.js",
         "src/__tests__/unit/packages-routes.test.js",
         "src/__tests__/unit/run-group-observability.test.js",
