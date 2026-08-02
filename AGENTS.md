@@ -63,6 +63,7 @@ workflows, but they are not the default RUDI product surface:
 ├── stacks/                     # Installed stacks (MCP servers)
 ├── skills/                     # Installed skills
 ├── workflows/                  # Installed workflow definitions
+├── outputs/                    # Canonical durable generated artifacts
 ├── runtimes/                   # Installed runtimes
 ├── binaries/                   # Installed binaries/tools
 ├── bins/                       # Binary symlinks

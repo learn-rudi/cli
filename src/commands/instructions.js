@@ -69,7 +69,7 @@ export function buildRudiInstructionBlock(agent = 'generic') {
     '- Storage is a separate layer from daemon lifecycle.',
     '',
     'Discover current state instead of hardcoding stack inventory:',
-    '- RUDI package home is `~/.rudi`; installed stacks live in `~/.rudi/stacks`, RUDI-installed skills in `~/.rudi/skills`, and workflows in `~/.rudi/workflows`.',
+    '- RUDI package home is `~/.rudi`; installed stacks live in `~/.rudi/stacks`, RUDI-installed skills in `~/.rudi/skills`, workflows in `~/.rudi/workflows`, and durable generated artifacts in `~/.rudi/outputs`.',
     '- Use the single RUDI MCP router for installed or custom stacks; avoid hardcoded per-stack MCP entries unless the user explicitly asks.',
     '- RUDI MCP tools surface as `mcp__rudi__stack_<name>_*` when the router is configured.',
     '- Router binary: `~/.rudi/bins/rudi-router`.',
