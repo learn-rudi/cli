@@ -169,9 +169,12 @@ async function main() {
         break;
 
       case 'which':
-      case 'info':
       case 'show':
         await cmdWhich(args, flags);
+        break;
+
+      case 'info':
+        await cmdInfo(args, flags);
         break;
 
       case 'auth':

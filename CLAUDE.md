@@ -80,8 +80,9 @@ supported command.
 
 Run-group APIs are compatibility debt for the older RUDI-as-agent-runner
 direction. Do not build new daemon-owned agent execution features unless the
-task explicitly says to work on legacy run-group compatibility. See
-`apps/cli/docs/run-group-orchestration.md` for the old SOP when needed.
+task explicitly says to work on legacy run-group compatibility. The old
+run-group SOP is no longer active documentation; use Git history only when
+explicit compatibility work requires historical context.
 
 ### Quick Reference
 

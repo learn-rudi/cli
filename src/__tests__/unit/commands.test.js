@@ -225,6 +225,27 @@ test('utils: printVersion is exported', async () => {
 // COMMAND ALIASES
 // =============================================================================
 
+test('dispatch: info and pkg use package inspection while which remains stack-specific', () => {
+  for (const command of ['info', 'pkg']) {
+    const result = spawnSync(process.execPath, ['src/index.js', command], {
+      cwd: process.cwd(),
+      encoding: 'utf8',
+    });
+
+    assert.equal(result.status, 1, result.stderr || result.stdout);
+    assert.match(result.stderr, /Usage: rudi info <package>/);
+    assert.doesNotMatch(result.stderr, /Usage: rudi which <stack-id>/);
+  }
+
+  const whichResult = spawnSync(process.execPath, ['src/index.js', 'which'], {
+    cwd: process.cwd(),
+    encoding: 'utf8',
+  });
+
+  assert.equal(whichResult.status, 1, whichResult.stderr || whichResult.stdout);
+  assert.match(whichResult.stderr, /Usage: rudi which <stack-id>/);
+});
+
 test('aliases: command aliases are documented', () => {
   // These aliases should be supported based on index.js switch statement
   const aliases = {
@@ -240,8 +261,9 @@ test('aliases: command aliases are documented', () => {
     'bootstrap': 'init',
     'setup': 'init',
     'upgrade': 'update',
-    'info': 'which',
     'show': 'which',
+    'info': 'pkg',
+    'package': 'pkg',
     'authenticate': 'auth',
     'login': 'auth',
     'run-groups': 'run-group',
