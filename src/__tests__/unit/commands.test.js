@@ -43,16 +43,6 @@ test('commands: secrets exports cmdSecrets function', async () => {
   assert.strictEqual(typeof cmdSecrets, 'function');
 });
 
-test('commands: db exports cmdDb function', async () => {
-  const { cmdDb } = await import('../../commands/db.js');
-  assert.strictEqual(typeof cmdDb, 'function');
-});
-
-test('commands: import exports cmdImport function', async () => {
-  const { cmdImport } = await import('../../commands/import.js');
-  assert.strictEqual(typeof cmdImport, 'function');
-});
-
 test('commands: doctor exports cmdDoctor function', async () => {
   const { cmdDoctor } = await import('../../commands/doctor.js');
   assert.strictEqual(typeof cmdDoctor, 'function');
@@ -71,11 +61,6 @@ test('commands: init exports cmdInit function', async () => {
 test('commands: update exports cmdUpdate function', async () => {
   const { cmdUpdate } = await import('../../commands/update.js');
   assert.strictEqual(typeof cmdUpdate, 'function');
-});
-
-test('commands: logs exports cmdLogs function', async () => {
-  const { cmdLogs } = await import('../../commands/logs.js');
-  assert.strictEqual(typeof cmdLogs, 'function');
 });
 
 test('commands: which exports cmdWhich function', async () => {
@@ -101,11 +86,6 @@ test('commands: instructions exports cmdInstructions function', async () => {
 test('commands: status exports cmdStatus function', async () => {
   const { cmdStatus } = await import('../../commands/status.js');
   assert.strictEqual(typeof cmdStatus, 'function');
-});
-
-test('commands: run-group exports cmdRunGroup function', async () => {
-  const { cmdRunGroup } = await import('../../commands/run-group.js');
-  assert.strictEqual(typeof cmdRunGroup, 'function');
 });
 
 test('commands: lanes exports cmdLanes function', async () => {
@@ -170,7 +150,7 @@ test('utils: secrets help documents implemented secret commands only', async () 
   assert.doesNotMatch(rendered, /export\s+Export secrets/);
 });
 
-test('utils: default help archives legacy DB/session/run-group surfaces', async () => {
+test('utils: default help separates active and retired command surfaces', async () => {
   const { printHelp } = await import('@learnrudi/utils/help');
   const captureHelp = (topic) => {
     const lines = [];
@@ -187,14 +167,14 @@ test('utils: default help archives legacy DB/session/run-group surfaces', async 
   };
 
   const defaultHelp = captureHelp();
-  assert.doesNotMatch(defaultHelp, /\nDATABASE\n/);
-  assert.doesNotMatch(defaultHelp, /\nSESSIONS\n/);
-  assert.doesNotMatch(defaultHelp, /parallel <tasks\.\.\.>/);
-  assert.doesNotMatch(defaultHelp, /run-group <cmd>/);
+  assert.match(defaultHelp, /CORE COMMANDS/);
+  assert.match(defaultHelp, /ADVANCED COMMANDS/);
+  assert.match(defaultHelp, /INTERNAL COMMANDS/);
+  assert.match(defaultHelp, /RETIRED LEGACY COMMANDS/);
 
   for (const topic of ['db', 'session', 'parallel', 'run-group']) {
     const topicHelp = captureHelp(topic);
-    assert.match(topicHelp, /LEGACY COMPATIBILITY/);
+    assert.match(topicHelp, /RETIRED LEGACY COMMAND/);
     assert.doesNotMatch(topicHelp, /No help available/);
   }
 });
@@ -256,8 +236,6 @@ test('aliases: command aliases are documented', () => {
     'rm': 'remove',
     'uninstall': 'remove',
     'secret': 'secrets',
-    'database': 'db',
-    'sessions': 'session',
     'bootstrap': 'init',
     'setup': 'init',
     'upgrade': 'update',
@@ -266,7 +244,6 @@ test('aliases: command aliases are documented', () => {
     'package': 'pkg',
     'authenticate': 'auth',
     'login': 'auth',
-    'run-groups': 'run-group',
     'bins': 'binaries',
     'tools': 'binaries'
   };

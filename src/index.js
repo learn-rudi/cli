@@ -25,12 +25,8 @@
  *   rudi studio version      Show installed Studio version
  *   rudi studio uninstall    Uninstall RUDI Studio
  *
- * Legacy compatibility:
- *   rudi db <cmd>            Legacy session database operations
- *   rudi session <cmd>       Legacy imported-session operations
- *   rudi import <cmd>        Legacy session imports from AI providers
- *   rudi parallel            Legacy sidecar run groups
- *   rudi run-group <cmd>     Legacy run-group inspection/merge/cleanup
+ * Advanced and internal commands are listed separately in `rudi help`.
+ * Retired legacy command names resolve to migration notices, never runtime code.
  */
 
 import { parseArgs } from '@learnrudi/utils/args';
@@ -43,14 +39,10 @@ import { cmdRun } from './commands/run.js';
 import { cmdList } from './commands/list.js';
 import { cmdRemove } from './commands/remove.js';
 import { cmdSecrets } from './commands/secrets.js';
-import { cmdDb } from './commands/db.js';
-import { cmdSession } from './commands/session.js';
-import { cmdImport } from './commands/import.js';
 import { cmdDoctor } from './commands/doctor.js';
 import { cmdHome } from './commands/home.js';
 import { cmdInit } from './commands/init.js';
 import { cmdUpdate } from './commands/update.js';
-import { cmdLogs } from './commands/logs.js';
 import { cmdWhich } from './commands/which.js';
 import { cmdAuth } from './commands/auth.js';
 import { cmdMcp } from './commands/mcp.js';
@@ -60,12 +52,8 @@ import { cmdStatus } from './commands/status.js';
 import { cmdCheck } from './commands/check.js';
 import { cmdShims } from './commands/shims.js';
 import { cmdInfo } from './commands/info.js';
-import { cmdApply } from './commands/apply.js';
-import { cmdProject } from './commands/project.js';
 import { cmdStudio } from './commands/studio.js';
 import { cmdServe } from './commands/serve.js';
-import { cmdParallel } from './commands/parallel.js';
-import { cmdRunGroup } from './commands/run-group.js';
 import { cmdLanes } from './commands/lanes.js';
 import { cmdLocalLlm } from './commands/local-llm.js';
 import { cmdRuntime } from './commands/runtime.js';
@@ -78,6 +66,29 @@ import { cmdAgent } from './commands/agent-host.js';
 const VERSION = typeof __RUDI_CLI_VERSION__ === 'string'
   ? __RUDI_CLI_VERSION__
   : (process.env.npm_package_version || '0.0.0');
+
+const RETIRED_COMMANDS = new Map([
+  ['apply', 'Provider transcripts remain authoritative; organization-plan execution was removed.'],
+  ['database', 'Use Studio only if you still need the isolated compatibility database.'],
+  ['db', 'Use Studio only if you still need the isolated compatibility database.'],
+  ['import', 'Provider transcripts remain authoritative; RUDI no longer imports agent sessions.'],
+  ['logs', 'Use daemon logs under ~/.rudi/logs or provider-native diagnostics.'],
+  ['par', 'Use `rudi agent group` or native agent orchestration.'],
+  ['parallel', 'Use `rudi agent group` or native agent orchestration.'],
+  ['project', 'Provider-native workspaces replace session-project organization.'],
+  ['projects', 'Provider-native workspaces replace session-project organization.'],
+  ['run-group', 'Use `rudi agent group` or native agent orchestration.'],
+  ['run-groups', 'Use `rudi agent group` or native agent orchestration.'],
+  ['session', 'Use the provider-native transcript and `rudi agent` launch pointers.'],
+  ['sessions', 'Use the provider-native transcript and `rudi agent` launch pointers.'],
+]);
+
+function exitRetiredCommand(command) {
+  console.error(`Retired command: ${command}`);
+  console.error(RETIRED_COMMANDS.get(command));
+  console.error('Existing ~/.rudi/rudi.db data is not modified or deleted.');
+  process.exit(1);
+}
 
 async function main() {
   const { command, args, flags, passthrough } = parseArgs(process.argv.slice(2));
@@ -126,29 +137,6 @@ async function main() {
         await cmdSecrets(args, flags);
         break;
 
-      case 'db':
-      case 'database':
-        await cmdDb(args, flags);
-        break;
-
-      case 'session':
-      case 'sessions':
-        await cmdSession(args, flags);
-        break;
-
-      case 'import':
-        await cmdImport(args, flags);
-        break;
-
-      case 'apply':
-        await cmdApply(args, flags);
-        break;
-
-      case 'project':
-      case 'projects':
-        await cmdProject(args, flags);
-        break;
-
       case 'doctor':
         await cmdDoctor(args, flags);
         break;
@@ -162,10 +150,6 @@ async function main() {
       case 'update':
       case 'upgrade':
         await cmdUpdate(args, flags);
-        break;
-
-      case 'logs':
-        await cmdLogs(args, flags);
         break;
 
       case 'which':
@@ -227,16 +211,6 @@ async function main() {
 
       case 'serve':
         await cmdServe(args, flags);
-        break;
-
-      case 'parallel':
-      case 'par':
-        await cmdParallel(args, flags);
-        break;
-
-      case 'run-group':
-      case 'run-groups':
-        await cmdRunGroup(args, flags);
         break;
 
       case 'lanes':
@@ -306,6 +280,8 @@ async function main() {
         if (!command) {
           // No command - show dashboard or help
           printHelp();
+        } else if (RETIRED_COMMANDS.has(command)) {
+          exitRetiredCommand(command);
         } else {
           console.error(`Unknown command: ${command}`);
           console.error(`Run 'rudi help' for usage`);
