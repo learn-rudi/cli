@@ -17,6 +17,8 @@ test('GitHub quality workflow blocks unverified changes', () => {
   assert.match(workflow, /^\s{2}push:$/m);
   assert.match(workflow, /^\s{2}contents: read$/m);
   assert.match(workflow, /^\s{4}name: quality$/m);
+  assert.match(workflow, /actions\/checkout@v5/);
+  assert.match(workflow, /actions\/setup-node@v6/);
   assert.match(workflow, /fetch-depth: 0/);
   assert.match(workflow, /pnpm install --frozen-lockfile/);
   assert.match(workflow, /pnpm test/);
