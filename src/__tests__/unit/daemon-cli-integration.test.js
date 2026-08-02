@@ -17,8 +17,6 @@ describe('daemon status CLI integration', () => {
       reason: 'ok',
       port: 8123,
       version: '1.2.3',
-      activeSessionCount: 2,
-      activeJobCount: 1,
     };
 
     const status = await getFullStatus({

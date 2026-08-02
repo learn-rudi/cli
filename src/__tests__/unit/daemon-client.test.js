@@ -13,8 +13,8 @@ import {
 describe('readDaemonInfo', () => {
   test('reads port and token from explicit connection files', () => {
     const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'rudi-daemon-info-'));
-    const portFile = path.join(tmp, '.rudi-lite-port');
-    const tokenFile = path.join(tmp, '.rudi-lite-token');
+    const portFile = path.join(tmp, 'daemon.port');
+    const tokenFile = path.join(tmp, 'daemon.token');
     fs.writeFileSync(portFile, '8123');
     fs.writeFileSync(tokenFile, 'secret-token');
 
@@ -28,8 +28,8 @@ describe('readDaemonInfo', () => {
 
   test('classifies missing, invalid port, and missing token files', () => {
     const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'rudi-daemon-info-'));
-    const portFile = path.join(tmp, '.rudi-lite-port');
-    const tokenFile = path.join(tmp, '.rudi-lite-token');
+    const portFile = path.join(tmp, 'daemon.port');
+    const tokenFile = path.join(tmp, 'daemon.token');
 
     assert.throws(
       () => readDaemonInfo({ portFile, tokenFile }),
@@ -109,7 +109,6 @@ describe('getDaemonStatus', () => {
             ready: true,
             status: 'ready',
             checks: {
-              db: { status: 'ready', ready: true },
               toolIndex: { status: 'ready', ready: true },
             },
           };
@@ -117,9 +116,6 @@ describe('getDaemonStatus', () => {
         return {
           version: '1.2.3',
           toolIndexStatus: { status: 'ready', ready: true, toolCount: 10 },
-          dbStatus: { status: 'ready', ready: true },
-          activeSessionCount: 2,
-          activeJobCount: 1,
         };
       },
     });
@@ -131,8 +127,6 @@ describe('getDaemonStatus', () => {
     assert.equal(status.port, 8123);
     assert.equal(status.version, '1.2.3');
     assert.equal(status.toolIndexStatus.toolCount, 10);
-    assert.equal(status.activeSessionCount, 2);
-    assert.equal(status.activeJobCount, 1);
   });
 
   test('reports stale/unreachable connection files when requests fail', async () => {

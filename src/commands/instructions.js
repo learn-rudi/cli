@@ -65,7 +65,7 @@ export function buildRudiInstructionBlock(agent = 'generic') {
     'Boundaries:',
     '- RUDI owns local tools, secrets, stack/tool index, daemon health, artifacts, and MCP access.',
     '- Claude, Codex, Gemini, and other agent hosts own normal agent execution. Do not treat RUDI as the default agent runner.',
-    '- Legacy RUDI run-group or spawn-child routes are compatibility surfaces unless the user explicitly asks for them.',
+    '- Retired RUDI run-group, spawn-child, and session-import execution surfaces are not available.',
     '- Storage is a separate layer from daemon lifecycle.',
     '',
     'Discover current state instead of hardcoding stack inventory:',

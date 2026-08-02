@@ -61,10 +61,7 @@ test('getDaemonStatus returns a schema-valid deterministic status payload', () =
     runtime: { name: 'node', version: 'v20.0.0' },
     startedAt: '2026-05-17T12:00:00.000Z',
     toolIndexStatus: { status: 'ok', toolCount: 2 },
-    dbStatus: { status: 'ok' },
     packageCounts: { stack: 3 },
-    activeSessionCount: 4,
-    activeJobCount: 1,
   });
 
   assert.deepEqual(status, {
@@ -77,10 +74,7 @@ test('getDaemonStatus returns a schema-valid deterministic status payload', () =
     runtime: { name: 'node', version: 'v20.0.0' },
     startedAt: '2026-05-17T12:00:00.000Z',
     toolIndexStatus: { status: 'ok', toolCount: 2 },
-    dbStatus: { status: 'ok' },
     packageCounts: { stack: 3 },
-    activeSessionCount: 4,
-    activeJobCount: 1,
   });
   assert.deepEqual(validateDaemonStatus(status), { ok: true, errors: [] });
 });

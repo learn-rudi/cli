@@ -233,7 +233,7 @@ async function lanesInit(flags) {
   console.log(`  Dev worktree: ${worktreeResult.devPath} ${worktreeResult.createdWorktree ? '(created)' : '(existing)'}`);
   console.log('');
   console.log(`Run your integrated local app from ${worktreeResult.devPath}`);
-  console.log(`Run parallel agents with: rudi parallel --cwd ${worktreeResult.devPath} --base-branch ${devBranch} "task 1" "task 2"`);
+  console.log(`Launch native agent work with: rudi agent launch <provider> --workspace ${worktreeResult.devPath} --prompt <task>`);
 }
 
 function fastForwardLane(cwd, upstreamRef) {

@@ -2,7 +2,6 @@ import { describe, test } from 'node:test';
 import assert from 'node:assert/strict';
 
 import {
-  buildAdminRoutes,
   buildDaemonHealthRoutes,
   buildEnvRoutes,
   buildLocalLlmRoutes,
@@ -82,7 +81,6 @@ describe('daemon health/status routes', () => {
   test('GET /ready returns readiness without exposing operational secrets', () => {
     const ctx = createMockCtx();
     const routes = buildDaemonHealthRoutes(ctx, {
-      getDbStatus: () => ({ status: 'ready', ready: true }),
       getToolIndexStatus: () => ({ status: 'ready', ready: true, toolCount: 2 }),
     });
     const { req, url } = createMockReq('GET', '/ready');
@@ -94,13 +92,12 @@ describe('daemon health/status routes', () => {
       ready: true,
       checks: {
         routes: true,
-        db: { status: 'ready', ready: true },
         toolIndex: { status: 'ready', ready: true, toolCount: 2 },
       },
     });
   });
 
-  test('GET /version returns the sidecar API version only', () => {
+  test('GET /version returns the daemon API version only', () => {
     const ctx = createMockCtx();
     const routes = buildDaemonHealthRoutes(ctx, { version: '9.9.9' });
     const { req, url } = createMockReq('GET', '/version');
@@ -113,11 +110,6 @@ describe('daemon health/status routes', () => {
   test('GET /daemon/status returns schema-backed daemon runtime status', () => {
     const ctx = createMockCtx();
     const routes = buildDaemonHealthRoutes(ctx, {
-      agentProcesses: new Map([
-        ['alive', { proc: { killed: false } }],
-        ['stopped', { proc: { killed: true } }],
-      ]),
-      getDbStatus: () => ({ status: 'ready', ready: true }),
       getPackageCounts: () => ({ stack: 3 }),
       getPort: () => 8123,
       getToolIndexStatus: () => ({ status: 'ready', ready: true, toolCount: 5 }),
@@ -143,10 +135,7 @@ describe('daemon health/status routes', () => {
       },
       startedAt: '2026-05-17T12:00:00.000Z',
       toolIndexStatus: { status: 'ready', ready: true, toolCount: 5 },
-      dbStatus: { status: 'ready', ready: true },
       packageCounts: { stack: 3 },
-      activeSessionCount: 1,
-      activeJobCount: 0,
     });
   });
 });
@@ -207,35 +196,6 @@ describe('daemon utility routes', () => {
         LOCAL_LLM_BASE_URL: 'http://host.docker.internal:11434/v1',
         LOCAL_LLM_API_KEY: 'ollama',
         LOCAL_LLM_MODEL: 'llama3.2:3b',
-      },
-    });
-  });
-
-  test('POST /admin/backfill preserves started response shape', () => {
-    const ctx = createMockCtx();
-    const calls = [];
-    const routes = buildAdminRoutes(ctx, {
-      backfillSessionTurnsToDb: async () => {
-        calls.push('backfill');
-        return { ok: true };
-      },
-      getTurnIngestStats: () => ({
-        errors: [],
-        backfillRunning: false,
-        backfillFilesDone: 0,
-        backfillFilesTotal: 10,
-      }),
-    });
-    const { req, url } = createMockReq('POST', '/admin/backfill');
-    const res = createMockRes();
-
-    assert.equal(routes.handle(req, res, url), true);
-    assert.deepEqual(parseResBody(res), {
-      status: 'started',
-      backfillRunning: false,
-      progress: {
-        filesDone: 0,
-        filesTotal: 10,
       },
     });
   });

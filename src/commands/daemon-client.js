@@ -2,8 +2,8 @@ import fs from 'fs';
 import path from 'path';
 import { PATHS } from '@learnrudi/env';
 
-export const DAEMON_PORT_FILE = path.join(PATHS.home, '.rudi-lite-port');
-export const DAEMON_TOKEN_FILE = path.join(PATHS.home, '.rudi-lite-token');
+export const DAEMON_PORT_FILE = path.join(PATHS.home, 'daemon.port');
+export const DAEMON_TOKEN_FILE = path.join(PATHS.home, 'daemon.token');
 
 export function readDaemonInfo(options = {}) {
   const portFile = options.portFile || DAEMON_PORT_FILE;
@@ -99,9 +99,6 @@ function buildDaemonProbeResult(patch = {}) {
     readiness: null,
     status: null,
     toolIndexStatus: null,
-    dbStatus: null,
-    activeSessionCount: 0,
-    activeJobCount: 0,
     ...patch,
   };
 }
@@ -141,9 +138,6 @@ export async function getDaemonStatus(options = {}) {
       readiness,
       status,
       toolIndexStatus: status?.toolIndexStatus || readiness?.checks?.toolIndex || null,
-      dbStatus: status?.dbStatus || readiness?.checks?.db || null,
-      activeSessionCount: Number.isInteger(status?.activeSessionCount) ? status.activeSessionCount : 0,
-      activeJobCount: Number.isInteger(status?.activeJobCount) ? status.activeJobCount : 0,
     });
   } catch (error) {
     return buildDaemonProbeResult({

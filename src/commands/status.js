@@ -378,7 +378,6 @@ function printStatus(status, filter) {
     console.log(`  ${icon} State: ${formatDaemonState(daemon)}`);
     if (daemon.port) console.log(`    Port: ${daemon.port}`);
     if (daemon.version) console.log(`    Version: ${daemon.version}`);
-    if (daemon.dbStatus) console.log(`    Database: ${formatSubStatus(daemon.dbStatus)}`);
     if (daemon.toolIndexStatus) {
       const toolIndex = daemon.toolIndexStatus;
       const counts = [
@@ -388,8 +387,6 @@ function printStatus(status, filter) {
       ].filter(Boolean).join(', ');
       console.log(`    Tool index: ${formatSubStatus(toolIndex)}${counts ? ` (${counts})` : ''}`);
     }
-    console.log(`    Active sessions: ${daemon.activeSessionCount || 0}`);
-    console.log(`    Active jobs: ${daemon.activeJobCount || 0}`);
     if (daemon.error) console.log(`    Detail: ${daemon.error}`);
     console.log('');
     if (filter === 'daemon') return;

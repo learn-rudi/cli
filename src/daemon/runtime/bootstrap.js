@@ -6,25 +6,11 @@ import fs from 'fs';
 import path from 'path';
 import { PATHS } from '@learnrudi/env';
 
-export const PORT_FILE = path.join(PATHS.home, '.rudi-lite-port');
-export const TOKEN_FILE = path.join(PATHS.home, '.rudi-lite-token');
+export const PORT_FILE = path.join(PATHS.home, 'daemon.port');
+export const TOKEN_FILE = path.join(PATHS.home, 'daemon.token');
 
 export function parseRequestedPort(flags = {}) {
   return Number.parseInt(flags.port, 10) || 0;
-}
-
-export function resolveWebRoot(flags = {}) {
-  const webRoot = flags['web-root'] ? path.resolve(flags['web-root']) : null;
-  if (!webRoot) return null;
-
-  if (!fs.existsSync(path.join(webRoot, 'index.html'))) {
-    const err = new Error(`No index.html found in ${webRoot}`);
-    err.code = 'RUDI_WEB_ROOT_INDEX_MISSING';
-    err.webRoot = webRoot;
-    throw err;
-  }
-
-  return webRoot;
 }
 
 export function writeConnectionFiles({ port, token, portFile = PORT_FILE, tokenFile = TOKEN_FILE }) {
@@ -52,8 +38,6 @@ export function startDaemonHttpServer(server, {
 
 export function printStartupBanner({
   port,
-  token,
-  webRoot = null,
   pid = process.pid,
   portFile = PORT_FILE,
   tokenFile = TOKEN_FILE,
@@ -61,17 +45,10 @@ export function printStartupBanner({
 }) {
   writeLine('');
   writeLine('═'.repeat(50));
-  writeLine(webRoot ? '  RUDI Dashboard' : '  RUDI Lite Server');
+  writeLine('  RUDI Local Daemon');
   writeLine('═'.repeat(50));
-  if (webRoot) {
-    writeLine(`  Open:  http://localhost:${port}`);
-  }
   writeLine(`  Port:  ${port}`);
-  writeLine(`  Token: ${token.slice(0, 8)}...`);
   writeLine(`  PID:   ${pid}`);
-  if (webRoot) {
-    writeLine(`  Web:   ${webRoot}`);
-  }
   writeLine('');
   writeLine(`  Port file:  ${portFile}`);
   writeLine(`  Token file: ${tokenFile}`);

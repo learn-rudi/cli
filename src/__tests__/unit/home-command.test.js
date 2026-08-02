@@ -57,8 +57,9 @@ test('home json explains active lifecycle categories without secret values', asy
   assert.equal(data.entries.outputs.lifecycle, 'durable-output');
   assert.equal(data.entries.outputs.cleanable, 'archive-with-care');
   assert.ok(data.entries.outputs.size >= 1024 * 1024);
-  assert.equal(data.entries.rudiDb.section, 'Legacy Session State');
-  assert.equal(data.entries.rudiDb.lifecycle, 'legacy-session-database');
+  assert.equal(data.entries.rudiDb.section, 'Retired Data (Preserved)');
+  assert.equal(data.entries.rudiDb.lifecycle, 'retired-session-data');
+  assert.equal(data.retiredData.openedByCli, false);
   if (process.platform !== 'win32') {
     assert.ok(data.entries.bins.size < 1024 * 16, 'bins size should count the symlink, not its target');
     assert.equal(data.entries.legacyOutput, undefined);

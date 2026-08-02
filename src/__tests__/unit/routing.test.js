@@ -31,47 +31,11 @@ test('routing: list with kind argument', () => {
   assert.deepStrictEqual(result.args, ['stacks']);
 });
 
-test('routing: db with subcommand', () => {
-  const result = parseArgs(['db', 'stats']);
-
-  assert.strictEqual(result.command, 'db');
-  assert.deepStrictEqual(result.args, ['stats']);
-});
-
-test('routing: db search with query', () => {
-  const result = parseArgs(['db', 'search', 'authentication', 'bug']);
-
-  assert.strictEqual(result.command, 'db');
-  assert.deepStrictEqual(result.args, ['search', 'authentication', 'bug']);
-});
-
 test('routing: secrets set with name', () => {
   const result = parseArgs(['secrets', 'set', 'OPENAI_API_KEY']);
 
   assert.strictEqual(result.command, 'secrets');
   assert.deepStrictEqual(result.args, ['set', 'OPENAI_API_KEY']);
-});
-
-test('routing: import sessions', () => {
-  const result = parseArgs(['import', 'sessions']);
-
-  assert.strictEqual(result.command, 'import');
-  assert.deepStrictEqual(result.args, ['sessions']);
-});
-
-test('routing: import sessions with provider', () => {
-  const result = parseArgs(['import', 'sessions', 'claude']);
-
-  assert.strictEqual(result.command, 'import');
-  assert.deepStrictEqual(result.args, ['sessions', 'claude']);
-});
-
-test('routing: run-group with subcommand', () => {
-  const result = parseArgs(['run-group', 'list', '--status', 'running']);
-
-  assert.strictEqual(result.command, 'run-group');
-  assert.deepStrictEqual(result.args, ['list']);
-  assert.strictEqual(result.flags.status, 'running');
 });
 
 test('routing: lanes with subcommand', () => {
@@ -126,19 +90,19 @@ test('flags: short -v flag', () => {
 });
 
 test('flags: --dry-run flag', () => {
-  const result = parseArgs(['import', 'sessions', '--dry-run']);
+  const result = parseArgs(['install', 'stack:test', '--dry-run']);
 
   assert.strictEqual(result.flags['dry-run'], true);
 });
 
 test('flags: --limit with value', () => {
-  const result = parseArgs(['db', 'search', 'query', '--limit', '50']);
+  const result = parseArgs(['agent', 'list', '--limit', '50']);
 
   assert.strictEqual(result.flags.limit, '50');
 });
 
 test('flags: --format=value style', () => {
-  const result = parseArgs(['logs', '--format=json']);
+  const result = parseArgs(['run', 'stack:test', '--format=json']);
 
   assert.strictEqual(result.flags.format, 'json');
 });
@@ -207,11 +171,10 @@ test('edge: multiple positional args', () => {
 });
 
 test('edge: flags between args', () => {
-  const result = parseArgs(['db', 'search', '--limit', '10', 'query']);
+  const result = parseArgs(['agent', 'launch', '--model', 'gpt-5', 'codex']);
 
-  assert.strictEqual(result.command, 'db');
-  assert.strictEqual(result.flags.limit, '10');
-  // Note: 'query' comes after --limit value, so it's an arg
-  assert.ok(result.args.includes('search'));
-  assert.ok(result.args.includes('query'));
+  assert.strictEqual(result.command, 'agent');
+  assert.strictEqual(result.flags.model, 'gpt-5');
+  assert.ok(result.args.includes('launch'));
+  assert.ok(result.args.includes('codex'));
 });

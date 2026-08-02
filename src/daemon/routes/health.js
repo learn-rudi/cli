@@ -1,4 +1,3 @@
-import { getDb } from '@learnrudi/db';
 import { readRudiConfig } from '@learnrudi/core';
 
 import {
@@ -9,7 +8,7 @@ import {
 import {
   getToolIndexStatus,
 } from '../operations/tool-index.js';
-import { SIDECAR_API_VERSION } from '../../commands/serve/metadata.js';
+import { DAEMON_API_VERSION } from '../version.js';
 
 const DEFAULT_READY_CHECKS = Object.freeze({
   routes: true,
@@ -17,33 +16,8 @@ const DEFAULT_READY_CHECKS = Object.freeze({
 
 export function createHealthResponse(options = {}) {
   return getHealth({
-    version: options.version || SIDECAR_API_VERSION,
+    version: options.version || DAEMON_API_VERSION,
   });
-}
-
-function countActiveAgentProcesses(agentProcesses) {
-  if (!(agentProcesses instanceof Map)) return 0;
-  let active = 0;
-  for (const entry of agentProcesses.values()) {
-    if (entry?.proc && !entry.proc.killed) active += 1;
-  }
-  return active;
-}
-
-function getDefaultDbStatus(deps) {
-  try {
-    const db = deps.getDb();
-    if (db?.prepare) {
-      db.prepare('SELECT 1 AS ok').get();
-    }
-    return { status: 'ready', ready: true };
-  } catch (error) {
-    return {
-      status: 'not_ready',
-      ready: false,
-      error: error.message,
-    };
-  }
 }
 
 function getDefaultToolIndexStatus(deps) {
@@ -79,37 +53,29 @@ function getPackageCounts(deps) {
 
 function buildStatusPayload(deps, options) {
   return getDaemonStatus({
-    version: options.version || SIDECAR_API_VERSION,
+    version: options.version || DAEMON_API_VERSION,
     port: deps.getPort(),
     startedAtMs: options.startedAtMs,
     nowMs: deps.nowMs(),
     startedAt: options.startedAt,
     toolIndexStatus: deps.getToolIndexStatusForRoute(),
-    dbStatus: deps.getDbStatus(),
     packageCounts: deps.getPackageCounts(),
-    activeSessionCount: countActiveAgentProcesses(options.agentProcesses),
-    activeJobCount: typeof options.getActiveJobCount === 'function'
-      ? options.getActiveJobCount()
-      : Number.isInteger(options.activeJobCount) ? options.activeJobCount : 0,
   });
 }
 
 export function buildDaemonHealthRoutes(ctx, options = {}) {
   const { json, updateRequestAuth } = ctx;
   const deps = {
-    getDb,
     getToolIndexStatus,
     readRudiConfig,
     getPort: typeof options.getPort === 'function' ? options.getPort : () => options.port,
     nowMs: typeof options.nowMs === 'function' ? options.nowMs : () => Date.now(),
-    getDbStatus: typeof options.getDbStatus === 'function' ? options.getDbStatus : null,
     getToolIndexStatusForRoute: typeof options.getToolIndexStatus === 'function'
       ? options.getToolIndexStatus
       : null,
     getPackageCounts: typeof options.getPackageCounts === 'function' ? options.getPackageCounts : null,
   };
 
-  deps.getDbStatus ||= () => getDefaultDbStatus(deps);
   deps.getToolIndexStatusForRoute ||= () => getDefaultToolIndexStatus(deps);
   deps.getPackageCounts ||= () => getPackageCounts(deps);
 
@@ -125,7 +91,6 @@ export function buildDaemonHealthRoutes(ctx, options = {}) {
     json(res, getReadiness({
       checks: {
         ...DEFAULT_READY_CHECKS,
-        db: deps.getDbStatus(),
         toolIndex: deps.getToolIndexStatusForRoute(),
       },
     }));
@@ -134,7 +99,7 @@ export function buildDaemonHealthRoutes(ctx, options = {}) {
 
   function handleVersion(req, res, url) {
     if (req.method !== 'GET' || url.pathname !== '/version') return false;
-    json(res, { version: options.version || SIDECAR_API_VERSION });
+    json(res, { version: options.version || DAEMON_API_VERSION });
     return true;
   }
 

@@ -427,9 +427,6 @@ function printStatus(status, launchAgent) {
       : '';
     console.log(`  Tool index: ${status.toolIndexStatus.status || 'unknown'}${toolCount}`);
   }
-  if (status.dbStatus) {
-    console.log(`  Database: ${status.dbStatus.status || 'unknown'}`);
-  }
   if (status.error) console.log(`  Detail: ${status.error}`);
 }
 

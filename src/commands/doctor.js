@@ -67,10 +67,6 @@ export async function cmdDoctor(args, flags) {
   if (daemon.version) {
     console.log(`  ✓ Version: ${daemon.version}`);
   }
-  if (daemon.dbStatus) {
-    const dbReady = daemon.dbStatus.ready === true || daemon.dbStatus.status === 'ready';
-    console.log(`  ${dbReady ? '✓' : '✗'} Daemon DB: ${daemon.dbStatus.status || 'unknown'}`);
-  }
   if (daemon.toolIndexStatus) {
     const toolIndexReady = daemon.toolIndexStatus.ready !== false;
     const toolCount = Number.isInteger(daemon.toolIndexStatus.toolCount)

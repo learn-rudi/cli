@@ -1,8 +1,8 @@
 /**
  * Graceful daemon shutdown.
  *
- * Stops accepting new work, closes WebSockets, runs owned-resource cleanup, and
- * exits after cleanup or a bounded timeout.
+ * Stops accepting new work, runs owned-resource cleanup, and exits after
+ * cleanup or a bounded timeout.
  */
 
 const DEFAULT_SHUTDOWN_TIMEOUT_MS = 5000;
@@ -21,36 +21,6 @@ export async function closeHttpServer(server) {
   });
 }
 
-export async function closeWebSocketServer(wss) {
-  if (!wss) return;
-
-  if (wss.clients && typeof wss.clients[Symbol.iterator] === 'function') {
-    for (const client of wss.clients) {
-      try {
-        if (typeof client.close === 'function') {
-          client.close(1001, 'daemon shutting down');
-        } else if (typeof client.terminate === 'function') {
-          client.terminate();
-        }
-      } catch {
-        try { client.terminate?.(); } catch {}
-      }
-    }
-  }
-
-  if (typeof wss.close !== 'function') return;
-
-  await new Promise((resolve, reject) => {
-    wss.close((err) => {
-      if (!err || err.code === 'ERR_SERVER_NOT_RUNNING') {
-        resolve();
-        return;
-      }
-      reject(err);
-    });
-  });
-}
-
 export function createGracefulShutdown({
   cleanupResources,
   exit = process.exit,
@@ -58,7 +28,6 @@ export function createGracefulShutdown({
   processRef = process,
   server,
   timeoutMs = DEFAULT_SHUTDOWN_TIMEOUT_MS,
-  wss,
 } = {}) {
   let shutdownStarted = false;
 
@@ -76,7 +45,6 @@ export function createGracefulShutdown({
     try {
       log?.('serve', 'info', 'shutdown_started', { reason, exitCode });
       await closeHttpServer(server);
-      await closeWebSocketServer(wss);
       await cleanupResources?.();
       log?.('serve', 'info', 'shutdown_complete', { reason, exitCode: finalExitCode });
     } catch (err) {

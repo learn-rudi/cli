@@ -131,10 +131,11 @@ test('parseArgs: mixed flags and args', () => {
 });
 
 test('parseArgs: complex real-world example', () => {
-  const result = parseArgs(['db', 'search', 'authentication', '--limit', '10', '-v', '--json']);
+  const result = parseArgs(['agent', 'list', '--status', 'running', '--limit', '10', '-v', '--json']);
 
-  assert.strictEqual(result.command, 'db');
-  assert.deepStrictEqual(result.args, ['search', 'authentication']);
+  assert.strictEqual(result.command, 'agent');
+  assert.deepStrictEqual(result.args, ['list']);
+  assert.strictEqual(result.flags.status, 'running');
   assert.strictEqual(result.flags.limit, '10');
   assert.strictEqual(result.flags.v, true);
   assert.strictEqual(result.flags.json, true);

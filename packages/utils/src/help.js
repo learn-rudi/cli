@@ -428,7 +428,8 @@ WHAT IT DOES
   5. Creates settings.json (if missing)
   6. Installs/refreshes the managed Codex AGENTS.md RUDI block
 
-NOTE: Legacy session/database commands initialize rudi.db only when invoked.
+NOTE: Retired session/database data in ~/.rudi/rudi.db is preserved but the CLI
+does not open, migrate, or delete it.
 
 NOTE: Safe to run multiple times - only creates what's missing.
 

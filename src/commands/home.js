@@ -6,7 +6,6 @@
 
 import fs from 'fs';
 import path from 'path';
-import Database from 'better-sqlite3';
 import { PATHS, getInstalledPackages } from '@learnrudi/core';
 
 const HOME_LAYOUT = [
@@ -179,20 +178,20 @@ const HOME_LAYOUT = [
     key: 'rudiDb',
     name: 'rudi.db',
     type: 'file',
-    section: 'Legacy Session State',
+    section: 'Retired Data (Preserved)',
     path: () => path.join(PATHS.home, 'rudi.db'),
-    lifecycle: 'legacy-session-database',
+    lifecycle: 'retired-session-data',
     sensitivity: 'sensitive',
-    cleanable: 'rudi-db-vacuum',
-    description: 'Legacy SQLite database for session, usage, log, and run-group surfaces.'
+    cleanable: 'manual-archive',
+    description: 'Retired session database preserved for explicit archival; the CLI does not open it.'
   },
   {
     key: 'rudiDbWal',
     name: 'rudi.db-wal',
     type: 'file',
-    section: 'Legacy Session State',
+    section: 'Retired Data (Preserved)',
     path: () => path.join(PATHS.home, 'rudi.db-wal'),
-    lifecycle: 'legacy-session-database-journal',
+    lifecycle: 'retired-session-data-journal',
     sensitivity: 'sensitive',
     cleanable: 'sqlite-managed',
     description: 'SQLite write-ahead log for the legacy session database.'
@@ -201,9 +200,9 @@ const HOME_LAYOUT = [
     key: 'rudiDbShm',
     name: 'rudi.db-shm',
     type: 'file',
-    section: 'Legacy Session State',
+    section: 'Retired Data (Preserved)',
     path: () => path.join(PATHS.home, 'rudi.db-shm'),
-    lifecycle: 'legacy-session-database-journal',
+    lifecycle: 'retired-session-data-journal',
     sensitivity: 'sensitive',
     cleanable: 'sqlite-managed',
     description: 'SQLite shared-memory file for the legacy session database.'
@@ -286,26 +285,26 @@ const HOME_LAYOUT = [
     description: 'Legacy prompt directory; new prompt-style assets map to skills/.'
   },
   {
-    key: 'legacySidecarPort',
-    name: '.rudi-lite-port',
+    key: 'daemonPort',
+    name: 'daemon.port',
     type: 'file',
-    section: 'Legacy Compatibility',
-    path: () => path.join(PATHS.home, '.rudi-lite-port'),
+    section: 'Daemon Runtime',
+    path: () => path.join(PATHS.home, 'daemon.port'),
     lifecycle: 'daemon-runtime',
     sensitivity: 'sensitive',
     cleanable: 'no',
-    description: 'Current daemon port file with legacy Lite naming.'
+    description: 'Dynamic loopback port for the local RUDI daemon.'
   },
   {
-    key: 'legacySidecarToken',
-    name: '.rudi-lite-token',
+    key: 'daemonToken',
+    name: 'daemon.token',
     type: 'file',
-    section: 'Legacy Compatibility',
-    path: () => path.join(PATHS.home, '.rudi-lite-token'),
+    section: 'Daemon Runtime',
+    path: () => path.join(PATHS.home, 'daemon.token'),
     lifecycle: 'daemon-runtime',
     sensitivity: 'secret',
     cleanable: 'no',
-    description: 'Current daemon auth token file with legacy Lite naming.'
+    description: 'User-only authentication token for the loopback daemon API.'
   }
 ];
 
@@ -344,22 +343,6 @@ function countItems(dir) {
     return fs.readdirSync(dir).filter(f => !f.startsWith('.')).length;
   } catch {
     return 0;
-  }
-}
-
-function isDatabaseInitializedAt(dbPath) {
-  if (!fs.existsSync(dbPath)) return false;
-
-  try {
-    const db = new Database(dbPath, { readonly: true });
-    const result = db.prepare(`
-      SELECT name FROM sqlite_master
-      WHERE type='table' AND name='schema_version'
-    `).get();
-    db.close();
-    return !!result;
-  } catch {
-    return false;
   }
 }
 
@@ -417,13 +400,13 @@ function getHomeEntries() {
   return entries;
 }
 
-function getDatabaseInfo() {
+function getRetiredDataInfo() {
   const dbPath = path.join(PATHS.home, 'rudi.db');
   return {
     path: dbPath,
     exists: fs.existsSync(dbPath),
-    initialized: isDatabaseInitializedAt(dbPath),
-    size: getFileSize(dbPath)
+    size: getFileSize(dbPath),
+    openedByCli: false,
   };
 }
 
@@ -449,7 +432,7 @@ export async function cmdHome(args, flags) {
       directories: {},
       files: {},
       packages: {},
-      database: {}
+      retiredData: {}
     };
 
     // Collect directory info
@@ -466,8 +449,7 @@ export async function cmdHome(args, flags) {
       data.packages[kind] = getInstalledPackages(kind).length;
     }
 
-    // Database info
-    data.database = getDatabaseInfo();
+    data.retiredData = getRetiredDataInfo();
 
     console.log(JSON.stringify(data, null, 2));
     return;
@@ -489,18 +471,6 @@ export async function cmdHome(args, flags) {
     }
     console.log();
   }
-
-  // Show database
-  console.log('💾 Database');
-  const database = getDatabaseInfo();
-  if (database.exists) {
-    console.log(`   ${formatBytes(database.size)}`);
-    console.log(`   initialized: ${database.initialized ? 'yes' : 'unknown'}`);
-    console.log(`   ${database.path}`);
-  } else {
-    console.log(`   Not initialized`);
-  }
-  console.log();
 
   // Show installed packages summary
   console.log('═'.repeat(60));
@@ -538,5 +508,5 @@ export async function cmdHome(args, flags) {
   console.log('  rudi list runtimes    Show installed runtimes');
   console.log('  rudi list binaries    Show installed binaries');
   console.log('  rudi doctor --all     Check system dependencies');
-  console.log('  rudi db stats         Database statistics');
+  console.log('  rudi daemon status    Check local daemon readiness');
 }

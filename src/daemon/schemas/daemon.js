@@ -66,10 +66,7 @@ export const DaemonStatusSchema = deepFreezeSchema({
     'runtime',
     'startedAt',
     'toolIndexStatus',
-    'dbStatus',
     'packageCounts',
-    'activeSessionCount',
-    'activeJobCount',
   ],
   properties: {
     version: { type: 'string', minLength: 1 },
@@ -81,10 +78,7 @@ export const DaemonStatusSchema = deepFreezeSchema({
     runtime: JsonObjectSchema,
     startedAt: IsoDateTimeSchema,
     toolIndexStatus: JsonObjectSchema,
-    dbStatus: JsonObjectSchema,
     packageCounts: JsonObjectSchema,
-    activeSessionCount: { type: 'integer', minimum: 0 },
-    activeJobCount: { type: 'integer', minimum: 0 },
   },
 });
 
@@ -132,12 +126,6 @@ export function validateDaemonStatus(value) {
   }
   if (value.port !== undefined && (!Number.isInteger(value.port) || value.port < 1 || value.port > 65535)) {
     errors.push('port must be an integer between 1 and 65535');
-  }
-  if (value.activeSessionCount !== undefined && (!Number.isInteger(value.activeSessionCount) || value.activeSessionCount < 0)) {
-    errors.push('activeSessionCount must be a non-negative integer');
-  }
-  if (value.activeJobCount !== undefined && (!Number.isInteger(value.activeJobCount) || value.activeJobCount < 0)) {
-    errors.push('activeJobCount must be a non-negative integer');
   }
   return validationResult(errors);
 }
