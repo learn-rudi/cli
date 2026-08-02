@@ -277,18 +277,37 @@ test('checkMcpReady: handles errors from discoverStackTools', async () => {
 // checkIndexed
 // =============================================================================
 
-test('checkIndexed: fails when stack not in index', () => {
+test('checkIndexed: fails when stack not in index', (t) => {
+  const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'stack-index-test-'));
+  t.after(() => fs.rmSync(tmpDir, { recursive: true, force: true }));
+  const indexPath = path.join(tmpDir, 'tool-index.json');
+  fs.writeFileSync(indexPath, JSON.stringify({ version: 1, byStack: {} }));
+
   const config = {
     path: '/tmp'
   };
 
-  const result = checkIndexed('nonexistent-stack-for-testing', config);
+  const result = checkIndexed('nonexistent-stack-for-testing', config, { indexPath });
 
   assert.strictEqual(result.passed, false);
   assert.strictEqual(result.state, 'indexed');
   assert.ok(result.error.includes('not found in tool index'));
   assert.strictEqual(result.details.toolCount, 0);
-  assert.ok(result.details.hasOwnProperty('indexPath'));
+  assert.strictEqual(result.details.indexPath, indexPath);
+});
+
+test('checkIndexed: reports a missing tool index independently', (t) => {
+  const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'stack-index-test-'));
+  t.after(() => fs.rmSync(tmpDir, { recursive: true, force: true }));
+  const indexPath = path.join(tmpDir, 'missing-tool-index.json');
+
+  const result = checkIndexed('test-stack', { path: '/tmp' }, { indexPath });
+
+  assert.strictEqual(result.passed, false);
+  assert.strictEqual(result.state, 'indexed');
+  assert.strictEqual(result.error, 'Tool index file not found');
+  assert.strictEqual(result.details.toolCount, 0);
+  assert.strictEqual(result.details.indexPath, indexPath);
 });
 
 // =============================================================================

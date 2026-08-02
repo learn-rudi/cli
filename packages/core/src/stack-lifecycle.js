@@ -260,22 +260,25 @@ export async function checkMcpReady(stackId, stackConfig, opts = {}) {
  * Check if stack tools are indexed in tool-index.json
  * @param {string} stackId - Stack identifier
  * @param {Object} stackConfig - Stack config from rudi.json
+ * @param {{ indexPath?: string }} [options] - Optional index location for isolated callers/tests
  * @returns {{ passed: boolean, state: string, error: string|null, details: object }}
  */
-export function checkIndexed(stackId, stackConfig) {
+export function checkIndexed(stackId, stackConfig, options = {}) {
+  const indexPath = options.indexPath || TOOL_INDEX_PATH;
+
   try {
     // Check if index file exists
-    if (!fs.existsSync(TOOL_INDEX_PATH)) {
+    if (!fs.existsSync(indexPath)) {
       return {
         passed: false,
         state: 'indexed',
         error: 'Tool index file not found',
-        details: { toolCount: 0, indexPath: TOOL_INDEX_PATH }
+        details: { toolCount: 0, indexPath }
       };
     }
 
     // Read and parse index
-    const indexContent = fs.readFileSync(TOOL_INDEX_PATH, 'utf8');
+    const indexContent = fs.readFileSync(indexPath, 'utf8');
     const index = JSON.parse(indexContent);
 
     // Look for entry under byStack with both possible key formats
@@ -287,7 +290,7 @@ export function checkIndexed(stackId, stackConfig) {
         passed: false,
         state: 'indexed',
         error: `Stack not found in tool index`,
-        details: { toolCount: 0, indexPath: TOOL_INDEX_PATH }
+        details: { toolCount: 0, indexPath }
       };
     }
 
@@ -297,7 +300,7 @@ export function checkIndexed(stackId, stackConfig) {
         passed: false,
         state: 'indexed',
         error: `Stack indexed with error: ${entry.error}`,
-        details: { toolCount: entry.tools?.length || 0, indexPath: TOOL_INDEX_PATH }
+        details: { toolCount: entry.tools?.length || 0, indexPath }
       };
     }
 
@@ -307,7 +310,7 @@ export function checkIndexed(stackId, stackConfig) {
         passed: false,
         state: 'indexed',
         error: 'Stack indexed but has no tools',
-        details: { toolCount: 0, indexPath: TOOL_INDEX_PATH }
+        details: { toolCount: 0, indexPath }
       };
     }
 
@@ -315,14 +318,14 @@ export function checkIndexed(stackId, stackConfig) {
       passed: true,
       state: 'indexed',
       error: null,
-      details: { toolCount: entry.tools.length, indexPath: TOOL_INDEX_PATH }
+      details: { toolCount: entry.tools.length, indexPath }
     };
   } catch (err) {
     return {
       passed: false,
       state: 'indexed',
       error: err.message,
-      details: { toolCount: 0, indexPath: TOOL_INDEX_PATH }
+      details: { toolCount: 0, indexPath }
     };
   }
 }
