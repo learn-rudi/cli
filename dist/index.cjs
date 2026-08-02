@@ -12458,17 +12458,18 @@ async function checkMcpReady(stackId, stackConfig, opts = {}) {
     };
   }
 }
-function checkIndexed(stackId, stackConfig) {
+function checkIndexed(stackId, stackConfig, options = {}) {
+  const indexPath = options.indexPath || TOOL_INDEX_PATH;
   try {
-    if (!import_node_fs.default.existsSync(TOOL_INDEX_PATH)) {
+    if (!import_node_fs.default.existsSync(indexPath)) {
       return {
         passed: false,
         state: "indexed",
         error: "Tool index file not found",
-        details: { toolCount: 0, indexPath: TOOL_INDEX_PATH }
+        details: { toolCount: 0, indexPath }
       };
     }
-    const indexContent = import_node_fs.default.readFileSync(TOOL_INDEX_PATH, "utf8");
+    const indexContent = import_node_fs.default.readFileSync(indexPath, "utf8");
     const index = JSON.parse(indexContent);
     const byStack = index.byStack || index;
     const entry = byStack[stackId] || byStack[`stack:${stackId}`];
@@ -12477,7 +12478,7 @@ function checkIndexed(stackId, stackConfig) {
         passed: false,
         state: "indexed",
         error: `Stack not found in tool index`,
-        details: { toolCount: 0, indexPath: TOOL_INDEX_PATH }
+        details: { toolCount: 0, indexPath }
       };
     }
     if (entry.error) {
@@ -12485,7 +12486,7 @@ function checkIndexed(stackId, stackConfig) {
         passed: false,
         state: "indexed",
         error: `Stack indexed with error: ${entry.error}`,
-        details: { toolCount: entry.tools?.length || 0, indexPath: TOOL_INDEX_PATH }
+        details: { toolCount: entry.tools?.length || 0, indexPath }
       };
     }
     if (!entry.tools || entry.tools.length === 0) {
@@ -12493,21 +12494,21 @@ function checkIndexed(stackId, stackConfig) {
         passed: false,
         state: "indexed",
         error: "Stack indexed but has no tools",
-        details: { toolCount: 0, indexPath: TOOL_INDEX_PATH }
+        details: { toolCount: 0, indexPath }
       };
     }
     return {
       passed: true,
       state: "indexed",
       error: null,
-      details: { toolCount: entry.tools.length, indexPath: TOOL_INDEX_PATH }
+      details: { toolCount: entry.tools.length, indexPath }
     };
   } catch (err) {
     return {
       passed: false,
       state: "indexed",
       error: err.message,
-      details: { toolCount: 0, indexPath: TOOL_INDEX_PATH }
+      details: { toolCount: 0, indexPath }
     };
   }
 }
