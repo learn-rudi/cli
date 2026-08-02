@@ -159,7 +159,7 @@ function processPackages(catalogPath, kind) {
     const id = pkg.id.replace(/^(runtime|binary|agent):/, '');
     let installDir = getInstallDir(pkg, kind);
     let basePath = getKindBasePath(kind);
-    let installType = pkg.installType || 'binary';
+    let installType = pkg.installType || pkg.install?.source || 'binary';
     let commands = extractCommands(pkg, kind);
 
     const isGlobalNpmAgent = kind === 'agent' && (installType === 'npm' || pkg.npmPackage);

@@ -15,13 +15,13 @@
     ],
     "fallback": "which",
     "checkCommand": ["claude", "--version"],
-    "loginCommand": ["claude", "login"],
-    "authCheck": ["claude", "doctor"]
+    "loginCommand": ["claude", "auth", "login"],
+    "authCheck": ["claude", "auth", "status"]
   },
 
   "headless": {
     "command": "claude",
-    "promptDelivery": "arg",
+    "promptDelivery": "arg-or-stdin",
 
     "args": {
       "base": [
@@ -53,6 +53,16 @@
         { "if": "addDirs", "args": ["--add-dir", "{{addDirs|join: }}"] },
         { "if": "agents", "args": ["--agents", "{{agents}}"] },
         { "if": "agent", "args": ["--agent", "{{agent}}"] },
+        { "if": "effort", "args": ["--effort", "{{effort}}"] },
+        { "if": "bare", "args": ["--bare"] },
+        { "if": "safeMode", "args": ["--safe-mode"] },
+        { "if": "background", "args": ["--background"] },
+        { "if": "worktree", "args": ["--worktree", "{{worktree}}"] },
+        { "if": "tmux", "args": ["--tmux", "{{tmux}}"] },
+        { "if": "name", "args": ["--name", "{{name}}"] },
+        { "if": "includeHookEvents", "args": ["--include-hook-events"] },
+        { "if": "promptSuggestions", "args": ["--prompt-suggestions", "{{promptSuggestions}}"] },
+        { "if": "pluginUrl", "args": ["--plugin-url", "{{pluginUrl}}"] },
         { "if": "includePartialMessages", "args": ["--include-partial-messages"] },
         { "if": "inputFormat", "args": ["--input-format", "{{inputFormat}}"] },
         { "if": "replayUserMessages", "args": ["--replay-user-messages"] },
@@ -84,7 +94,7 @@
       "agent": ["--dangerously-skip-permissions"],
       "plan": ["--permission-mode", "plan"],
       "acceptEdits": ["--permission-mode", "acceptEdits"],
-      "delegate": ["--permission-mode", "delegate"],
+      "auto": ["--permission-mode", "auto"],
       "dontAsk": ["--permission-mode", "dontAsk"],
       "bypassPermissions": ["--permission-mode", "bypassPermissions"],
       "default": ["--permission-mode", "default"]
@@ -235,35 +245,47 @@
   },
 
   "models": {
-    "default": "claude-sonnet-4-5-20250929",
+    "default": "claude-opus-5",
     "available": [
       {
-        "id": "claude-opus-4-6",
-        "alias": "opus",
-        "name": "Opus 4.6",
-        "description": "Most intelligent model for agents and coding",
-        "tier": "pro",
-        "pricing": { "inputPerMTok": 5.00, "outputPerMTok": 25.00, "cachedReadPerMTok": 0.50, "cachedWritePerMTok": 6.25 },
-        "contextWindow": 200000,
-        "contextWindowExtended": 1000000,
+        "id": "claude-fable-5",
+        "alias": "fable",
+        "name": "Claude Fable 5",
+        "description": "Anthropic's highest-capability widely released model for long-running agents",
+        "tier": "frontier",
+        "pricing": { "inputPerMTok": 10.00, "outputPerMTok": 50.00 },
+        "contextWindow": 1000000,
         "maxOutputTokens": 128000,
-        "knowledgeCutoff": "2025-05",
-        "trainingCutoff": "2025-08",
+        "knowledgeCutoff": "2026-01",
+        "trainingCutoff": "2026-01",
         "adaptiveThinking": true
       },
       {
-        "id": "claude-sonnet-4-5-20250929",
-        "alias": "sonnet",
-        "name": "Sonnet 4.5",
-        "description": "Best combination of speed and intelligence",
+        "id": "claude-opus-5",
+        "alias": "opus",
+        "name": "Claude Opus 5",
+        "description": "Recommended for complex agentic coding and enterprise work",
         "tier": "pro",
         "default": true,
+        "pricing": { "inputPerMTok": 5.00, "outputPerMTok": 25.00, "cachedReadPerMTok": 0.50, "cachedWritePerMTok": 6.25 },
+        "contextWindow": 1000000,
+        "maxOutputTokens": 128000,
+        "knowledgeCutoff": "2026-05",
+        "trainingCutoff": "2026-05",
+        "adaptiveThinking": true
+      },
+      {
+        "id": "claude-sonnet-5",
+        "alias": "sonnet",
+        "name": "Claude Sonnet 5",
+        "description": "Best combination of speed and intelligence",
+        "tier": "pro",
         "pricing": { "inputPerMTok": 3.00, "outputPerMTok": 15.00, "cachedReadPerMTok": 0.30, "cachedWritePerMTok": 3.75 },
-        "contextWindow": 200000,
-        "contextWindowExtended": 1000000,
-        "maxOutputTokens": 64000,
-        "knowledgeCutoff": "2025-01",
-        "trainingCutoff": "2025-07"
+        "contextWindow": 1000000,
+        "maxOutputTokens": 128000,
+        "knowledgeCutoff": "2026-01",
+        "trainingCutoff": "2026-01",
+        "adaptiveThinking": true
       },
       {
         "id": "claude-haiku-4-5-20251001",
@@ -276,19 +298,6 @@
         "maxOutputTokens": 64000,
         "knowledgeCutoff": "2025-02",
         "trainingCutoff": "2025-07"
-      },
-      {
-        "id": "claude-opus-4-5-20251101",
-        "alias": "opus4.5",
-        "name": "Opus 4.5",
-        "description": "Legacy — succeeded by Opus 4.6",
-        "tier": "pro",
-        "legacy": true,
-        "pricing": { "inputPerMTok": 5.00, "outputPerMTok": 25.00, "cachedReadPerMTok": 0.50, "cachedWritePerMTok": 6.25 },
-        "contextWindow": 200000,
-        "maxOutputTokens": 64000,
-        "knowledgeCutoff": "2025-05",
-        "trainingCutoff": "2025-08"
       }
     ]
   },
@@ -308,6 +317,9 @@
     "contextLimitExtended": 1000000,
     "structuredOutput": true,
     "subagents": true,
+    "skills": true,
+    "plugins": true,
+    "rawArgs": true,
     "chrome": true,
     "planMode": true,
     "opusPlan": true,
@@ -320,6 +332,7 @@
     "mcpConfig": true,
     "settingsOverride": true,
     "imageInput": true,
+    "imageGeneration": { "native": false, "via": "RUDI image-generator stack" },
     "webSearch": false,
     "codeReview": false,
     "sandbox": false,

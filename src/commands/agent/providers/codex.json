@@ -25,6 +25,10 @@
     "stdinPrompt": "-",
 
     "args": {
+      "prefixConditionals": [
+        { "if": "approvalPolicy", "args": ["--ask-for-approval", "{{approvalPolicy}}"] },
+        { "if": "search", "args": ["--search"] }
+      ],
       "base": [
         "exec",
         "{{prompt}}",
@@ -35,7 +39,6 @@
       "conditionals": [
         { "if": "cwd", "args": ["-C", "{{cwd}}"] },
         { "if": "model", "args": ["-m", "{{model}}"] },
-        { "if": "model ~= 'gpt-5.1'", "args": ["-c", "model_reasoning_effort=high"] },
         { "if": "config", "args": ["-c", "{{config}}"] },
         { "if": "image", "args": ["-i", "{{image|join:,}}"] },
         { "if": "profile", "args": ["-p", "{{profile}}"] },
@@ -43,17 +46,20 @@
         { "if": "outputLastMessage", "args": ["-o", "{{outputLastMessage}}"] },
         { "if": "addDir", "args": ["--add-dir", "{{addDir}}"] },
         { "if": "ephemeral", "args": ["--ephemeral"] },
-        { "if": "search", "args": ["--search"] },
         { "if": "enableFeature", "args": ["--enable", "{{enableFeature}}"] },
         { "if": "disableFeature", "args": ["--disable", "{{disableFeature}}"] },
         { "if": "oss", "args": ["--oss"] },
         { "if": "localProvider", "args": ["--local-provider", "{{localProvider}}"] },
-        { "if": "noAltScreen", "args": ["--no-alt-screen"] }
+        { "if": "strictConfig", "args": ["--strict-config"] },
+        { "if": "ignoreUserConfig", "args": ["--ignore-user-config"] },
+        { "if": "ignoreRules", "args": ["--ignore-rules"] },
+        { "if": "dangerouslyBypassHookTrust", "args": ["--dangerously-bypass-hook-trust"] },
+        { "if": "noAltScreen", "args": ["-c", "tui.alternate_screen=false"] }
       ]
     },
 
     "permissionModes": {
-      "agent": ["--full-auto"],
+      "agent": ["-c", "approval_policy=\"never\"", "-s", "workspace-write"],
       "dangerous": ["--dangerously-bypass-approvals-and-sandbox"],
       "approve": ["-s", "workspace-write"],
       "readonly": ["-s", "read-only"],
@@ -61,10 +67,9 @@
     },
 
     "approvalModes": {
-      "untrusted": ["-a", "untrusted"],
-      "onFailure": ["-a", "on-failure"],
-      "onRequest": ["-a", "on-request"],
-      "never": ["-a", "never"]
+      "untrusted": ["-c", "approval_policy=\"untrusted\""],
+      "onRequest": ["-c", "approval_policy=\"on-request\""],
+      "never": ["-c", "approval_policy=\"never\""]
     },
 
     "subcommands": {
@@ -335,70 +340,26 @@
   },
 
   "models": {
-    "default": "gpt-5.3-codex",
+    "default": "gpt-5.6-sol",
     "available": [
       {
-        "id": "gpt-5.4",
-        "alias": "5.4",
-        "name": "GPT-5.4",
-        "description": "Latest flagship GPT model with Codex support",
-        "released": "2026-03-04",
-        "pricing": { "inputPerMTok": 2.50, "outputPerMTok": 15.00, "cachedInputPerMTok": 0.25 },
-        "contextWindow": 272000,
-        "maxOutputTokens": 128000,
-        "notes": "Codex supports an experimental 1M context via model_context_window and model_auto_compact_token_limit."
+        "id": "gpt-5.6-sol",
+        "alias": "sol",
+        "name": "GPT-5.6 Sol",
+        "description": "Flagship model for complex coding, computer use, research, and security work",
+        "default": true
       },
       {
-        "id": "gpt-5.4-mini",
-        "alias": "5.4-mini",
-        "name": "GPT-5.4 mini",
-        "description": "High-volume GPT-5.4 variant for fast coding and subagent work",
-        "released": "2026-03-17",
-        "pricing": { "inputPerMTok": 0.75, "outputPerMTok": 4.50, "cachedInputPerMTok": 0.075 },
-        "contextWindow": 400000,
-        "maxOutputTokens": 128000
+        "id": "gpt-5.6-terra",
+        "alias": "terra",
+        "name": "GPT-5.6 Terra",
+        "description": "Balanced everyday workhorse for production tasks and coordinating subagents"
       },
       {
-        "id": "gpt-5.3-codex",
-        "alias": "codex",
-        "name": "GPT-5.3 Codex",
-        "description": "Most capable agentic coding model",
-        "default": true,
-        "released": "2026-02-05",
-        "pricing": { "inputPerMTok": 1.75, "outputPerMTok": 14.00, "cachedInputPerMTok": 0.175 },
-        "contextWindow": 400000,
-        "maxOutputTokens": 128000
-      },
-      {
-        "id": "gpt-5.3-codex-spark",
-        "alias": "spark",
-        "name": "GPT-5.3 Codex Spark",
-        "description": "Near-instant real-time coding, text-only research preview",
-        "released": "2026-02-12",
-        "tier": "pro",
-        "pricing": { "inputPerMTok": null, "outputPerMTok": null, "cachedInputPerMTok": null },
-        "contextWindow": 128000,
-        "maxOutputTokens": 128000,
-        "notes": "Pricing TBD — currently available to ChatGPT Pro users"
-      },
-      {
-        "id": "gpt-5.2-codex",
-        "alias": "5.2",
-        "name": "GPT-5.2 Codex",
-        "description": "Advanced coding model, succeeded by GPT-5.3 Codex",
-        "released": "2026-01-14",
-        "pricing": { "inputPerMTok": 1.75, "outputPerMTok": 14.00, "cachedInputPerMTok": 0.175 },
-        "contextWindow": 400000,
-        "maxOutputTokens": 128000
-      },
-      {
-        "id": "gpt-5.1-codex",
-        "alias": "5.1",
-        "name": "GPT-5.1 Codex",
-        "description": "Previous generation coding model",
-        "pricing": { "inputPerMTok": 1.25, "outputPerMTok": 10.00, "cachedInputPerMTok": 0.125 },
-        "contextWindow": 400000,
-        "maxOutputTokens": 128000
+        "id": "gpt-5.6-luna",
+        "alias": "luna",
+        "name": "GPT-5.6 Luna",
+        "description": "Fast, low-cost model for narrow, repeatable, and high-volume work"
       }
     ]
   },
@@ -410,23 +371,27 @@
     "thinking": true,
     "systemPrompt": false,
     "sessionResume": true,
-    "sessionContinue": false,
-    "forkSession": false,
+    "sessionContinue": true,
+    "forkSession": true,
     "conversationHistory": "client",
     "contextLimitTokens": 400000,
     "structuredOutput": true,
-    "subagents": false,
+    "subagents": true,
+    "skills": true,
+    "plugins": true,
+    "rawArgs": true,
     "chrome": false,
     "planMode": false,
     "maxTurns": false,
     "maxBudget": false,
     "permissionPromptTool": false,
-    "inputStreaming": false,
+    "inputStreaming": true,
     "addDirs": true,
-    "pluginDirs": false,
+    "pluginDirs": true,
     "mcpConfig": true,
     "settingsOverride": true,
     "imageInput": true,
+    "imageGeneration": { "native": true, "via": "imagegen tool" },
     "webSearch": true,
     "codeReview": true,
     "sandbox": true

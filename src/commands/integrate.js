@@ -11,6 +11,7 @@
  *   rudi integrate claude      Wire up Claude Desktop/Code
  *   rudi integrate cursor      Wire up Cursor
  *   rudi integrate gemini      Wire up Gemini CLI
+ *   rudi integrate antigravity Wire up Antigravity CLI
  *   rudi integrate all         Wire up all detected agents
  */
 
@@ -178,7 +179,7 @@ export function patchCodexTomlRouter(content, routerPath, options = {}) {
  * Build MCP server entry for the router
  * Format varies slightly by agent
  */
-function buildRouterEntry(agentId, routerPath) {
+export function buildRouterEntry(agentId, routerPath) {
   const base = {
     command: routerPath,
     args: [],
@@ -187,6 +188,13 @@ function buildRouterEntry(agentId, routerPath) {
   // Claude Desktop and Claude Code need "type": "stdio"
   if (agentId === 'claude-desktop' || agentId === 'claude-code') {
     return { type: 'stdio', ...base };
+  }
+
+  if (agentId === 'antigravity' || agentId === 'gemini') {
+    return {
+      ...base,
+      env: { RUDI_ROUTER_TOOL_NAMES: 'portable' },
+    };
   }
 
   return base;
@@ -346,7 +354,7 @@ async function integrateAgent(agentId, flags) {
   if (!existing) {
     config[key]['rudi'] = routerEntry;
     action = 'added';
-  } else if (existing.command !== routerEntry.command || JSON.stringify(existing.args) !== JSON.stringify(routerEntry.args)) {
+  } else if (JSON.stringify(existing) !== JSON.stringify(routerEntry)) {
     config[key]['rudi'] = routerEntry;
     action = 'updated';
   }
@@ -406,6 +414,7 @@ AGENTS
   windsurf     Windsurf IDE
   vscode       VS Code / GitHub Copilot
   gemini       Gemini CLI
+  antigravity  Antigravity CLI
   codex        OpenAI Codex CLI
   zed          Zed Editor
 
@@ -456,6 +465,7 @@ EXAMPLES
       'windsurf': 'windsurf',
       'vscode': 'vscode',
       'gemini': 'gemini',
+      'antigravity': 'antigravity',
       'codex': 'codex',
       'zed': 'zed',
       'cline': 'cline',

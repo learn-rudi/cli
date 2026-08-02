@@ -139,6 +139,14 @@ test('config: Codex prefers config.toml', () => {
   assert.ok(codex.paths.darwin[0].endsWith('config.toml'));
 });
 
+test('config: Antigravity uses its global MCP configuration', () => {
+  const antigravity = AGENT_CONFIGS.find(a => a.id === 'antigravity');
+
+  assert.ok(antigravity);
+  assert.strictEqual(antigravity.key, 'mcpServers');
+  assert.ok(antigravity.paths.darwin[0].endsWith('.gemini/config/mcp_config.json'));
+});
+
 test('config: parses Codex TOML MCP servers', () => {
   const servers = readCodexTomlMcpServers(`
 [mcp_servers.rudi]
@@ -166,7 +174,7 @@ test('ids: all agent ids are unique', () => {
 });
 
 test('ids: known agent ids exist', () => {
-  const expectedIds = ['claude-desktop', 'cursor', 'windsurf', 'cline', 'zed', 'vscode', 'gemini', 'codex'];
+  const expectedIds = ['claude-desktop', 'cursor', 'windsurf', 'cline', 'zed', 'vscode', 'gemini', 'antigravity', 'codex'];
 
   for (const id of expectedIds) {
     assert.ok(AGENT_CONFIGS.some(a => a.id === id), `Agent ${id} should exist`);

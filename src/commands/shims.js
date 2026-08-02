@@ -113,8 +113,8 @@ function getCliEntryPath() {
 function copyRouterMcp(routerDir) {
   const destPath = path.join(routerDir, 'router-mcp.js');
   const possibleSources = [
-    path.join(path.dirname(process.argv[1]), '..', 'src', 'router-mcp.js'),
     path.join(path.dirname(process.argv[1]), '..', 'dist', 'router-mcp.js'),
+    path.join(path.dirname(process.argv[1]), '..', 'src', 'router-mcp.js'),
   ];
 
   for (const source of possibleSources) {

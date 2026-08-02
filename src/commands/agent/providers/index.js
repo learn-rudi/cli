@@ -7,10 +7,14 @@ import { createWhichCommand, runCommandPlan } from '../../../utils/subprocess.js
 // where import.meta.url and filesystem scanning are unavailable.
 import claudeConfig from './claude.json' with { type: 'json' };
 import codexConfig from './codex.json' with { type: 'json' };
+import geminiConfig from './gemini.json' with { type: 'json' };
+import antigravityConfig from './antigravity.json' with { type: 'json' };
 
 const PROVIDER_CONFIGS = {
   claude: claudeConfig,
   codex: codexConfig,
+  gemini: geminiConfig,
+  antigravity: antigravityConfig,
 };
 
 /**
@@ -86,17 +90,27 @@ export function getModelDef(config, aliasOrId) {
  * Expands base args and evaluates conditionals.
  */
 export function buildArgs(config, options = {}) {
-  const args = [];
+  const globalExtraArgs = normalizeExtraArgs(options.globalExtraArgs, 'globalExtraArgs');
+  const extraArgs = normalizeExtraArgs(options.extraArgs);
+  const args = [...globalExtraArgs];
+
+  appendConditionals(args, config.headless.args.prefixConditionals || [], options);
 
   // Expand base args with template substitution
   for (const arg of config.headless.args.base) {
     args.push(expandTemplate(arg, options));
   }
 
-  // Evaluate conditionals
-  for (const cond of config.headless.args.conditionals) {
+  appendConditionals(args, config.headless.args.conditionals, options);
+
+  args.push(...extraArgs);
+  return args;
+}
+
+function appendConditionals(args, conditionals, options) {
+  for (const cond of conditionals) {
     const key = cond.if;
-    if (options[key] == null) continue;
+    if (options[key] == null || options[key] === false) continue;
 
     for (const arg of cond.args) {
       const expanded = expandTemplate(arg, options);
@@ -105,8 +119,20 @@ export function buildArgs(config, options = {}) {
       }
     }
   }
+}
 
-  return args;
+function normalizeExtraArgs(value, optionName = 'extraArgs') {
+  if (value == null) return [];
+  if (!Array.isArray(value)) {
+    throw new TypeError(`${optionName} must be an array of strings`);
+  }
+
+  return value.map((arg, index) => {
+    if (typeof arg !== 'string' || arg.trim() === '' || arg.includes('\0')) {
+      throw new TypeError(`${optionName}[${index}] must be a non-empty string without NUL bytes`);
+    }
+    return arg;
+  });
 }
 
 /**
@@ -150,6 +176,7 @@ export function getApprovalArgs(config, mode) {
  * Returns null if the provider doesn't support subcommands.
  */
 export function buildSubcommandArgs(config, subcommand, options = {}) {
+  const extraArgs = normalizeExtraArgs(options.extraArgs);
   const subs = config.headless.subcommands;
   if (!subs) return null;
   if (!subs[subcommand]) {
@@ -159,11 +186,12 @@ export function buildSubcommandArgs(config, subcommand, options = {}) {
   const args = [...sub.args];
   for (const cond of sub.conditionals) {
     const key = cond.if;
-    if (options[key] == null) continue;
+    if (options[key] == null || options[key] === false) continue;
     for (const arg of cond.args) {
       args.push(expandTemplate(arg, options));
     }
   }
+  args.push(...extraArgs);
   return args;
 }
 

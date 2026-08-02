@@ -1,0 +1,97 @@
+{
+  "$schema": "https://learnrudi.com/schemas/headless-agent-v1.json",
+  "id": "antigravity",
+  "name": "Antigravity CLI",
+  "description": "Google Antigravity CLI — subscription-backed headless agent host",
+  "version": "1.0.0",
+  "binary": {
+    "name": "agy",
+    "resolvePaths": ["~/.local/bin/agy", "~/.rudi/bins/agy"],
+    "fallback": "which",
+    "checkCommand": ["agy", "--version"],
+    "loginCommand": ["agy"],
+    "authCheck": ["agy", "models"]
+  },
+  "headless": {
+    "command": "agy",
+    "promptDelivery": "arg",
+    "args": {
+      "base": ["--output-format", "stream-json"],
+      "conditionals": [
+        { "if": "prompt", "args": ["--print", "{{prompt}}"] },
+        { "if": "model", "args": ["--model", "{{model}}"] },
+        { "if": "continueSession", "args": ["--continue"] },
+        { "if": "conversation", "args": ["--conversation", "{{conversation}}"] },
+        { "if": "jsonSchema", "args": ["--json-schema", "{{jsonSchema}}"] },
+        { "if": "addDirs", "args": ["--add-dir", "{{addDirs|join: }}"] },
+        { "if": "agent", "args": ["--agent", "{{agent}}"] },
+        { "if": "effort", "args": ["--effort", "{{effort}}"] },
+        { "if": "mode", "args": ["--mode", "{{mode}}"] },
+        { "if": "project", "args": ["--project", "{{project}}"] },
+        { "if": "newProject", "args": ["--new-project"] },
+        { "if": "sandbox", "args": ["--sandbox"] },
+        { "if": "disableSlashCommands", "args": ["--disable-slash-commands"] },
+        { "if": "printTimeout", "args": ["--print-timeout", "{{printTimeout}}"] },
+        { "if": "outputFormat", "args": ["--output-format", "{{outputFormat}}"] }
+      ]
+    },
+    "permissionModes": {
+      "agent": ["--dangerously-skip-permissions"],
+      "plan": ["--mode", "plan"],
+      "acceptEdits": ["--mode", "accept-edits"],
+      "default": []
+    },
+    "env": { "TERM": "xterm-256color", "CI": "true", "NO_COLOR": "1" },
+    "authEnvVars": [],
+    "stdin": "pipe",
+    "timeouts": { "startupMs": 120000, "runtimeMs": 900000, "shutdownGraceMs": 5000 }
+  },
+  "eventStream": {
+    "format": "json-lines",
+    "sessionIdExtractor": { "path": "$.conversation_id", "fromEventTypes": ["init", "result"] },
+    "events": {
+      "init": { "condition": "$.type === 'init'" },
+      "assistant": { "condition": "$.type === 'assistant'" },
+      "tool_use": { "condition": "$.type === 'tool_use'" },
+      "tool_result": { "condition": "$.type === 'tool_result'" },
+      "result": { "condition": "$.type === 'result'" },
+      "error": { "condition": "$.type === 'error'" }
+    }
+  },
+  "models": {
+    "default": "gemini-3.1-pro-high",
+    "available": [
+      { "id": "gemini-3.1-pro-high", "alias": "pro", "name": "Gemini 3.1 Pro High", "description": "Highest reasoning Antigravity Gemini profile", "default": true },
+      { "id": "gemini-3.1-pro-low", "alias": "pro-low", "name": "Gemini 3.1 Pro Low", "description": "Lower-effort Gemini 3.1 Pro profile" },
+      { "id": "gemini-3.6-flash-high", "alias": "flash", "name": "Gemini 3.6 Flash High", "description": "Latest Gemini Flash with high reasoning" },
+      { "id": "gemini-3.6-flash-medium", "alias": "flash-medium", "name": "Gemini 3.6 Flash Medium", "description": "Balanced Gemini 3.6 Flash profile" },
+      { "id": "gemini-3.6-flash-low", "alias": "flash-low", "name": "Gemini 3.6 Flash Low", "description": "Fast Gemini 3.6 Flash profile" },
+      { "id": "gemini-3.5-flash-high", "alias": "3.5-flash", "name": "Gemini 3.5 Flash High", "description": "Gemini 3.5 Flash high reasoning profile" },
+      { "id": "claude-sonnet-4-6", "alias": "claude", "name": "Claude Sonnet 4.6", "description": "Anthropic model exposed by Antigravity" },
+      { "id": "claude-opus-4-6-thinking", "alias": "claude-opus", "name": "Claude Opus 4.6 Thinking", "description": "Anthropic thinking model exposed by Antigravity" },
+      { "id": "gpt-oss-120b-medium", "alias": "gpt-oss", "name": "GPT-OSS 120B Medium", "description": "Open-weight model exposed by Antigravity" }
+    ]
+  },
+  "capabilities": {
+    "streaming": true,
+    "tools": true,
+    "thinking": true,
+    "sessionResume": true,
+    "sessionContinue": true,
+    "forkSession": false,
+    "structuredOutput": true,
+    "subagents": true,
+    "skills": true,
+    "plugins": true,
+    "rawArgs": true,
+    "planMode": true,
+    "inputStreaming": false,
+    "addDirs": true,
+    "mcpConfig": true,
+    "imageInput": true,
+    "imageGeneration": { "native": true, "tool": "generate_image", "model": "Nano Banana 2" },
+    "webSearch": true,
+    "sandbox": true,
+    "effortLevel": true
+  }
+}

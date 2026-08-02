@@ -5,7 +5,7 @@
  * - Claude Desktop, Claude Code
  * - Cursor, Windsurf, Cline
  * - Zed, VS Code/Copilot
- * - Gemini, Codex
+ * - Gemini, Antigravity, Codex
  *
  * Each agent stores MCP configs in different locations with slightly
  * different JSON structures. This module normalizes the detection.
@@ -106,6 +106,17 @@ export const AGENT_CONFIGS = [
       darwin: ['.gemini/settings.json'],
       win32: ['.gemini/settings.json'],
       linux: ['.gemini/settings.json'],
+    }
+  },
+  // Antigravity CLI (Google)
+  {
+    id: 'antigravity',
+    name: 'Antigravity',
+    key: 'mcpServers',
+    paths: {
+      darwin: ['.gemini/config/mcp_config.json'],
+      win32: ['.gemini/config/mcp_config.json'],
+      linux: ['.gemini/config/mcp_config.json'],
     }
   },
   // Codex CLI (OpenAI)

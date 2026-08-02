@@ -1,0 +1,102 @@
+{
+  "$schema": "https://learnrudi.com/schemas/headless-agent-v1.json",
+  "id": "gemini",
+  "name": "Gemini CLI",
+  "description": "Google Gemini CLI — headless mode for API key, Vertex AI, or enterprise Code Assist credentials",
+  "version": "1.0.0",
+  "binary": {
+    "name": "gemini",
+    "resolvePaths": [
+      "~/.rudi/agents/gemini/node_modules/.bin/gemini",
+      "~/.rudi/runtimes/node/{arch}/bin/gemini",
+      "~/.rudi/runtimes/node/bin/gemini",
+      "~/.local/bin/gemini"
+    ],
+    "fallback": "which",
+    "checkCommand": ["gemini", "--version"],
+    "loginCommand": ["gemini"],
+    "authCheck": ["gemini", "--version"]
+  },
+  "headless": {
+    "command": "gemini",
+    "promptDelivery": "arg-or-stdin",
+    "args": {
+      "base": ["--output-format", "stream-json"],
+      "conditionals": [
+        { "if": "prompt", "args": ["--prompt", "{{prompt}}"] },
+        { "if": "model", "args": ["--model", "{{model}}"] },
+        { "if": "resume", "args": ["--resume", "{{resume}}"] },
+        { "if": "sessionFile", "args": ["--session-file", "{{sessionFile}}"] },
+        { "if": "sessionId", "args": ["--session-id", "{{sessionId}}"] },
+        { "if": "includeDirectories", "args": ["--include-directories", "{{includeDirectories|join:,}}"] },
+        { "if": "worktree", "args": ["--worktree", "{{worktree}}"] },
+        { "if": "sandbox", "args": ["--sandbox"] },
+        { "if": "approvalMode", "args": ["--approval-mode", "{{approvalMode}}"] },
+        { "if": "policy", "args": ["--policy", "{{policy|join:,}}"] },
+        { "if": "allowedMcpServerNames", "args": ["--allowed-mcp-server-names", "{{allowedMcpServerNames|join:,}}"] },
+        { "if": "extensions", "args": ["--extensions", "{{extensions|join:,}}"] },
+        { "if": "skipTrust", "args": ["--skip-trust"] },
+        { "if": "outputFormat", "args": ["--output-format", "{{outputFormat}}"] },
+        { "if": "rawOutput", "args": ["--raw-output", "--accept-raw-output-risk"] },
+        { "if": "acp", "args": ["--acp"] }
+      ]
+    },
+    "permissionModes": {
+      "agent": ["--approval-mode", "yolo"],
+      "plan": ["--approval-mode", "plan"],
+      "acceptEdits": ["--approval-mode", "auto_edit"],
+      "default": ["--approval-mode", "default"]
+    },
+    "env": { "TERM": "xterm-256color", "CI": "true", "NO_COLOR": "1" },
+    "authEnvVars": ["GEMINI_API_KEY", "GOOGLE_API_KEY", "GOOGLE_GENAI_USE_VERTEXAI", "GOOGLE_CLOUD_PROJECT"],
+    "stdin": "pipe",
+    "timeouts": { "startupMs": 120000, "runtimeMs": 900000, "shutdownGraceMs": 5000 }
+  },
+  "eventStream": {
+    "format": "json-lines",
+    "sessionIdExtractor": { "path": "$.session_id", "fromEventTypes": ["init", "result"] },
+    "events": {
+      "init": { "condition": "$.type === 'init'" },
+      "message": { "condition": "$.type === 'message'" },
+      "tool_use": { "condition": "$.type === 'tool_use'" },
+      "tool_result": { "condition": "$.type === 'tool_result'" },
+      "result": { "condition": "$.type === 'result'" },
+      "error": { "condition": "$.type === 'error'" }
+    }
+  },
+  "models": {
+    "default": "auto",
+    "available": [
+      { "id": "auto", "alias": "auto", "name": "Gemini Auto", "description": "Let Gemini CLI route to the best available model", "default": true },
+      { "id": "gemini-3.1-pro-preview", "alias": "pro", "name": "Gemini 3.1 Pro Preview", "description": "Google's current high-capability reasoning model" },
+      { "id": "gemini-3.6-flash", "alias": "flash", "name": "Gemini 3.6 Flash", "description": "Latest GA agentic and multimodal Flash model" },
+      { "id": "gemini-3.5-flash-lite", "alias": "flash-lite", "name": "Gemini 3.5 Flash-Lite", "description": "Latest GA low-latency high-volume model" },
+      { "id": "gemini-3.1-flash-image", "alias": "image", "name": "Gemini 3.1 Flash Image", "description": "Nano Banana 2 native image model" },
+      { "id": "gemini-3-pro-image", "alias": "image-pro", "name": "Gemini 3 Pro Image", "description": "Nano Banana Pro native image model" }
+    ]
+  },
+  "capabilities": {
+    "streaming": true,
+    "tools": true,
+    "thinking": true,
+    "sessionResume": true,
+    "sessionContinue": true,
+    "forkSession": false,
+    "structuredOutput": true,
+    "subagents": true,
+    "skills": true,
+    "extensions": true,
+    "hooks": true,
+    "rawArgs": true,
+    "planMode": true,
+    "inputStreaming": true,
+    "addDirs": true,
+    "mcpConfig": true,
+    "settingsOverride": true,
+    "imageInput": true,
+    "imageGeneration": { "native": false, "via": "RUDI image-generator stack or Gemini image API" },
+    "webSearch": true,
+    "sandbox": true,
+    "acp": true
+  }
+}
