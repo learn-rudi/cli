@@ -176,6 +176,27 @@ function normalizeSystemEvent(event) {
   return normalized;
 }
 
+function normalizeRateLimitEvent(event) {
+  const raw = event.rate_limit_info && typeof event.rate_limit_info === 'object'
+    ? event.rate_limit_info
+    : {};
+  const status = toString(raw.status, 'unknown');
+  const rateLimit = { status };
+
+  if (Number.isFinite(raw.resetsAt)) rateLimit.resetsAt = raw.resetsAt;
+  if (typeof raw.rateLimitType === 'string') rateLimit.rateLimitType = raw.rateLimitType;
+  if (typeof raw.overageStatus === 'string') rateLimit.overageStatus = raw.overageStatus;
+  if (Number.isFinite(raw.overageResetsAt)) rateLimit.overageResetsAt = raw.overageResetsAt;
+  if (typeof raw.isUsingOverage === 'boolean') rateLimit.isUsingOverage = raw.isUsingOverage;
+
+  return {
+    type: 'system',
+    subtype: 'rate_limit',
+    message: `Claude rate limit status: ${status}`,
+    rateLimit,
+  };
+}
+
 function normalizeErrorEvent(event) {
   const rawError = event.error && typeof event.error === 'object' ? event.error : null;
 
@@ -209,6 +230,7 @@ export function normalize(event) {
   if (event.type === 'assistant') return normalizeAssistantEvent(event);
   if (event.type === 'result') return normalizeResultEvent(event);
   if (event.type === 'system') return normalizeSystemEvent(event);
+  if (event.type === 'rate_limit_event') return normalizeRateLimitEvent(event);
   if (event.type === 'error') return normalizeErrorEvent(event);
 
   return {

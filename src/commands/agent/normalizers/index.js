@@ -23,6 +23,8 @@ const NORMALIZERS = {
  *   | { type: 'system', subtype: string, message: string,
  *       providerEventType?: string, providerItemType?: string, unknownReason?: string,
  *       rawPayload?: string, rawPayloadTruncated?: boolean, rawPayloadUnavailable?: boolean,
+ *       rateLimit?: { status: string, resetsAt?: number, rateLimitType?: string,
+ *         overageStatus?: string, overageResetsAt?: number, isUsingOverage?: boolean },
  *       compaction?: { trigger: string, preTokens: number, tokensSaved: number, compactedToolIds?: string[] },
  *       permission?: { requestId: string, batchId?: string, toolName?: string, toolInput?: Record<string, unknown> } }
  *   | { type: 'error', message: string, code?: string, details?: unknown };
