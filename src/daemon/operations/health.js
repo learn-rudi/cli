@@ -104,14 +104,9 @@ export function getDaemonStatus(options = {}) {
     toolIndexStatus: options.toolIndexStatus && typeof options.toolIndexStatus === 'object' && !Array.isArray(options.toolIndexStatus)
       ? options.toolIndexStatus
       : { status: 'unknown' },
-    dbStatus: options.dbStatus && typeof options.dbStatus === 'object' && !Array.isArray(options.dbStatus)
-      ? options.dbStatus
-      : { status: 'unknown' },
     packageCounts: options.packageCounts && typeof options.packageCounts === 'object' && !Array.isArray(options.packageCounts)
       ? options.packageCounts
       : {},
-    activeSessionCount: normalizeNonNegativeInteger(options.activeSessionCount, 0),
-    activeJobCount: normalizeNonNegativeInteger(options.activeJobCount, 0),
   };
 
   return requireValidResult('daemon status', result, validateDaemonStatus(result));

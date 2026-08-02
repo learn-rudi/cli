@@ -1,7 +1,7 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 
-import { patchCodexTomlRouter } from '../../commands/integrate.js';
+import { buildRouterEntry, patchCodexTomlRouter } from '../../commands/integrate.js';
 
 test('patchCodexTomlRouter adds rudi router to Codex config.toml', () => {
   const result = patchCodexTomlRouter('model = "gpt-5.3-codex"\n', '/Users/test/.rudi/bins/rudi-router', {
@@ -89,4 +89,21 @@ test('patchCodexTomlRouter leaves matching rudi router entry unchanged', () => {
   assert.equal(result.action, 'none');
   assert.deepEqual(result.removed, []);
   assert.equal(result.content, input);
+});
+
+test('buildRouterEntry selects portable MCP names for Google agent hosts', () => {
+  assert.deepEqual(buildRouterEntry('antigravity', '/rudi-router'), {
+    command: '/rudi-router',
+    args: [],
+    env: { RUDI_ROUTER_TOOL_NAMES: 'portable' },
+  });
+  assert.deepEqual(buildRouterEntry('gemini', '/rudi-router'), {
+    command: '/rudi-router',
+    args: [],
+    env: { RUDI_ROUTER_TOOL_NAMES: 'portable' },
+  });
+  assert.deepEqual(buildRouterEntry('cursor', '/rudi-router'), {
+    command: '/rudi-router',
+    args: [],
+  });
 });

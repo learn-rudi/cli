@@ -11,7 +11,7 @@ import {
 } from '@learnrudi/core';
 import { listSecretNames } from '@learnrudi/runner';
 import fs from 'fs';
-import { getSidecarDaemonStatus } from './sidecar-client.js';
+import { getDaemonStatus } from '../daemon/client.js';
 
 export function formatDaemonDoctorState(daemon) {
   if (daemon.ready) return 'ready';
@@ -57,7 +57,7 @@ export async function cmdDoctor(args, flags) {
 
   // Check local daemon reachability
   console.log('\n🟢 Daemon');
-  const daemon = await getSidecarDaemonStatus();
+  const daemon = await getDaemonStatus();
   const daemonState = formatDaemonDoctorState(daemon);
   const daemonIcon = daemon.ready ? '✓' : (daemon.reason === 'not_running' ? '○' : '✗');
   console.log(`  ${daemonIcon} State: ${daemonState}`);
@@ -66,10 +66,6 @@ export async function cmdDoctor(args, flags) {
   }
   if (daemon.version) {
     console.log(`  ✓ Version: ${daemon.version}`);
-  }
-  if (daemon.dbStatus) {
-    const dbReady = daemon.dbStatus.ready === true || daemon.dbStatus.status === 'ready';
-    console.log(`  ${dbReady ? '✓' : '✗'} Daemon DB: ${daemon.dbStatus.status || 'unknown'}`);
   }
   if (daemon.toolIndexStatus) {
     const toolIndexReady = daemon.toolIndexStatus.ready !== false;

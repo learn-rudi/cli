@@ -18,44 +18,50 @@ rudi - RUDI CLI
 USAGE
   rudi <command> [options]
 
-SETUP
-  init                  Bootstrap RUDI (download runtimes, optional shims)
-
-REGISTRY
+CORE COMMANDS
+  init                  Bootstrap the local RUDI capability layer
   search <query>        Search registry for packages
-  search --all          List all available packages
   install <pkg>         Install a package
   remove <pkg>          Remove a package
   update [pkg]          Update packages
-
-INSTALLED
-  list [kind]           List installed packages (stacks, skills, workflows, runtimes, binaries, agents)
+  list [kind]           List installed packages
   skills                List skills or sync installed skills to native agents
   home                  Show ~/.rudi structure and status
+  status                Show capability and integration status
   doctor                Check system health and dependencies
-  which <cmd>           Show path to a command
-  info <pkg>            Show package details
-  shims [cmd]           Manage shims in ~/.rudi/bins (list, check, fix, rebuild)
-  local-llm <cmd>       Check local OpenAI-compatible LLM runtimes and export env
-  runtime <cmd>         Inspect runtime registry entries and status
-  daemon <cmd>          Start, stop, restart, or inspect the local daemon
-
-AGENT INTEGRATION
-  integrate <agent>     Wire up RUDI router (claude, cursor, gemini, codex, all)
-  integrate --list      Show detected agents
+  run <stack>           Run an installed stack directly
+  secrets <cmd>         Manage local secrets
+  integrate <agent>     Wire up RUDI router (claude, gemini, antigravity, codex, all)
   instructions [agent]  Print or install RUDI agent instruction blocks
-  index                 Rebuild tool cache for router
+  index                 Rebuild the MCP router tool cache
+  agent hosts           Inspect native hosts, auth, router, skills, and versions
+  agent launch <host>   Launch provider-owned native agent work
+  agent group <cmd>     Launch and manage cross-provider groups
 
-RUN
-  run <stack>           Run a stack directly
+ADVANCED COMMANDS
+  auth <cmd>            Authenticate supported providers
+  check <pkg>           Validate package installation state
+  info <pkg>            Show package details
+  local-llm <cmd>       Inspect local OpenAI-compatible LLM runtimes
+  mcp <cmd>             Inspect MCP capability configuration
+  runtime <cmd>         Inspect runtime registry entries and status
+  daemon <cmd>          Manage the local background daemon
+  shims <cmd>           Manage executable shims in ~/.rudi/bins
+  studio <cmd>          Open or manage RUDI Studio
+  which <cmd>           Resolve an installed stack command
   lanes <cmd>           Manage the local main/dev lane worktree layout
   leverage [preset]     Calculate human-attention leverage for agent workflows
 
-SECRETS
-  secrets set <name>    Set a secret
-  secrets get <name>    Print a secret value for scripts
-  secrets list          List configured secrets
-  secrets remove <name> Remove a secret
+INTERNAL COMMANDS
+  serve                 Daemon process entrypoint; use rudi daemon for lifecycle
+
+RETIRED LEGACY COMMANDS
+  db, session, import   Session database/import architecture (removed)
+  project, apply, logs  Session organization/visibility architecture (removed)
+  parallel, run-group   RUDI-owned agent execution architecture (removed)
+
+  Run rudi help <retired-command> for the migration notice. Existing
+  ~/.rudi/rudi.db data is left untouched.
 
 OPTIONS
   -h, --help           Show help
@@ -66,25 +72,53 @@ OPTIONS
 EXAMPLES
   rudi search --all              List all available packages
   rudi install slack             Install Slack stack
-  rudi secrets set SLACK_TOKEN   Configure secret
   rudi integrate claude          Wire up Claude Desktop/Code
   rudi instructions codex        Print Codex instruction block
   rudi skills sync codex         Create native Codex wrappers for RUDI skills
-  rudi skills sync claude        Create native Claude wrappers for RUDI skills
-  rudi leverage frontend         Calculate frontend workflow leverage
-  rudi list                      Show installed packages
+  rudi agent hosts               Inspect native agent host readiness
+  rudi agent launch codex --workspace . --prompt "Review this repository"
 
 PACKAGE TYPES
   stack:<name>         MCP server stack
   runtime:<name>       Node, Python, Deno, Bun
   binary:<name>        ffmpeg, ripgrep, etc.
-  agent:<name>         Claude, Codex, Gemini CLIs
+  agent:<name>         Claude, Codex, Gemini, Antigravity CLIs
   skill:<name>         Skill (prompt with optional stack requirements)
   workflow:<name>      Repeatable workflow definition
 `);
 }
 
 function printCommandHelp(command) {
+  const retired = {
+    apply: 'Provider transcripts remain authoritative; organization-plan execution was removed.',
+    database: 'Use Studio only if you still need the isolated compatibility database.',
+    db: 'Use Studio only if you still need the isolated compatibility database.',
+    import: 'Provider transcripts remain authoritative; RUDI no longer imports agent sessions.',
+    logs: 'Use daemon logs under ~/.rudi/logs or provider-native diagnostics.',
+    par: 'Use `rudi agent group` or native agent orchestration.',
+    parallel: 'Use `rudi agent group` or native agent orchestration.',
+    project: 'Provider-native workspaces replace session-project organization.',
+    projects: 'Provider-native workspaces replace session-project organization.',
+    'run-group': 'Use `rudi agent group` or native agent orchestration.',
+    'run-groups': 'Use `rudi agent group` or native agent orchestration.',
+    session: 'Use the provider-native transcript and `rudi agent` launch pointers.',
+    sessions: 'Use the provider-native transcript and `rudi agent` launch pointers.',
+  };
+
+  if (retired[command]) {
+    console.log(`
+RETIRED LEGACY COMMAND
+  rudi ${command} is no longer executable.
+
+MIGRATION
+  ${retired[command]}
+
+DATA
+  Existing ~/.rudi/rudi.db data is not modified or deleted.
+`);
+    return;
+  }
+
   const help = {
     search: `
 rudi search - Search the registry
@@ -143,70 +177,55 @@ EXAMPLES
   rudi run pdf-creator
   rudi run pdf-creator --input '{"file": "doc.html"}'
 `,
-    parallel: `
-rudi parallel - Launch grouped parallel agent sessions
-
-LEGACY COMPATIBILITY
-  This command is retained for older RUDI sidecar/run-group workflows.
-  Prefer native Claude/Codex/Gemini orchestration for new agent work.
+    agent: `
+rudi agent - Run and inspect native headless agent hosts
 
 USAGE
-  rudi parallel "<task1>" "<task2>" [more tasks] [options]
-  rudi parallel --template <name> [options]
+  rudi agent hosts [--json]
+  rudi agent models <claude|codex|google|gemini> [--json]
+  rudi agent launch <provider> --prompt <text> [options] [-- <provider-args...>]
+  rudi agent resume <launch-id> --prompt <text> [options] [-- <provider-args...>]
+  rudi agent list [--status <status>] [--limit <n>] [--json]
+  rudi agent status <launch-id> [--json]
+  rudi agent attach <launch-id> [--json] [--no-follow]
+  rudi agent stop <launch-id> [--json]
+  rudi agent diff <launch-id> [--json]
+  rudi agent promote <launch-id> [--json]
+  rudi agent discard <launch-id> [--json]
+  rudi agent group launch --workspace <path> --task <provider:file> --task <provider:file> --detach
+  rudi agent group list [--limit <n>] [--json]
+  rudi agent group status <group-id> [--json]
+  rudi agent group stop <group-id> [--json]
 
-OPTIONS
-  --name <name>               Group display name
-  --provider <provider>       Agent provider (default: claude)
-  --model <model>             Model override
-  --base-branch <branch>      Base branch for worktrees (default: current branch)
-  --cwd <path>                Working directory (default: current dir)
-  --permission-mode <mode>    Permission mode passed to provider
-  --system-prompt <prompt>    Additional system prompt
-  --coordination-mode <mode>  flat, phased, or dependency
-  --template <name>           Load a tracked run-group template
-  --list-templates            Show available run-group templates
-  --allow-validation-commands Allow non-default validator commands
-  --no-worktree               Run in shared cwd instead of isolated worktrees
+WORKSPACE OPTIONS
+  --workspace <path>           Project path (default: originating directory)
+  --workspace-mode <mode>      auto, read-only, worktree, or isolated-copy
+  --read-only                  Direct project access with read-only provider controls
 
-EXAMPLES
-  rudi parallel "implement auth" "write tests" "update docs"
-  rudi parallel "fix bug A" "fix bug B" --name "Bug batch"
-  rudi parallel "task1" "task2" --provider claude --model sonnet
-  rudi parallel --list-templates
-  rudi parallel --template code-review-3task --coordination-mode dependency
-`,
-    'run-group': `
-rudi run-group - Inspect and manage parallel agent run groups
-
-LEGACY COMPATIBILITY
-  This command is retained for older RUDI sidecar/run-group workflows.
-  Prefer native agent-host orchestration for new parallel agent work.
-
-USAGE
-  rudi run-group <command> [args] [options]
-
-COMMANDS
-  list                          List run groups
-  show <group-id>               Show run-group details and sessions
-  stop <group-id>               Stop active sessions in a run group
-  merge <group-id>              Merge successful run-group branches
-  cleanup <group-id>            Remove worktrees for a run group
-
-OPTIONS
-  --json                        Output raw JSON
-  --status <status>             Filter list results
-  --project-path <path>         Filter list by project path
-  --limit <n>                   Limit list results
-  --offset <n>                  Offset list results
-  --to <branch>                 Merge target branch
-  --session-ids <a,b,c>         Explicit session IDs to merge
-  --delete-branches             Delete branches during cleanup
+PROMPT AND PROVIDER OPTIONS
+  --prompt <text>              Prompt argument
+  --prompt-file <path>         Read prompt from a file
+  --model <model>              Model ID or declared alias
+  --permission-mode <mode>     Provider-native permission profile
+  --approval-mode <mode>       Codex approval policy
+  --image <a,b>                Image or attachment paths where modeled
+  --timeout-ms <ms>            Bounded runtime (maximum 24 hours)
+  --json                       Emit normalized JSONL events
+  --detach                     Dispatch through the local background service
 
 EXAMPLES
-  rudi run-group list --status running
-  rudi run-group show group-123
-  rudi run-group merge group-123 --to dev
-  rudi run-group cleanup group-123 --delete-branches
+  rudi agent hosts
+  rudi agent models codex
+  rudi agent launch claude --workspace . --prompt "Fix the failing tests"
+  rudi agent launch codex --workspace . --prompt-file task.md --detach
+  printf '%s' "Explain this repository" | rudi agent launch codex --workspace . --read-only
+  rudi agent resume launch_abc123 --prompt "Continue with the next failure"
+  rudi agent attach launch_abc123
+  rudi agent group launch --workspace . --task claude:review.md --task codex:implement.md --detach
+
+Foreground execution requires neither the daemon nor Lite. Detached workers are
+service-dispatched, survive terminal/Lite closure and daemon restarts, and remain
+controllable through attach, status, stop, diff, promote, and discard.
 `,
     lanes: `
 rudi lanes - Manage the local main/dev lane layout for solo-dev parallel work
@@ -344,11 +363,13 @@ rudi skills - List or sync installed RUDI skills
 
 USAGE
   rudi skills
-  rudi skills sync <codex|claude> [--force] [--dry-run] [--json]
+  rudi skills sync <codex|claude|gemini|antigravity> [--force] [--dry-run] [--json]
 
 COMMANDS
   sync codex       Create native ~/.codex/skills wrappers for installed RUDI skills
   sync claude      Create native ~/.claude/skills wrappers for installed RUDI skills
+  sync gemini      Create native ~/.gemini/skills wrappers for installed RUDI skills
+  sync antigravity Create native ~/.gemini/antigravity-cli/skills wrappers for installed RUDI skills
 
 OPTIONS
   --force          Overwrite existing native skill wrappers
@@ -359,6 +380,8 @@ EXAMPLES
   rudi skills
   rudi skills sync codex
   rudi skills sync claude
+  rudi skills sync gemini
+  rudi skills sync antigravity
   rudi skills sync codex --force
 `,
     secrets: `
@@ -383,89 +406,6 @@ SECURITY
   get prints the raw secret value to stdout. Do not run it by itself in logs or
   paste the result into chats. Prefer non-echoing command substitution.
 `,
-    db: `
-rudi db - Legacy session database operations
-
-LEGACY COMPATIBILITY
-  Core RUDI no longer initializes or requires rudi.db. These commands are
-  retained for existing session/history/database workflows.
-
-USAGE
-  rudi db <command> [args]
-
-COMMANDS
-  stats            Show usage statistics
-  search <query>   Search conversation history
-  init             Initialize or migrate database
-  path             Show database file path
-  reset            Delete all data (requires --force)
-  vacuum           Compact database and reclaim space
-  backup [file]    Create database backup
-  prune [days]     Delete sessions older than N days (default: 90)
-  tables           Show table row counts
-
-OPTIONS
-  --force          Required for destructive operations
-  --dry-run        Preview without making changes
-  --json           Output as JSON
-
-EXAMPLES
-  rudi db stats
-  rudi db search "authentication bug"
-  rudi db reset --force
-  rudi db vacuum
-  rudi db backup ~/backups/rudi.db
-  rudi db prune 30 --dry-run
-  rudi db tables
-`,
-    session: `
-rudi session - Legacy session history operations
-
-LEGACY COMPATIBILITY
-  Core RUDI no longer owns normal agent execution or session history.
-  These commands are retained for existing imported-session workflows.
-
-USAGE
-  rudi session <command> [args]
-
-COMMANDS
-  list [options]         List sessions with filters
-  show <id>              Show session details
-  rename <id> <title>    Rename a session
-  delete <id> [--force]  Delete a session
-  tag <id> <tags>        Add tags
-  move <id> --project    Move session to project
-  export <id> [-o file]  Export session to JSON
-  search <query>         Search session content
-  index [--embeddings]   Index sessions for semantic search
-  similar <id>           Find similar sessions
-
-EXAMPLES
-  rudi session list --days 7
-  rudi session search "authentication bugs"
-  rudi session export 7bfa7be7 -o session.json
-`,
-    import: `
-rudi import - Import sessions from AI providers
-
-USAGE
-  rudi import <command> [options]
-
-COMMANDS
-  sessions [provider]  Import sessions from provider (claude, codex, gemini, or all)
-  status               Show import status for all providers
-
-OPTIONS
-  --dry-run            Show what would be imported without making changes
-  --max-age=DAYS       Only import sessions newer than N days
-  --verbose            Show detailed progress
-
-EXAMPLES
-  rudi import sessions              Import from all providers
-  rudi import sessions claude       Import only Claude sessions
-  rudi import sessions --dry-run    Preview without importing
-  rudi import status                Check what's available to import
-`,
     init: `
 rudi init - Bootstrap RUDI environment
 
@@ -488,7 +428,8 @@ WHAT IT DOES
   5. Creates settings.json (if missing)
   6. Installs/refreshes the managed Codex AGENTS.md RUDI block
 
-NOTE: Legacy session/database commands initialize rudi.db only when invoked.
+NOTE: Retired session/database data in ~/.rudi/rudi.db is preserved but the CLI
+does not open, migrate, or delete it.
 
 NOTE: Safe to run multiple times - only creates what's missing.
 
@@ -557,6 +498,7 @@ AGENTS
   windsurf     Windsurf IDE
   vscode       VS Code / GitHub Copilot
   gemini       Gemini CLI
+  antigravity  Antigravity CLI
   codex        OpenAI Codex CLI
   zed          Zed Editor
 
@@ -602,50 +544,6 @@ EXAMPLES
   rudi instructions codex --install
   rudi instructions claude --project --install
   rudi instructions codex --remove
-`,
-    logs: `
-rudi logs - Query agent visibility logs
-
-USAGE
-  rudi logs [options]
-
-FILTERS
-  --limit <n>           Number of logs to show (default: 50)
-  --last <time>         Show logs from last N time (5m, 1h, 30s, 2d)
-  --since <timestamp>   Show logs since timestamp (ISO or epoch ms)
-  --until <timestamp>   Show logs until timestamp (ISO or epoch ms)
-  --filter <text>       Search for text in log messages (repeatable)
-  --source <source>     Filter by source (e.g., ipc, console, agent-codex)
-  --level <level>       Filter by level (debug, info, warn, error)
-  --type <type>         Filter by event type (ipc, window, navigation, error, custom)
-  --provider <provider> Filter by provider (claude, codex, gemini)
-  --session-id <id>     Filter by session ID
-  --terminal-id <id>    Filter by terminal ID
-
-PERFORMANCE
-  --slow-only           Show only slow operations
-  --slow-threshold <ms> Minimum duration for slow operations (default: 1000)
-
-SPECIAL MODES
-  --before-crash        Show last 30 seconds before crash
-  --stats               Show statistics summary
-
-EXPORT
-  --export <file>       Export logs to file
-  --format <format>     Export format: json, ndjson, csv (default: json)
-
-OUTPUT
-  --verbose             Show detailed event information
-  --json                Output events as JSON lines
-
-EXAMPLES
-  rudi logs --last 5m
-  rudi logs --level error --last 1h
-  rudi logs --filter "authentication" --provider claude
-  rudi logs --slow-only --slow-threshold 2000
-  rudi logs --stats --last 24h
-  rudi logs --export debug.json --format ndjson --last 30m
-  rudi logs --before-crash
 `
   };
 

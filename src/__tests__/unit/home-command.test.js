@@ -12,6 +12,8 @@ test('home json explains active lifecycle categories without secret values', asy
   fs.mkdirSync(path.join(rudiHome, 'stacks', 'google-workspace'), { recursive: true });
   fs.mkdirSync(path.join(rudiHome, 'apps', 'service-desk'), { recursive: true });
   fs.mkdirSync(path.join(rudiHome, 'state', 'stacks', 'google-workspace'), { recursive: true });
+  fs.mkdirSync(path.join(rudiHome, 'outputs'), { recursive: true });
+  fs.writeFileSync(path.join(rudiHome, 'outputs', 'artifact.bin'), Buffer.alloc(1024 * 1024));
   fs.mkdirSync(path.join(rudiHome, 'logs'), { recursive: true });
   fs.mkdirSync(path.join(rudiHome, 'bins'), { recursive: true });
   fs.mkdirSync(path.join(rudiHome, 'binaries', 'large-tool'), { recursive: true });
@@ -19,6 +21,7 @@ test('home json explains active lifecycle categories without secret values', asy
   fs.writeFileSync(targetPath, Buffer.alloc(1024 * 1024));
   if (process.platform !== 'win32') {
     fs.symlinkSync(targetPath, path.join(rudiHome, 'bins', 'large-tool'));
+    fs.symlinkSync('outputs', path.join(rudiHome, 'output'));
   }
   fs.writeFileSync(path.join(rudiHome, 'secrets.json'), JSON.stringify({ API_TOKEN: 'do-not-print' }));
   fs.writeFileSync(path.join(rudiHome, 'logs', 'daemon.err.log'), 'error line\n');
@@ -51,9 +54,14 @@ test('home json explains active lifecycle categories without secret values', asy
   assert.equal(data.entries.secretsJson.sensitivity, 'secret');
   assert.equal(data.entries.logs.lifecycle, 'operational-logs');
   assert.equal(data.entries.logs.cleanable, 'rotate-or-archive');
-  assert.equal(data.entries.rudiDb.section, 'Legacy Session State');
-  assert.equal(data.entries.rudiDb.lifecycle, 'legacy-session-database');
+  assert.equal(data.entries.outputs.lifecycle, 'durable-output');
+  assert.equal(data.entries.outputs.cleanable, 'archive-with-care');
+  assert.ok(data.entries.outputs.size >= 1024 * 1024);
+  assert.equal(data.entries.rudiDb.section, 'Retired Data (Preserved)');
+  assert.equal(data.entries.rudiDb.lifecycle, 'retired-session-data');
+  assert.equal(data.retiredData.openedByCli, false);
   if (process.platform !== 'win32') {
     assert.ok(data.entries.bins.size < 1024 * 16, 'bins size should count the symlink, not its target');
+    assert.equal(data.entries.legacyOutput, undefined);
   }
 });

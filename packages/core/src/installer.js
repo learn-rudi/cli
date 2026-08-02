@@ -282,8 +282,8 @@ function normalizePreservedStatePaths(paths) {
   return normalized;
 }
 
-function isSystemBinaryPackage(pkg) {
-  return pkg.kind === 'binary' && (
+function isSystemInstalledPackage(pkg) {
+  return (pkg.kind === 'binary' || pkg.kind === 'agent') && (
     pkg.installType === 'system' ||
     pkg.managed === false ||
     pkg.install?.source === 'system'
@@ -1000,7 +1000,7 @@ async function installSinglePackage(pkg, options = {}) {
       return { success: true, id: pkg.id, path: installPath };
     }
 
-    if (isSystemBinaryPackage(pkg)) {
+    if (isSystemInstalledPackage(pkg)) {
       return await installSystemBinaryPackage(pkg, installPath, pkgName, {
         withShims,
         onProgress,

@@ -7,7 +7,7 @@ import { fileURLToPath } from 'node:url';
 
 const SCRIPT_DIR = path.dirname(fileURLToPath(import.meta.url));
 const REPO_ROOT = path.resolve(SCRIPT_DIR, '..');
-const DEFAULT_SCANNER = '/Users/hoff/dev/dev-help/agent-debt-scan.js';
+const DEFAULT_SCANNER = path.join(SCRIPT_DIR, 'agent-debt-scan.cjs');
 const DEFAULT_PROFILE = 'pr-review';
 const DEFAULT_LOG_PATH = '.agent-scans/history.ndjson';
 const SCANNABLE_EXTENSIONS = new Set(['.js', '.jsx', '.mjs', '.cjs', '.ts', '.tsx']);

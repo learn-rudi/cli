@@ -31,7 +31,7 @@ function globToRegExp(pattern) {
   return new RegExp(`^${regexBody}$`);
 }
 
-function expandTestArg(arg) {
+function expandTestArg(arg, { preserveUnmatched = true } = {}) {
   if (!/[*?]/.test(arg)) return [arg];
 
   const segments = arg.split(/[\\/]+/).filter(Boolean);
@@ -66,7 +66,7 @@ function expandTestArg(arg) {
     }
 
     candidates = nextCandidates;
-    if (candidates.length === 0) return [arg];
+    if (candidates.length === 0) return preserveUnmatched ? [arg] : [];
   }
 
   const matches = candidates
@@ -79,7 +79,7 @@ function expandTestArg(arg) {
     })
     .sort();
 
-  return matches.length > 0 ? matches : [arg];
+  return matches.length > 0 ? matches : (preserveUnmatched ? [arg] : []);
 }
 
 function resolveTestArgs(argv) {
@@ -97,7 +97,11 @@ function resolveTestArgs(argv) {
       expanded.push(arg);
       continue;
     }
-    expanded.push(...expandTestArg(arg));
+    expanded.push(...expandTestArg(arg, {
+      // Missing optional default suites are harmless. Explicit paths remain
+      // strict so a mistyped test target still fails loudly in Node.
+      preserveUnmatched: forwarded.length > 0,
+    }));
   }
   return expanded;
 }

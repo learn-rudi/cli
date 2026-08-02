@@ -35,15 +35,6 @@ export const DAEMON_ERROR_CODES = deepFreezeSchema({
   OPERATION_TIMEOUT: defineErrorCode('OPERATION_TIMEOUT', 504, 'Operation timed out', { category: 'timeout', retryable: true }),
   STALE_STATE: defineErrorCode('STALE_STATE', 409, 'Resource state is stale', { category: 'state' }),
 
-  DATABASE_NOT_INITIALIZED: defineErrorCode('DATABASE_NOT_INITIALIZED', 503, 'Database not initialized', { category: 'dependency', retryable: true }),
-  SSE_CLIENT_CAP_REACHED: defineErrorCode('SSE_CLIENT_CAP_REACHED', 429, 'Too many SSE clients', { category: 'backpressure', retryable: true }),
-
-  PROJECT_NOT_FOUND: defineErrorCode('PROJECT_NOT_FOUND', 404, 'Project not found', { category: 'client' }),
-  PROJECT_ALREADY_EXISTS: defineErrorCode('PROJECT_ALREADY_EXISTS', 409, 'Project already exists', { category: 'state' }),
-
-  NOTE_NOT_FOUND: defineErrorCode('NOTE_NOT_FOUND', 404, 'Note not found', { category: 'client' }),
-
-  RUN_GROUP_NOT_FOUND: defineErrorCode('RUN_GROUP_NOT_FOUND', 404, 'Run group not found', { category: 'client' }),
 });
 
 export const DAEMON_ERROR_CODE_VALUES = Object.freeze(

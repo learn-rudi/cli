@@ -45,7 +45,7 @@ test('RUDI_HOME: is absolute path', () => {
 // =============================================================================
 
 test('PATHS: has required directories', () => {
-  const required = ['home', 'apps', 'stacks', 'skills', 'workflows', 'runtimes', 'binaries', 'agents', 'db', 'cache'];
+  const required = ['home', 'apps', 'stacks', 'skills', 'workflows', 'outputs', 'legacyOutput', 'runtimes', 'binaries', 'agents', 'db', 'cache'];
 
   for (const key of required) {
     assert.ok(PATHS[key], `PATHS should have ${key}`);
@@ -53,7 +53,7 @@ test('PATHS: has required directories', () => {
 });
 
 test('PATHS: all paths are under RUDI_HOME', () => {
-  const pathKeys = ['apps', 'stacks', 'skills', 'workflows', 'runtimes', 'binaries', 'agents', 'cache', 'locks'];
+  const pathKeys = ['apps', 'stacks', 'skills', 'workflows', 'outputs', 'legacyOutput', 'runtimes', 'binaries', 'agents', 'cache', 'locks'];
 
   for (const key of pathKeys) {
     assert.ok(

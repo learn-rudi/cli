@@ -21,6 +21,8 @@ import * as path from 'path';
 import * as readline from 'readline';
 import * as os from 'os';
 
+import { buildPortableToolNameMap } from './router-tool-names.js';
+
 // =============================================================================
 // CONSTANTS
 // =============================================================================
@@ -42,6 +44,9 @@ const MAX_SERVERS = readIntEnv('RUDI_ROUTER_MAX_SERVERS', DEFAULT_MAX_SERVERS);
 const CLEANUP_INTERVAL_MS = readIntEnv('RUDI_ROUTER_CLEANUP_INTERVAL_MS', DEFAULT_CLEANUP_INTERVAL_MS);
 const FORCE_KILL_MS = readIntEnv('RUDI_ROUTER_FORCE_KILL_MS', DEFAULT_FORCE_KILL_MS);
 const LIVE_TOOL_LIST = readBoolEnv('RUDI_ROUTER_LIVE_TOOL_LIST', false);
+const TOOL_NAME_STYLE = process.env.RUDI_ROUTER_TOOL_NAMES === 'portable'
+  ? 'portable'
+  : 'canonical';
 
 // =============================================================================
 // STATE
@@ -56,6 +61,7 @@ let rudiConfig = null;
 /** @type {Object | null} */
 let toolIndex = null;
 let cleanupTimer = null;
+let portableToolNames = new Map();
 
 // =============================================================================
 // TYPES (JSDoc)
@@ -575,7 +581,14 @@ async function listTools() {
     log(`Skipped live tools/list for ${skippedStacks.length} stacks (enable RUDI_ROUTER_LIVE_TOOL_LIST=1 or run "rudi index")`);
   }
 
-  return tools;
+  if (TOOL_NAME_STYLE !== 'portable') return tools;
+
+  const mapping = buildPortableToolNameMap(tools.map(tool => tool.name));
+  portableToolNames = mapping.portableToCanonical;
+  return tools.map(tool => ({
+    ...tool,
+    name: mapping.canonicalToPortable.get(tool.name),
+  }));
 }
 
 /**
@@ -585,14 +598,23 @@ async function listTools() {
  * @returns {Promise<*>}
  */
 async function callTool(toolName, arguments_) {
-  // Parse namespace: "slack.send_message" → stackId="slack", actualTool="send_message"
-  const dotIndex = toolName.indexOf('.');
-  if (dotIndex === -1) {
-    throw new Error(`Invalid tool name format: ${toolName} (expected: stack.tool_name)`);
+  let canonicalToolName = toolName;
+  if (TOOL_NAME_STYLE === 'portable') {
+    if (portableToolNames.size === 0) await listTools();
+    canonicalToolName = portableToolNames.get(toolName);
+    if (!canonicalToolName) {
+      throw new Error(`Unknown portable tool name: ${toolName}`);
+    }
   }
 
-  const stackId = toolName.slice(0, dotIndex);
-  const actualToolName = toolName.slice(dotIndex + 1);
+  // Parse namespace: "slack.send_message" → stackId="slack", actualTool="send_message"
+  const dotIndex = canonicalToolName.indexOf('.');
+  if (dotIndex === -1) {
+    throw new Error(`Invalid tool name format: ${canonicalToolName} (expected: stack.tool_name)`);
+  }
+
+  const stackId = canonicalToolName.slice(0, dotIndex);
+  const actualToolName = canonicalToolName.slice(dotIndex + 1);
 
   if (!rudiConfig?.stacks?.[stackId]) {
     throw new Error(`Stack not found: ${stackId}`);
@@ -699,6 +721,7 @@ async function main() {
   log('Starting RUDI Router MCP Server');
   log(`Pool config: max=${MAX_SERVERS <= 0 ? 'unlimited' : MAX_SERVERS}, idleTTL=${IDLE_TTL_MS}ms, cleanup=${CLEANUP_INTERVAL_MS}ms`);
   log(`Live tools/list: ${LIVE_TOOL_LIST ? 'enabled' : 'disabled'}`);
+  log(`Tool name style: ${TOOL_NAME_STYLE}`);
 
   // Load config
   rudiConfig = loadRudiConfig();

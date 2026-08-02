@@ -273,3 +273,84 @@ test('installPackage registers system binaries instead of downloading them', () 
     fs.rmSync(root, { recursive: true, force: true });
   }
 });
+
+test('installPackage registers system agents instead of downloading them', () => {
+  const root = fs.mkdtempSync(path.join(os.tmpdir(), 'rudi-system-agent-'));
+  const rudiHome = path.join(root, '.rudi');
+  const registryRoot = path.join(root, 'registry');
+  const binRoot = path.join(root, 'bin');
+  const fakeAgent = path.join(binRoot, 'agy');
+
+  fs.mkdirSync(path.join(registryRoot, 'catalog', 'agents'), { recursive: true });
+  fs.mkdirSync(binRoot, { recursive: true });
+  fs.writeFileSync(fakeAgent, '#!/usr/bin/env bash\necho antigravity 1.1.9\n');
+  fs.chmodSync(fakeAgent, 0o755);
+  fs.writeFileSync(path.join(registryRoot, 'index.json'), JSON.stringify({
+    schemaVersion: '2',
+    packages: {
+      'agent:antigravity': {
+        id: 'agent:antigravity',
+        kind: 'agent',
+        name: 'Antigravity',
+        version: 'system',
+        delivery: 'system',
+        install: { source: 'system' },
+        bins: ['agy'],
+        detect: { command: 'agy --version' },
+      },
+    },
+  }, null, 2));
+  fs.writeFileSync(path.join(registryRoot, 'catalog', 'agents', 'antigravity.json'), JSON.stringify({
+    id: 'agent:antigravity',
+    kind: 'agent',
+    name: 'Antigravity',
+    version: 'system',
+    delivery: 'system',
+    install: { source: 'system' },
+    bins: ['agy'],
+    detect: { command: 'agy --version' },
+  }, null, 2));
+
+  try {
+    const script = `
+      const fs = await import('node:fs');
+      const path = await import('node:path');
+      const { installPackage } = await import(process.argv[1]);
+      const result = await installPackage('agent:antigravity', { force: true, withShims: true });
+      const installPath = path.join(process.env.RUDI_HOME, 'agents', 'antigravity');
+      const manifestPath = path.join(installPath, 'manifest.json');
+      const manifest = fs.existsSync(manifestPath)
+        ? JSON.parse(fs.readFileSync(manifestPath, 'utf8'))
+        : null;
+      console.log(JSON.stringify({
+        success: result.success,
+        error: result.error,
+        kind: manifest?.kind,
+        installType: manifest?.installType,
+        sourcePath: manifest?.source?.path,
+        shimExists: fs.existsSync(path.join(process.env.RUDI_HOME, 'bins', 'agy')),
+      }));
+    `;
+    const output = execFileSync(process.execPath, ['--input-type=module', '-e', script, installerUrl], {
+      cwd: repoRoot,
+      env: {
+        ...process.env,
+        PATH: `${binRoot}${path.delimiter}${process.env.PATH || ''}`,
+        RUDI_HOME: rudiHome,
+        USE_LOCAL_REGISTRY: 'true',
+        RUDI_REGISTRY_ROOT: registryRoot,
+      },
+      encoding: 'utf8',
+    });
+
+    const result = JSON.parse(output.trim().split(/\r?\n/).at(-1));
+    assert.equal(result.success, true);
+    assert.equal(result.error, undefined);
+    assert.equal(result.kind, 'agent');
+    assert.equal(result.installType, 'system');
+    assert.equal(result.sourcePath, fakeAgent);
+    assert.equal(result.shimExists, true);
+  } finally {
+    fs.rmSync(root, { recursive: true, force: true });
+  }
+});

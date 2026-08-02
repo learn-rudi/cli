@@ -40,8 +40,8 @@ describe('daemon lifecycle command helpers', () => {
 
   test('removeDaemonConnectionFiles removes explicit port and token files', () => {
     const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'rudi-daemon-command-'));
-    const portFile = path.join(tmp, '.rudi-lite-port');
-    const tokenFile = path.join(tmp, '.rudi-lite-token');
+    const portFile = path.join(tmp, 'daemon.port');
+    const tokenFile = path.join(tmp, 'daemon.token');
     fs.writeFileSync(portFile, '8123');
     fs.writeFileSync(tokenFile, 'token');
 
@@ -119,8 +119,8 @@ describe('daemon lifecycle command helpers', () => {
 
   test('stopDaemon kills reachable daemon and waits until stopped', async () => {
     const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'rudi-daemon-command-'));
-    const portFile = path.join(tmp, '.rudi-lite-port');
-    const tokenFile = path.join(tmp, '.rudi-lite-token');
+    const portFile = path.join(tmp, 'daemon.port');
+    const tokenFile = path.join(tmp, 'daemon.token');
     fs.writeFileSync(portFile, '8123');
     fs.writeFileSync(tokenFile, 'token');
     const statuses = [
@@ -148,8 +148,8 @@ describe('daemon lifecycle command helpers', () => {
 
   test('stopDaemon cleans stale files without killing when daemon is unreachable', async () => {
     const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'rudi-daemon-command-'));
-    const portFile = path.join(tmp, '.rudi-lite-port');
-    const tokenFile = path.join(tmp, '.rudi-lite-token');
+    const portFile = path.join(tmp, 'daemon.port');
+    const tokenFile = path.join(tmp, 'daemon.token');
     fs.writeFileSync(portFile, '8123');
     fs.writeFileSync(tokenFile, 'token');
 
@@ -169,8 +169,8 @@ describe('daemon lifecycle command helpers', () => {
 
   test('stopDaemonLifecycle stops managed LaunchAgent instead of sending SIGTERM', async () => {
     const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'rudi-daemon-command-'));
-    const portFile = path.join(tmp, '.rudi-lite-port');
-    const tokenFile = path.join(tmp, '.rudi-lite-token');
+    const portFile = path.join(tmp, 'daemon.port');
+    const tokenFile = path.join(tmp, 'daemon.token');
     fs.writeFileSync(portFile, '8123');
     fs.writeFileSync(tokenFile, 'token');
     const statuses = [

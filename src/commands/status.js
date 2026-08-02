@@ -16,7 +16,7 @@ import { PATHS, getInstalledPackages, isPackageInstalled, resolveNodeRuntimeBin 
 import fs from 'fs';
 import path from 'path';
 import os from 'os';
-import { getSidecarDaemonStatus } from './sidecar-client.js';
+import { getDaemonStatus } from '../daemon/client.js';
 import { createWhichCommand, runCommand, runCommandPlan } from '../utils/subprocess.js';
 
 // Agent definitions with credential check info
@@ -268,7 +268,7 @@ export async function getFullStatus(options = {}) {
   const agents = AGENTS.map(getAgentStatus);
   const runtimes = RUNTIMES.map(getRuntimeStatus);
   const binaries = BINARIES.map(getBinaryStatus);
-  const daemonStatusProvider = options.daemonStatusProvider || getSidecarDaemonStatus;
+  const daemonStatusProvider = options.daemonStatusProvider || getDaemonStatus;
   const daemon = await daemonStatusProvider();
 
   // Get installed stacks and skills
@@ -330,7 +330,7 @@ export async function getFullStatus(options = {}) {
 }
 
 export async function getDaemonOnlyStatus(options = {}) {
-  const daemonStatusProvider = options.daemonStatusProvider || getSidecarDaemonStatus;
+  const daemonStatusProvider = options.daemonStatusProvider || getDaemonStatus;
   const daemon = await daemonStatusProvider();
   return {
     timestamp: new Date().toISOString(),
@@ -378,7 +378,6 @@ function printStatus(status, filter) {
     console.log(`  ${icon} State: ${formatDaemonState(daemon)}`);
     if (daemon.port) console.log(`    Port: ${daemon.port}`);
     if (daemon.version) console.log(`    Version: ${daemon.version}`);
-    if (daemon.dbStatus) console.log(`    Database: ${formatSubStatus(daemon.dbStatus)}`);
     if (daemon.toolIndexStatus) {
       const toolIndex = daemon.toolIndexStatus;
       const counts = [
@@ -388,8 +387,6 @@ function printStatus(status, filter) {
       ].filter(Boolean).join(', ');
       console.log(`    Tool index: ${formatSubStatus(toolIndex)}${counts ? ` (${counts})` : ''}`);
     }
-    console.log(`    Active sessions: ${daemon.activeSessionCount || 0}`);
-    console.log(`    Active jobs: ${daemon.activeJobCount || 0}`);
     if (daemon.error) console.log(`    Detail: ${daemon.error}`);
     console.log('');
     if (filter === 'daemon') return;

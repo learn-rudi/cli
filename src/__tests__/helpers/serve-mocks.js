@@ -3,7 +3,7 @@
  */
 
 import { URL } from 'url';
-import { SIDECAR_ERROR_CODES, resolveSidecarErrorDefinition } from '../../commands/serve/error-codes.js';
+import { DAEMON_ERROR_CODES, resolveDaemonErrorDefinition } from '../../daemon/http/errors.js';
 
 const REQUEST_ID_HEADER = 'x-rudi-request-id';
 
@@ -70,7 +70,7 @@ export function createMockCtx(overrides = {}) {
     },
     error(res, message, status = 400, options = {}) {
       const requestContext = ctx.getRequestContext(res);
-      const errorDefinition = resolveSidecarErrorDefinition(options.code, status);
+      const errorDefinition = resolveDaemonErrorDefinition(options.code, status);
       const payload = {
         error: message,
         code: errorDefinition?.code || 'ERROR',
@@ -81,7 +81,7 @@ export function createMockCtx(overrides = {}) {
       return true;
     },
     errorCode(res, codeDefinition, options = {}) {
-      const errorDefinition = resolveSidecarErrorDefinition(codeDefinition, options.status || 500);
+      const errorDefinition = resolveDaemonErrorDefinition(codeDefinition, options.status || 500);
       return ctx.error(
         res,
         options.message || errorDefinition?.defaultMessage || 'Error',
@@ -92,7 +92,7 @@ export function createMockCtx(overrides = {}) {
     requiredField(res, field, options = {}) {
       return ctx.error(res, options.message || `${field} required`, options.status || 400, {
         ...options,
-        code: options.code || SIDECAR_ERROR_CODES.MISSING_REQUIRED_FIELD,
+        code: options.code || DAEMON_ERROR_CODES.MISSING_REQUIRED_FIELD,
         details: {
           field,
           location: options.location || 'body',
@@ -104,7 +104,7 @@ export function createMockCtx(overrides = {}) {
       const normalizedFields = (Array.isArray(fields) ? fields : [fields]).filter(Boolean);
       return ctx.error(res, options.message || `${normalizedFields.join(' and ')} required`, options.status || 400, {
         ...options,
-        code: options.code || SIDECAR_ERROR_CODES.MISSING_REQUIRED_FIELD,
+        code: options.code || DAEMON_ERROR_CODES.MISSING_REQUIRED_FIELD,
         details: {
           fields: normalizedFields,
           location: options.location || 'body',
@@ -115,7 +115,7 @@ export function createMockCtx(overrides = {}) {
     invalidField(res, field, message, options = {}) {
       return ctx.error(res, message, options.status || 400, {
         ...options,
-        code: options.code || SIDECAR_ERROR_CODES.INVALID_FIELD,
+        code: options.code || DAEMON_ERROR_CODES.INVALID_FIELD,
         details: {
           field,
           location: options.location || 'body',

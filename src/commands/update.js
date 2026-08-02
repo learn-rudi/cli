@@ -124,10 +124,12 @@ function logNativeSkillSyncHint(skillIds, deps) {
   if (skillIds.length === 0) return;
 
   deps.log('');
-  deps.log(`Updated ${skillIds.length} skill package(s). Native Claude/Codex skill wrappers are not overwritten automatically.`);
+  deps.log(`Updated ${skillIds.length} skill package(s). Native frontier-host skill wrappers are not overwritten automatically.`);
   deps.log('To sync native wrappers for updated RUDI skills, run:');
   deps.log('  rudi skills sync codex --force');
   deps.log('  rudi skills sync claude --force');
+  deps.log('  rudi skills sync gemini --force');
+  deps.log('  rudi skills sync antigravity --force');
   deps.log('These commands overwrite existing native wrappers; omit --force to create only missing wrappers.');
 }
 

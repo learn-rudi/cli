@@ -47,6 +47,11 @@ export const PATHS = {
   prompts: path.join(RUDI_HOME, 'skills'),    // Backward compat alias -> skills
   workflows: path.join(RUDI_HOME, 'workflows'),
 
+  // Durable generated artifacts. `output/` is retained only as a legacy
+  // compatibility path while existing consumers migrate to `outputs/`.
+  outputs: path.join(RUDI_HOME, 'outputs'),
+  legacyOutput: path.join(RUDI_HOME, 'output'),
+
   // Runtimes (interpreters: node, python, deno, bun)
   runtimes: path.join(RUDI_HOME, 'runtimes'),
 
@@ -220,6 +225,117 @@ export function isWindows() {
 }
 
 // =============================================================================
+// OUTPUT DIRECTORY MIGRATION
+// =============================================================================
+
+function lstatIfPresent(filePath, fsApi = fs) {
+  try {
+    return fsApi.lstatSync(filePath);
+  } catch (error) {
+    if (error?.code === 'ENOENT') return null;
+    throw error;
+  }
+}
+
+/**
+ * Move legacy `output/` entries into canonical `outputs/` without overwriting
+ * data, then remove the empty legacy path.
+ * The operation is idempotent and returns unresolved conflicts/failures so
+ * callers never have to infer partial completion from filesystem state.
+ */
+export function migrateLegacyOutputDirectory({
+  canonicalDir = PATHS.outputs,
+  legacyDir = PATHS.legacyOutput,
+  fsApi = fs,
+  warn = (message) => console.warn(message)
+} = {}) {
+  const canonicalPath = path.resolve(canonicalDir);
+  const legacyPath = path.resolve(legacyDir);
+  if (canonicalPath === legacyPath) {
+    throw new Error('Canonical and legacy output directories must be different');
+  }
+
+  const result = {
+    status: 'not-needed',
+    moved: [],
+    conflicts: [],
+    failures: [],
+    legacyRemoved: false
+  };
+
+  fsApi.mkdirSync(canonicalPath, { recursive: true });
+  const legacyStat = lstatIfPresent(legacyPath, fsApi);
+
+  if (legacyStat?.isSymbolicLink()) {
+    let linksToCanonical = false;
+    try {
+      linksToCanonical = fsApi.realpathSync(legacyPath) === fsApi.realpathSync(canonicalPath);
+    } catch (error) {
+      result.failures.push('compatibility-link');
+      warn(`Warning: Could not resolve legacy output link: ${error.message}`);
+    }
+    if (!linksToCanonical) {
+      result.status = 'blocked';
+      return result;
+    }
+    try {
+      fsApi.unlinkSync(legacyPath);
+      result.legacyRemoved = true;
+      result.status = 'removed-compatibility-link';
+    } catch (error) {
+      result.failures.push('compatibility-link-removal');
+      result.status = 'blocked';
+      warn(`Warning: Could not remove legacy output link: ${error.message}`);
+    }
+    return result;
+  }
+
+  if (legacyStat && !legacyStat.isDirectory()) {
+    result.status = 'blocked';
+    result.failures.push('legacy-path-not-directory');
+    warn(`Warning: Legacy output path is not a directory: ${legacyPath}`);
+    return result;
+  }
+
+  if (!legacyStat) return result;
+
+  const entries = fsApi.readdirSync(legacyPath).sort();
+  for (const name of entries) {
+    const sourcePath = path.join(legacyPath, name);
+    const destinationPath = path.join(canonicalPath, name);
+    if (lstatIfPresent(destinationPath, fsApi)) {
+      result.conflicts.push(name);
+      warn(`Warning: Output migration preserved conflicting legacy entry: ${name}`);
+      continue;
+    }
+    try {
+      fsApi.renameSync(sourcePath, destinationPath);
+      result.moved.push(name);
+    } catch (error) {
+      result.failures.push(name);
+      warn(`Warning: Output migration could not move ${name}: ${error.message}`);
+    }
+  }
+
+  if (fsApi.readdirSync(legacyPath).length > 0) {
+    result.status = 'partial';
+    return result;
+  }
+
+  try {
+    fsApi.rmdirSync(legacyPath);
+    result.legacyRemoved = true;
+    result.status = result.moved.length > 0 ? 'migrated' : 'removed-empty-legacy';
+  } catch (error) {
+    result.failures.push('legacy-directory-removal');
+    result.status = 'partial';
+    warn(`Warning: Could not remove empty legacy output directory: ${error.message}`);
+  }
+
+  return result;
+}
+
+// =============================================================================
 // DIRECTORY MANAGEMENT
 // =============================================================================
 
@@ -232,6 +348,7 @@ export function ensureDirectories() {
     PATHS.stacks,      // MCP servers (google-ai, notion-workspace, etc.)
     PATHS.skills,      // Reusable skills (formerly prompts)
     PATHS.workflows,   // Repeatable workflow definitions
+    PATHS.outputs,     // Durable generated artifacts
     PATHS.runtimes,    // Language runtimes (node, python, bun, deno)
     PATHS.binaries,    // Utility binaries (ffmpeg, git, jq, etc.)
     PATHS.agents,      // AI CLI agents (claude, codex, gemini, copilot)
@@ -246,6 +363,8 @@ export function ensureDirectories() {
       fs.mkdirSync(dir, { recursive: true });
     }
   }
+
+  migrateLegacyOutputDirectory();
 
   // Auto-migration: move .md files from prompts/ to skills/ if skills/ is empty
   const oldPromptsDir = path.join(RUDI_HOME, 'prompts');

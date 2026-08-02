@@ -1,7 +1,7 @@
 import { describe, test } from 'node:test';
 import assert from 'node:assert/strict';
 
-import { buildPackageRoutes } from '../../commands/serve/routes/packages.js';
+import { buildPackageRoutes } from '../../daemon/routes/packages.js';
 import {
   createMockCtx,
   createMockReq,

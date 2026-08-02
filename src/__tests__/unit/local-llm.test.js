@@ -2,7 +2,7 @@ import { test } from 'node:test';
 import assert from 'node:assert/strict';
 
 import {
-  buildLocalLlmSidecarPath,
+  buildLocalLlmDaemonPath,
   resolveLocalLlmCommandResult,
 } from '../../commands/local-llm.js';
 import {
@@ -209,9 +209,9 @@ test('getLocalLlmEnvExport returns consumer-specific daemon env export', async (
   assert.equal(result.env.LOCAL_LLM_MODEL, 'llama3.2:3b');
 });
 
-test('buildLocalLlmSidecarPath targets the daemon broker routes', () => {
+test('buildLocalLlmDaemonPath targets the daemon broker routes', () => {
   assert.equal(
-    buildLocalLlmSidecarPath('env', {
+    buildLocalLlmDaemonPath('env', {
       runtime: 'ollama',
       target: 'mac_host',
       consumer: 'content-engine',
@@ -221,12 +221,12 @@ test('buildLocalLlmSidecarPath targets the daemon broker routes', () => {
     '/local-llm/env/content-engine?runtime=ollama&target=mac_host&context=docker_container&model=llama3.2%3A3b',
   );
   assert.equal(
-    buildLocalLlmSidecarPath('models', { runtime: 'ollama', timeoutMs: 750 }),
+    buildLocalLlmDaemonPath('models', { runtime: 'ollama', timeoutMs: 750 }),
     '/local-llm/models?runtime=ollama&target=mac_host&timeoutMs=750',
   );
 });
 
-test('resolveLocalLlmCommandResult uses sidecar when it is available', async () => {
+test('resolveLocalLlmCommandResult uses the daemon when it is available', async () => {
   const calls = [];
   let directCalled = false;
 
@@ -235,8 +235,8 @@ test('resolveLocalLlmCommandResult uses sidecar when it is available', async () 
     target: 'mac_host',
     timeoutMs: 500,
   }, {
-    readSidecarInfo: () => ({ port: 8123, token: 'secret-token' }),
-    sidecarRequest: async (request) => {
+    readDaemonInfo: () => ({ port: 8123, token: 'secret-token' }),
+    daemonRequest: async (request) => {
       calls.push(request);
       return {
         runtime: 'ollama',
@@ -259,7 +259,7 @@ test('resolveLocalLlmCommandResult uses sidecar when it is available', async () 
     },
   });
 
-  assert.equal(source, 'sidecar');
+  assert.equal(source, 'daemon');
   assert.equal(directCalled, false);
   assert.equal(calls[0].port, 8123);
   assert.equal(calls[0].token, 'secret-token');
@@ -268,14 +268,14 @@ test('resolveLocalLlmCommandResult uses sidecar when it is available', async () 
   assert.deepEqual(result.models, ['qwen2.5:3b']);
 });
 
-test('resolveLocalLlmCommandResult falls back to direct operation when sidecar is absent', async () => {
+test('resolveLocalLlmCommandResult falls back to direct operation when the daemon is absent', async () => {
   const { source, result } = await resolveLocalLlmCommandResult('models', {
     runtime: 'ollama',
     timeoutMs: 100,
   }, {
-    readSidecarInfo: () => {
+    readDaemonInfo: () => {
       const error = new Error('not running');
-      error.code = 'SIDECAR_NOT_RUNNING';
+      error.code = 'DAEMON_NOT_RUNNING';
       throw error;
     },
     getPackage: async (id) => ({ id, kind: 'runtime', name: 'ollama' }),
@@ -300,14 +300,14 @@ test('resolveLocalLlmCommandResult falls back to direct operation when sidecar i
   });
 });
 
-test('resolveLocalLlmCommandResult falls back when running sidecar lacks local LLM metadata', async () => {
+test('resolveLocalLlmCommandResult falls back when the running daemon lacks local LLM metadata', async () => {
   const { source, result } = await resolveLocalLlmCommandResult('env', {
     runtime: 'ollama',
     consumer: 'content-engine',
     model: 'llama3.2:3b',
   }, {
-    readSidecarInfo: () => ({ port: 8123, token: 'secret-token' }),
-    sidecarRequest: async () => {
+    readDaemonInfo: () => ({ port: 8123, token: 'secret-token' }),
+    daemonRequest: async () => {
       const error = new Error('Runtime does not declare meta.localLlm: runtime:ollama');
       error.statusCode = 400;
       throw error;
@@ -321,13 +321,13 @@ test('resolveLocalLlmCommandResult falls back when running sidecar lacks local L
   assert.equal(result.env.LOCAL_LLM_MODEL, 'llama3.2:3b');
 });
 
-test('resolveLocalLlmCommandResult does not hide reachable sidecar request failures', async () => {
+test('resolveLocalLlmCommandResult does not hide reachable daemon request failures', async () => {
   let directCalled = false;
 
   await assert.rejects(
     () => resolveLocalLlmCommandResult('status', { runtime: 'ollama' }, {
-      readSidecarInfo: () => ({ port: 8123, token: 'secret-token' }),
-      sidecarRequest: async () => {
+      readDaemonInfo: () => ({ port: 8123, token: 'secret-token' }),
+      daemonRequest: async () => {
         const error = new Error('Invalid runtime target');
         error.statusCode = 400;
         throw error;

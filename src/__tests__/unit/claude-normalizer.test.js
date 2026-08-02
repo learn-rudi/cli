@@ -1,9 +1,38 @@
 import assert from 'node:assert/strict';
 import { describe, test } from 'node:test';
 
-import { normalize } from '../../commands/agent/normalizers/claude.js';
+import { normalize } from '../../agent-host/events/providers/claude.js';
 
 describe('claude normalizer', () => {
+  test('normalizes native rate-limit events with typed reset and overage metadata', () => {
+    const normalized = normalize({
+      type: 'rate_limit_event',
+      rate_limit_info: {
+        status: 'allowed',
+        resetsAt: 1785684000,
+        rateLimitType: 'five_hour',
+        overageStatus: 'allowed',
+        overageResetsAt: 1785675600,
+        isUsingOverage: false,
+      },
+      session_id: 'provider-session-id',
+    });
+
+    assert.deepStrictEqual(normalized, {
+      type: 'system',
+      subtype: 'rate_limit',
+      message: 'Claude rate limit status: allowed',
+      rateLimit: {
+        status: 'allowed',
+        resetsAt: 1785684000,
+        rateLimitType: 'five_hour',
+        overageStatus: 'allowed',
+        overageResetsAt: 1785675600,
+        isUsingOverage: false,
+      },
+    });
+  });
+
   test('preserves finishReason on assistant events', () => {
     const normalized = normalize({
       type: 'assistant',

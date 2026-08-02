@@ -7,8 +7,10 @@ import path from 'node:path';
 import {
   buildClaudeSkillFiles,
   buildCodexSkillFiles,
+  syncAntigravitySkills,
   syncClaudeSkills,
   syncCodexSkills,
+  syncGeminiSkills,
 } from '../../commands/skills.js';
 
 function makeTempRoot(prefix) {
@@ -210,6 +212,38 @@ test('native skill sync preserves supported bundled resources for Codex and Clau
       assert.equal(fs.readFileSync(path.join(target, 'references', 'spec.json'), 'utf8'), '{"demo":true}\n');
       assert.equal(fs.readFileSync(path.join(target, 'assets', 'sample.txt'), 'utf8'), 'sample\n');
     }
+  } finally {
+    fs.rmSync(root, { recursive: true, force: true });
+  }
+});
+
+test('Gemini CLI and Antigravity receive portable RUDI skill wrappers', async () => {
+  const root = makeTempRoot('rudi-skills-sync-google-');
+
+  try {
+    const source = path.join(root, 'source', 'example-skill', 'SKILL.md');
+    const geminiRoot = path.join(root, 'gemini-skills');
+    const antigravityRoot = path.join(root, 'antigravity-skills');
+    fs.mkdirSync(path.dirname(source), { recursive: true });
+    fs.writeFileSync(source, '---\nname: Example Skill\ndescription: Google host proof\n---\n\nRun the workflow.\n');
+
+    const skills = [{
+      id: 'skill:example-skill',
+      kind: 'skill',
+      name: 'Example Skill',
+      description: 'Google host proof',
+      source: 'rudi',
+      entryPath: source,
+    }];
+
+    const gemini = await syncGeminiSkills({ geminiRoot, skills });
+    const antigravity = await syncAntigravitySkills({ antigravityRoot, skills });
+
+    assert.equal(gemini.results[0].action, 'created');
+    assert.equal(antigravity.results[0].action, 'created');
+    assert.equal(fs.existsSync(path.join(geminiRoot, 'example-skill', 'SKILL.md')), true);
+    assert.equal(fs.existsSync(path.join(antigravityRoot, 'example-skill', 'SKILL.md')), true);
+    assert.equal(fs.existsSync(path.join(geminiRoot, 'example-skill', 'agents', 'openai.yaml')), false);
   } finally {
     fs.rmSync(root, { recursive: true, force: true });
   }

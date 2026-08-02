@@ -1,0 +1,1803 @@
+{
+  "openapi": "3.1.0",
+  "info": {
+    "title": "RUDI Local Daemon API",
+    "version": "1.0.0",
+    "description": "Local authenticated capability API. Native agent providers own normal execution and authoritative transcripts; Agent Host stores bounded launch pointers and reconnect events."
+  },
+  "servers": [
+    {
+      "url": "http://127.0.0.1:{port}",
+      "variables": {
+        "port": {
+          "default": "8100",
+          "description": "Dynamic daemon port written to ~/.rudi/daemon.port"
+        }
+      }
+    }
+  ],
+  "tags": [
+    {
+      "name": "Daemon",
+      "description": "Lifecycle and readiness"
+    },
+    {
+      "name": "Capabilities",
+      "description": "Local package, secret, runtime, and environment capabilities"
+    },
+    {
+      "name": "Agent Host",
+      "description": "Thin provider-native launch control and reconnect pointers"
+    }
+  ],
+  "paths": {
+    "/health": {
+      "get": {
+        "summary": "Daemon liveness",
+        "tags": [
+          "Daemon"
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful JSON response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "additionalProperties": true
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/ready": {
+      "get": {
+        "summary": "Daemon readiness",
+        "tags": [
+          "Daemon"
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful JSON response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "additionalProperties": true
+                }
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/BadRequest"
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "404": {
+            "$ref": "#/components/responses/NotFound"
+          },
+          "500": {
+            "$ref": "#/components/responses/InternalError"
+          }
+        },
+        "security": [
+          {
+            "RudiToken": []
+          }
+        ]
+      }
+    },
+    "/version": {
+      "get": {
+        "summary": "Daemon API version",
+        "tags": [
+          "Daemon"
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful JSON response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "additionalProperties": true
+                }
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/BadRequest"
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "404": {
+            "$ref": "#/components/responses/NotFound"
+          },
+          "500": {
+            "$ref": "#/components/responses/InternalError"
+          }
+        },
+        "security": [
+          {
+            "RudiToken": []
+          }
+        ]
+      }
+    },
+    "/daemon/status": {
+      "get": {
+        "summary": "Daemon runtime status",
+        "tags": [
+          "Daemon"
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful JSON response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "additionalProperties": true
+                }
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/BadRequest"
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "404": {
+            "$ref": "#/components/responses/NotFound"
+          },
+          "500": {
+            "$ref": "#/components/responses/InternalError"
+          }
+        },
+        "security": [
+          {
+            "RudiToken": []
+          }
+        ]
+      }
+    },
+    "/env": {
+      "get": {
+        "summary": "Local host environment summary",
+        "tags": [
+          "Capabilities"
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful JSON response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "additionalProperties": true
+                }
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/BadRequest"
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "404": {
+            "$ref": "#/components/responses/NotFound"
+          },
+          "500": {
+            "$ref": "#/components/responses/InternalError"
+          }
+        },
+        "security": [
+          {
+            "RudiToken": []
+          }
+        ]
+      }
+    },
+    "/local-llm/status": {
+      "get": {
+        "summary": "Local LLM runtime status",
+        "tags": [
+          "Capabilities"
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful JSON response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "additionalProperties": true
+                }
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/BadRequest"
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "404": {
+            "$ref": "#/components/responses/NotFound"
+          },
+          "500": {
+            "$ref": "#/components/responses/InternalError"
+          }
+        },
+        "security": [
+          {
+            "RudiToken": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "runtime",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "target",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "consumer",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "timeoutMs",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "minimum": 1
+            }
+          }
+        ]
+      }
+    },
+    "/local-llm/models": {
+      "get": {
+        "summary": "Available local LLM models",
+        "tags": [
+          "Capabilities"
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful JSON response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "additionalProperties": true
+                }
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/BadRequest"
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "404": {
+            "$ref": "#/components/responses/NotFound"
+          },
+          "500": {
+            "$ref": "#/components/responses/InternalError"
+          }
+        },
+        "security": [
+          {
+            "RudiToken": []
+          }
+        ]
+      }
+    },
+    "/local-llm/env/{consumer}": {
+      "get": {
+        "summary": "Consumer-specific local LLM environment",
+        "tags": [
+          "Capabilities"
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful JSON response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "additionalProperties": true
+                }
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/BadRequest"
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "404": {
+            "$ref": "#/components/responses/NotFound"
+          },
+          "500": {
+            "$ref": "#/components/responses/InternalError"
+          }
+        },
+        "security": [
+          {
+            "RudiToken": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "consumer",
+            "in": "path",
+            "required": true,
+            "description": "consumer identifier",
+            "schema": {
+              "type": "string",
+              "minLength": 1
+            }
+          }
+        ]
+      }
+    },
+    "/runtimes/{runtime}/status": {
+      "get": {
+        "summary": "Named runtime status",
+        "tags": [
+          "Capabilities"
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful JSON response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "additionalProperties": true
+                }
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/BadRequest"
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "404": {
+            "$ref": "#/components/responses/NotFound"
+          },
+          "500": {
+            "$ref": "#/components/responses/InternalError"
+          }
+        },
+        "security": [
+          {
+            "RudiToken": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "runtime",
+            "in": "path",
+            "required": true,
+            "description": "runtime identifier",
+            "schema": {
+              "type": "string",
+              "minLength": 1
+            }
+          }
+        ]
+      }
+    },
+    "/packages/search": {
+      "get": {
+        "summary": "Search the package registry",
+        "tags": [
+          "Capabilities"
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful JSON response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "additionalProperties": true
+                }
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/BadRequest"
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "404": {
+            "$ref": "#/components/responses/NotFound"
+          },
+          "500": {
+            "$ref": "#/components/responses/InternalError"
+          }
+        },
+        "security": [
+          {
+            "RudiToken": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "q",
+            "in": "query",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "kind",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ]
+      }
+    },
+    "/packages/list": {
+      "get": {
+        "summary": "List registry packages by kind",
+        "tags": [
+          "Capabilities"
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful JSON response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "additionalProperties": true
+                }
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/BadRequest"
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "404": {
+            "$ref": "#/components/responses/NotFound"
+          },
+          "500": {
+            "$ref": "#/components/responses/InternalError"
+          }
+        },
+        "security": [
+          {
+            "RudiToken": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "kind",
+            "in": "query",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ]
+      }
+    },
+    "/packages/installed": {
+      "get": {
+        "summary": "List installed stacks",
+        "tags": [
+          "Capabilities"
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful JSON response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "additionalProperties": true
+                }
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/BadRequest"
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "404": {
+            "$ref": "#/components/responses/NotFound"
+          },
+          "500": {
+            "$ref": "#/components/responses/InternalError"
+          }
+        },
+        "security": [
+          {
+            "RudiToken": []
+          }
+        ]
+      }
+    },
+    "/packages/install": {
+      "post": {
+        "summary": "Start an idempotent package installation job",
+        "tags": [
+          "Capabilities"
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful JSON response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "additionalProperties": true
+                }
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/BadRequest"
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "404": {
+            "$ref": "#/components/responses/NotFound"
+          },
+          "500": {
+            "$ref": "#/components/responses/InternalError"
+          }
+        },
+        "security": [
+          {
+            "RudiToken": []
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "additionalProperties": false,
+                "required": [
+                  "id"
+                ],
+                "properties": {
+                  "id": {
+                    "type": "string",
+                    "minLength": 1
+                  },
+                  "force": {
+                    "type": "boolean"
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/packages/jobs/{jobId}": {
+      "get": {
+        "summary": "Inspect a package installation job",
+        "tags": [
+          "Capabilities"
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful JSON response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "additionalProperties": true
+                }
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/BadRequest"
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "404": {
+            "$ref": "#/components/responses/NotFound"
+          },
+          "500": {
+            "$ref": "#/components/responses/InternalError"
+          }
+        },
+        "security": [
+          {
+            "RudiToken": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "jobId",
+            "in": "path",
+            "required": true,
+            "description": "jobId identifier",
+            "schema": {
+              "type": "string",
+              "minLength": 1
+            }
+          }
+        ]
+      }
+    },
+    "/packages/secrets": {
+      "get": {
+        "summary": "List masked secret metadata",
+        "tags": [
+          "Capabilities"
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful JSON response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "additionalProperties": true
+                }
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/BadRequest"
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "404": {
+            "$ref": "#/components/responses/NotFound"
+          },
+          "500": {
+            "$ref": "#/components/responses/InternalError"
+          }
+        },
+        "security": [
+          {
+            "RudiToken": []
+          }
+        ]
+      },
+      "post": {
+        "summary": "Set a local secret",
+        "tags": [
+          "Capabilities"
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful JSON response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "additionalProperties": true
+                }
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/BadRequest"
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "404": {
+            "$ref": "#/components/responses/NotFound"
+          },
+          "500": {
+            "$ref": "#/components/responses/InternalError"
+          }
+        },
+        "security": [
+          {
+            "RudiToken": []
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "additionalProperties": false,
+                "required": [
+                  "name",
+                  "value"
+                ],
+                "properties": {
+                  "name": {
+                    "type": "string",
+                    "pattern": "^[A-Z][A-Z0-9_]*$"
+                  },
+                  "value": {
+                    "type": "string"
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/packages/secrets/{name}": {
+      "delete": {
+        "summary": "Remove a local secret",
+        "tags": [
+          "Capabilities"
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful JSON response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "additionalProperties": true
+                }
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/BadRequest"
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "404": {
+            "$ref": "#/components/responses/NotFound"
+          },
+          "500": {
+            "$ref": "#/components/responses/InternalError"
+          }
+        },
+        "security": [
+          {
+            "RudiToken": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "name",
+            "in": "path",
+            "required": true,
+            "description": "name identifier",
+            "schema": {
+              "type": "string",
+              "minLength": 1
+            }
+          }
+        ]
+      }
+    },
+    "/agent-host/v1/hosts": {
+      "get": {
+        "summary": "Inspect native agent host readiness",
+        "tags": [
+          "Agent Host"
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful JSON response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "additionalProperties": true
+                }
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/BadRequest"
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "404": {
+            "$ref": "#/components/responses/NotFound"
+          },
+          "500": {
+            "$ref": "#/components/responses/InternalError"
+          }
+        },
+        "security": [
+          {
+            "RudiToken": []
+          }
+        ]
+      }
+    },
+    "/agent-host/v1/models/{provider}": {
+      "get": {
+        "summary": "List declared models for a native host",
+        "tags": [
+          "Agent Host"
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful JSON response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "additionalProperties": true
+                }
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/BadRequest"
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "404": {
+            "$ref": "#/components/responses/NotFound"
+          },
+          "500": {
+            "$ref": "#/components/responses/InternalError"
+          }
+        },
+        "security": [
+          {
+            "RudiToken": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "provider",
+            "in": "path",
+            "required": true,
+            "description": "provider identifier",
+            "schema": {
+              "type": "string",
+              "minLength": 1
+            }
+          }
+        ]
+      }
+    },
+    "/agent-host/v1/launches": {
+      "get": {
+        "summary": "List launch pointers",
+        "tags": [
+          "Agent Host"
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful JSON response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "additionalProperties": true
+                }
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/BadRequest"
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "404": {
+            "$ref": "#/components/responses/NotFound"
+          },
+          "500": {
+            "$ref": "#/components/responses/InternalError"
+          }
+        },
+        "security": [
+          {
+            "RudiToken": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "status",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "limit",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "minimum": 1,
+              "maximum": 1000
+            }
+          }
+        ]
+      },
+      "post": {
+        "summary": "Dispatch an idempotent detached native-host launch",
+        "tags": [
+          "Agent Host"
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful JSON response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "additionalProperties": true
+                }
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/BadRequest"
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "404": {
+            "$ref": "#/components/responses/NotFound"
+          },
+          "500": {
+            "$ref": "#/components/responses/InternalError"
+          }
+        },
+        "security": [
+          {
+            "RudiToken": []
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "additionalProperties": false,
+                "required": [
+                  "launchId",
+                  "originDirectory",
+                  "prompt",
+                  "provider"
+                ],
+                "properties": {
+                  "launchId": {
+                    "type": "string",
+                    "minLength": 1
+                  },
+                  "originDirectory": {
+                    "type": "string",
+                    "minLength": 1
+                  },
+                  "prompt": {
+                    "type": "string",
+                    "minLength": 1,
+                    "maxLength": 10485760
+                  },
+                  "provider": {
+                    "type": "string",
+                    "enum": [
+                      "claude",
+                      "codex",
+                      "google"
+                    ]
+                  },
+                  "workspace": {
+                    "type": "string",
+                    "minLength": 1
+                  },
+                  "workspaceMode": {
+                    "type": "string",
+                    "enum": [
+                      "auto",
+                      "read-only",
+                      "worktree",
+                      "isolated-copy"
+                    ]
+                  },
+                  "model": {
+                    "type": "string",
+                    "minLength": 1
+                  },
+                  "permissionMode": {
+                    "type": "string",
+                    "minLength": 1
+                  },
+                  "approvalMode": {
+                    "type": "string",
+                    "minLength": 1
+                  },
+                  "timeoutMs": {
+                    "type": "integer",
+                    "minimum": 1,
+                    "maximum": 86400000
+                  },
+                  "extraArgs": {
+                    "type": "array",
+                    "maxItems": 100,
+                    "items": {
+                      "type": "string"
+                    }
+                  },
+                  "images": {
+                    "type": "array",
+                    "maxItems": 100,
+                    "items": {
+                      "type": "string"
+                    }
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/agent-host/v1/launches/{launchId}": {
+      "get": {
+        "summary": "Inspect a launch pointer",
+        "tags": [
+          "Agent Host"
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful JSON response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "additionalProperties": true
+                }
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/BadRequest"
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "404": {
+            "$ref": "#/components/responses/NotFound"
+          },
+          "500": {
+            "$ref": "#/components/responses/InternalError"
+          }
+        },
+        "security": [
+          {
+            "RudiToken": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "launchId",
+            "in": "path",
+            "required": true,
+            "description": "launchId identifier",
+            "schema": {
+              "type": "string",
+              "minLength": 1
+            }
+          }
+        ]
+      }
+    },
+    "/agent-host/v1/launches/{launchId}/events": {
+      "get": {
+        "summary": "Read bounded normalized reconnect events",
+        "tags": [
+          "Agent Host"
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful JSON response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "additionalProperties": true
+                }
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/BadRequest"
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "404": {
+            "$ref": "#/components/responses/NotFound"
+          },
+          "500": {
+            "$ref": "#/components/responses/InternalError"
+          }
+        },
+        "security": [
+          {
+            "RudiToken": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "launchId",
+            "in": "path",
+            "required": true,
+            "description": "launchId identifier",
+            "schema": {
+              "type": "string",
+              "minLength": 1
+            }
+          },
+          {
+            "name": "offset",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "minimum": 0
+            }
+          },
+          {
+            "name": "limitBytes",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "minimum": 1,
+              "maximum": 10485760
+            }
+          }
+        ]
+      }
+    },
+    "/agent-host/v1/launches/{launchId}/resume": {
+      "post": {
+        "summary": "Resume the provider-owned native session",
+        "tags": [
+          "Agent Host"
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful JSON response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "additionalProperties": true
+                }
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/BadRequest"
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "404": {
+            "$ref": "#/components/responses/NotFound"
+          },
+          "500": {
+            "$ref": "#/components/responses/InternalError"
+          }
+        },
+        "security": [
+          {
+            "RudiToken": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "launchId",
+            "in": "path",
+            "required": true,
+            "description": "launchId identifier",
+            "schema": {
+              "type": "string",
+              "minLength": 1
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "additionalProperties": false,
+                "required": [
+                  "launchId",
+                  "prompt"
+                ],
+                "properties": {
+                  "launchId": {
+                    "type": "string",
+                    "minLength": 1
+                  },
+                  "prompt": {
+                    "type": "string",
+                    "minLength": 1,
+                    "maxLength": 10485760
+                  },
+                  "model": {
+                    "type": "string",
+                    "minLength": 1
+                  },
+                  "permissionMode": {
+                    "type": "string",
+                    "minLength": 1
+                  },
+                  "approvalMode": {
+                    "type": "string",
+                    "minLength": 1
+                  },
+                  "timeoutMs": {
+                    "type": "integer",
+                    "minimum": 1,
+                    "maximum": 86400000
+                  },
+                  "extraArgs": {
+                    "type": "array",
+                    "maxItems": 100,
+                    "items": {
+                      "type": "string"
+                    }
+                  },
+                  "images": {
+                    "type": "array",
+                    "maxItems": 100,
+                    "items": {
+                      "type": "string"
+                    }
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/agent-host/v1/launches/{launchId}/{operation}": {
+      "get": {
+        "summary": "Read the current launch diff",
+        "tags": [
+          "Agent Host"
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful JSON response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "additionalProperties": true
+                }
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/BadRequest"
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "404": {
+            "$ref": "#/components/responses/NotFound"
+          },
+          "500": {
+            "$ref": "#/components/responses/InternalError"
+          }
+        },
+        "security": [
+          {
+            "RudiToken": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "launchId",
+            "in": "path",
+            "required": true,
+            "description": "launchId identifier",
+            "schema": {
+              "type": "string",
+              "minLength": 1
+            }
+          },
+          {
+            "name": "operation",
+            "in": "path",
+            "required": true,
+            "description": "operation identifier",
+            "schema": {
+              "type": "string",
+              "enum": [
+                "diff"
+              ]
+            }
+          }
+        ]
+      },
+      "post": {
+        "summary": "Apply a bounded launch lifecycle operation",
+        "tags": [
+          "Agent Host"
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful JSON response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "additionalProperties": true
+                }
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/BadRequest"
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "404": {
+            "$ref": "#/components/responses/NotFound"
+          },
+          "500": {
+            "$ref": "#/components/responses/InternalError"
+          }
+        },
+        "security": [
+          {
+            "RudiToken": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "launchId",
+            "in": "path",
+            "required": true,
+            "description": "launchId identifier",
+            "schema": {
+              "type": "string",
+              "minLength": 1
+            }
+          },
+          {
+            "name": "operation",
+            "in": "path",
+            "required": true,
+            "description": "operation identifier",
+            "schema": {
+              "type": "string",
+              "enum": [
+                "stop",
+                "promote",
+                "discard"
+              ]
+            }
+          }
+        ]
+      }
+    },
+    "/agent-host/v1/groups": {
+      "get": {
+        "summary": "List Agent Host group pointers",
+        "tags": [
+          "Agent Host"
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful JSON response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "additionalProperties": true
+                }
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/BadRequest"
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "404": {
+            "$ref": "#/components/responses/NotFound"
+          },
+          "500": {
+            "$ref": "#/components/responses/InternalError"
+          }
+        },
+        "security": [
+          {
+            "RudiToken": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "limit",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "minimum": 1,
+              "maximum": 1000
+            }
+          }
+        ]
+      },
+      "post": {
+        "summary": "Dispatch an idempotent provider-neutral group",
+        "tags": [
+          "Agent Host"
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful JSON response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "additionalProperties": true
+                }
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/BadRequest"
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "404": {
+            "$ref": "#/components/responses/NotFound"
+          },
+          "500": {
+            "$ref": "#/components/responses/InternalError"
+          }
+        },
+        "security": [
+          {
+            "RudiToken": []
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "additionalProperties": false,
+                "required": [
+                  "groupId",
+                  "originDirectory",
+                  "tasks",
+                  "workspace"
+                ],
+                "properties": {
+                  "groupId": {
+                    "type": "string",
+                    "minLength": 1
+                  },
+                  "originDirectory": {
+                    "type": "string",
+                    "minLength": 1
+                  },
+                  "workspace": {
+                    "type": "string",
+                    "minLength": 1
+                  },
+                  "workspaceMode": {
+                    "type": "string",
+                    "enum": [
+                      "auto",
+                      "read-only",
+                      "worktree",
+                      "isolated-copy"
+                    ]
+                  },
+                  "tasks": {
+                    "type": "array",
+                    "minItems": 2,
+                    "maxItems": 10,
+                    "items": {
+                      "type": "object",
+                      "additionalProperties": false,
+                      "required": [
+                        "launchId",
+                        "prompt",
+                        "provider"
+                      ],
+                      "properties": {
+                        "launchId": {
+                          "type": "string",
+                          "minLength": 1
+                        },
+                        "prompt": {
+                          "type": "string",
+                          "minLength": 1,
+                          "maxLength": 10485760
+                        },
+                        "provider": {
+                          "type": "string",
+                          "enum": [
+                            "claude",
+                            "codex",
+                            "google"
+                          ]
+                        },
+                        "model": {
+                          "type": "string",
+                          "minLength": 1
+                        },
+                        "permissionMode": {
+                          "type": "string",
+                          "minLength": 1
+                        },
+                        "approvalMode": {
+                          "type": "string",
+                          "minLength": 1
+                        },
+                        "timeoutMs": {
+                          "type": "integer",
+                          "minimum": 1,
+                          "maximum": 86400000
+                        },
+                        "extraArgs": {
+                          "type": "array",
+                          "maxItems": 100,
+                          "items": {
+                            "type": "string"
+                          }
+                        },
+                        "images": {
+                          "type": "array",
+                          "maxItems": 100,
+                          "items": {
+                            "type": "string"
+                          }
+                        }
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/agent-host/v1/groups/{groupId}": {
+      "get": {
+        "summary": "Inspect an Agent Host group pointer",
+        "tags": [
+          "Agent Host"
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful JSON response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "additionalProperties": true
+                }
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/BadRequest"
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "404": {
+            "$ref": "#/components/responses/NotFound"
+          },
+          "500": {
+            "$ref": "#/components/responses/InternalError"
+          }
+        },
+        "security": [
+          {
+            "RudiToken": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "groupId",
+            "in": "path",
+            "required": true,
+            "description": "groupId identifier",
+            "schema": {
+              "type": "string",
+              "minLength": 1
+            }
+          }
+        ]
+      }
+    },
+    "/agent-host/v1/groups/{groupId}/stop": {
+      "post": {
+        "summary": "Stop non-terminal launches in a group",
+        "tags": [
+          "Agent Host"
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful JSON response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "additionalProperties": true
+                }
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/BadRequest"
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "404": {
+            "$ref": "#/components/responses/NotFound"
+          },
+          "500": {
+            "$ref": "#/components/responses/InternalError"
+          }
+        },
+        "security": [
+          {
+            "RudiToken": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "groupId",
+            "in": "path",
+            "required": true,
+            "description": "groupId identifier",
+            "schema": {
+              "type": "string",
+              "minLength": 1
+            }
+          }
+        ]
+      }
+    }
+  },
+  "components": {
+    "securitySchemes": {
+      "RudiToken": {
+        "type": "apiKey",
+        "in": "header",
+        "name": "x-rudi-token",
+        "description": "Local daemon token read from ~/.rudi/daemon.token"
+      }
+    },
+    "schemas": {
+      "Error": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "error",
+          "code"
+        ],
+        "properties": {
+          "error": {
+            "type": "string"
+          },
+          "code": {
+            "type": "string"
+          },
+          "requestId": {
+            "type": "string"
+          },
+          "details": {
+            "type": "object",
+            "additionalProperties": true
+          }
+        }
+      }
+    },
+    "responses": {
+      "BadRequest": {
+        "description": "Invalid request",
+        "content": {
+          "application/json": {
+            "schema": {
+              "$ref": "#/components/schemas/Error"
+            }
+          }
+        }
+      },
+      "Unauthorized": {
+        "description": "Missing or invalid local daemon token",
+        "content": {
+          "application/json": {
+            "schema": {
+              "$ref": "#/components/schemas/Error"
+            }
+          }
+        }
+      },
+      "NotFound": {
+        "description": "Resource not found",
+        "content": {
+          "application/json": {
+            "schema": {
+              "$ref": "#/components/schemas/Error"
+            }
+          }
+        }
+      },
+      "InternalError": {
+        "description": "Internal daemon error",
+        "content": {
+          "application/json": {
+            "schema": {
+              "$ref": "#/components/schemas/Error"
+            }
+          }
+        }
+      }
+    }
+  }
+}

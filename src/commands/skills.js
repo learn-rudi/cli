@@ -125,6 +125,20 @@ function claudeSkillsRoot(env = process.env) {
   return path.join(claudeHome, 'skills');
 }
 
+function geminiSkillsRoot(env = process.env) {
+  const geminiHome = env.GEMINI_HOME
+    ? path.resolve(env.GEMINI_HOME)
+    : path.join(os.homedir(), '.gemini');
+  return path.join(geminiHome, 'skills');
+}
+
+function antigravitySkillsRoot(env = process.env) {
+  const antigravityHome = env.ANTIGRAVITY_HOME
+    ? path.resolve(env.ANTIGRAVITY_HOME)
+    : path.join(os.homedir(), '.gemini', 'antigravity-cli');
+  return path.join(antigravityHome, 'skills');
+}
+
 function shortDescription(description, fallback) {
   return compactText(description || fallback, 64);
 }
@@ -259,14 +273,13 @@ export async function syncCodexSkills(options = {}) {
   };
 }
 
-export async function syncClaudeSkills(options = {}) {
-  const {
-    skills = null,
-    claudeRoot = claudeSkillsRoot(),
-    force = false,
-    dryRun = false,
-  } = options;
-
+async function syncPortableSkills({
+  skills = null,
+  targetRoot,
+  targetName,
+  force = false,
+  dryRun = false,
+}) {
   const installedSkills = skills || await listInstalled('skill');
   const rudiSkills = installedSkills.filter(skill => !skill.source || skill.source === 'rudi');
   const results = [];
@@ -279,7 +292,7 @@ export async function syncClaudeSkills(options = {}) {
       results.push({
         id: skill.id,
         action: 'failed',
-        error: 'Could not derive Claude skill name',
+        error: `Could not derive ${targetName} skill name`,
       });
       continue;
     }
@@ -294,7 +307,7 @@ export async function syncClaudeSkills(options = {}) {
       continue;
     }
 
-    const targetDir = path.join(claudeRoot, skillName);
+    const targetDir = path.join(targetRoot, skillName);
     const skillMdPath = path.join(targetDir, 'SKILL.md');
     const exists = fs.existsSync(skillMdPath);
 
@@ -303,7 +316,7 @@ export async function syncClaudeSkills(options = {}) {
         id: skill.id,
         skillName,
         action: 'skipped',
-        reason: 'Claude skill already exists; use --force to update',
+        reason: `${targetName} skill already exists; use --force to update`,
         targetDir,
       });
       continue;
@@ -327,10 +340,54 @@ export async function syncClaudeSkills(options = {}) {
     });
   }
 
+  return { total: results.length, results };
+}
+
+export async function syncClaudeSkills(options = {}) {
+  const {
+    skills = null,
+    claudeRoot = claudeSkillsRoot(),
+    force = false,
+    dryRun = false,
+  } = options;
+
   return {
     claudeRoot,
-    total: results.length,
-    results,
+    ...await syncPortableSkills({ skills, targetRoot: claudeRoot, targetName: 'Claude', force, dryRun }),
+  };
+}
+
+export async function syncGeminiSkills(options = {}) {
+  const {
+    skills = null,
+    geminiRoot = geminiSkillsRoot(),
+    force = false,
+    dryRun = false,
+  } = options;
+
+  return {
+    geminiRoot,
+    ...await syncPortableSkills({ skills, targetRoot: geminiRoot, targetName: 'Gemini', force, dryRun }),
+  };
+}
+
+export async function syncAntigravitySkills(options = {}) {
+  const {
+    skills = null,
+    antigravityRoot = antigravitySkillsRoot(),
+    force = false,
+    dryRun = false,
+  } = options;
+
+  return {
+    antigravityRoot,
+    ...await syncPortableSkills({
+      skills,
+      targetRoot: antigravityRoot,
+      targetName: 'Antigravity',
+      force,
+      dryRun,
+    }),
   };
 }
 
@@ -340,7 +397,7 @@ rudi skills - List or sync installed RUDI skills
 
 USAGE
   rudi skills
-  rudi skills sync <codex|claude> [--force] [--dry-run] [--json]
+  rudi skills sync <codex|claude|gemini|antigravity> [--force] [--dry-run] [--json]
 
 OPTIONS
   --force      Overwrite existing native skill wrappers
@@ -351,6 +408,8 @@ EXAMPLES
   rudi skills
   rudi skills sync codex
   rudi skills sync claude
+  rudi skills sync gemini
+  rudi skills sync antigravity
   rudi skills sync codex --force
 `);
 }
@@ -372,12 +431,18 @@ export async function cmdSkills(args = [], flags = {}) {
   }
 
   const target = args[1];
-  if (target !== 'codex' && target !== 'claude') {
-    throw new Error('Usage: rudi skills sync <codex|claude> [--force] [--dry-run] [--json]');
+  const targets = {
+    codex: { name: 'Codex', sync: syncCodexSkills, rootKey: 'codexRoot' },
+    claude: { name: 'Claude', sync: syncClaudeSkills, rootKey: 'claudeRoot' },
+    gemini: { name: 'Gemini', sync: syncGeminiSkills, rootKey: 'geminiRoot' },
+    antigravity: { name: 'Antigravity', sync: syncAntigravitySkills, rootKey: 'antigravityRoot' },
+  };
+  const targetConfig = targets[target];
+  if (!targetConfig) {
+    throw new Error('Usage: rudi skills sync <codex|claude|gemini|antigravity> [--force] [--dry-run] [--json]');
   }
 
-  const sync = target === 'codex' ? syncCodexSkills : syncClaudeSkills;
-  const result = await sync({
+  const result = await targetConfig.sync({
     force: flags.force === true,
     dryRun: flags['dry-run'] === true || flags.dryRun === true,
   });
@@ -387,8 +452,8 @@ export async function cmdSkills(args = [], flags = {}) {
     return;
   }
 
-  const targetName = target === 'codex' ? 'Codex' : 'Claude';
-  const skillsRoot = target === 'codex' ? result.codexRoot : result.claudeRoot;
+  const targetName = targetConfig.name;
+  const skillsRoot = result[targetConfig.rootKey];
   console.log(`${targetName} skills root: ${skillsRoot}`);
   for (const item of result.results) {
     if (item.action === 'failed') {

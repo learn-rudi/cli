@@ -38,6 +38,19 @@ async function withCatalog(run) {
         screenshot: 'npx playwright screenshot',
       },
     }));
+    await writeFile(path.join(dir, 'agents', 'claude.json'), JSON.stringify({
+      id: 'agent:claude',
+      name: 'Claude',
+      install: { source: 'npm', package: '@anthropic-ai/claude-code' },
+      bins: ['claude'],
+    }));
+    await writeFile(path.join(dir, 'agents', 'antigravity.json'), JSON.stringify({
+      id: 'agent:antigravity',
+      name: 'Antigravity',
+      install: { source: 'system' },
+      bins: ['agy'],
+      detect: { command: 'agy --version' },
+    }));
 
     await run(dir);
   } finally {
@@ -65,5 +78,25 @@ test('generateManifest is deterministic for unchanged catalog content', async ()
       bin: 'npx',
       args: ['playwright', 'screenshot'],
     }]);
+    assert.deepEqual(first.packages.agents, [
+      {
+        id: 'antigravity',
+        name: 'Antigravity',
+        kind: 'agent',
+        installDir: 'antigravity',
+        basePath: 'agents',
+        installType: 'system',
+        commands: [{ name: 'agy', bin: 'agy', args: null }],
+      },
+      {
+        id: 'claude',
+        name: 'Claude',
+        kind: 'agent',
+        installDir: 'node',
+        basePath: 'runtimes',
+        installType: 'npm-global',
+        commands: [{ name: 'claude', bin: 'bin/claude', args: null }],
+      },
+    ]);
   });
 });

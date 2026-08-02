@@ -6,7 +6,7 @@ RUDI provides a unified installation and management system for:
 - **MCP Stacks** - Model Context Protocol servers for Claude, Codex, and Gemini
 - **CLI Tools** - Any npm package or upstream binary (ffmpeg, ripgrep, etc.)
 - **Runtimes** - Node.js, Python, Deno, Bun
-- **AI Agents** - Claude Code, Codex CLI, Gemini CLI
+- **AI Agents** - Claude Code, Codex CLI, Gemini CLI, Antigravity CLI
 
 ## Installation
 
@@ -101,26 +101,109 @@ rudi secrets remove SLACK_BOT_TOKEN    # Remove a secret
 
 ### Integrating with AI Agents
 
+See [Frontier Agent Hosts](docs/frontier-agent-hosts.md) for the complete
+Claude, Codex, Antigravity, and Gemini headless command matrix, current model
+aliases, resume/workspace/JSON controls, and the Google authentication split.
+
 ```bash
 rudi shims rebuild     # Create rudi-router and rudi-mcp shims (opt-in)
-rudi integrate claude    # Add stacks to Claude Desktop config
-rudi integrate codex     # Add stacks to Codex config
-rudi integrate gemini    # Add stacks to Gemini config
-rudi integrate all       # Add to all detected agents
+rudi integrate claude      # Add the RUDI router to Claude config
+rudi integrate codex       # Add the RUDI router to Codex config
+rudi integrate gemini      # Add the RUDI router to Gemini config
+rudi integrate antigravity # Add the RUDI router to Antigravity config
+rudi integrate all         # Add the router to all detected agents
 ```
 
-This modifies the agent's MCP configuration file (e.g., `~/Library/Application Support/Claude/claude_desktop_config.json`) to include your installed stacks with proper secret injection.
+This modifies the agent's MCP configuration to include one managed RUDI router;
+stack discovery and secret injection stay inside RUDI.
 
-Claude and Codex have separate native skill directories. After installing RUDI
-skills, sync editable native wrappers when you want them to appear in the
-agent's skill/slash UI:
+Each native host has its own skill directory. After installing RUDI skills,
+sync editable native wrappers when you want them to appear in the host's
+skill/slash UI:
 
 ```bash
 rudi skills sync codex
 rudi skills sync claude
+rudi skills sync gemini
+rudi skills sync antigravity
 rudi skills sync codex --force   # overwrite existing generated wrappers
 rudi skills sync claude --force  # overwrite existing generated wrappers
 ```
+
+### Running Headless Agent Hosts
+
+`rudi agent` is the supported headless execution surface. Foreground launches
+run directly through the shared CLI core and require no daemon. Native
+providers continue to own their complete transcripts; RUDI stores only a
+bounded launch/workspace projection and durable launch artifacts.
+
+```bash
+# Inspect native installations, auth, RUDI router wiring, skills, and versions
+rudi agent hosts
+rudi agent models claude
+rudi agent models codex
+rudi agent models google
+rudi agent models gemini
+
+# Writable Git projects automatically receive a dedicated worktree
+rudi agent launch codex \
+  --workspace . \
+  --prompt "Fix the failing tests"
+
+# Read-only work uses the project directly
+rudi agent launch claude \
+  --workspace . \
+  --read-only \
+  --prompt-file task.md
+
+# stdin and provider-specific argv are supported
+printf '%s' "Explain this repository" | \
+  rudi agent launch google --workspace . --read-only --json
+
+rudi agent launch codex \
+  --workspace . \
+  --prompt "Review the installer" \
+  -- --strict-config
+
+# Resume the same provider-owned native session
+rudi agent resume <launch-id> --prompt "Continue with the next failure"
+
+# Inspect minimal persisted launch projections
+rudi agent list --json
+rudi agent status <launch-id> --json
+```
+
+Workspace defaults fail closed:
+
+| Project | Access | Execution workspace |
+| --- | --- | --- |
+| Git repository | Writable | New Git worktree |
+| Git repository | Read-only | Project root directly |
+| Non-Git directory | Writable | Isolated copied workspace |
+| Non-Git directory | Read-only | Directory directly |
+
+RUDI never initializes Git, never falls back to `$HOME`, and never degrades a
+failed isolated write launch into shared write access. Detached launches,
+reconnect, stop, diff, promote/discard, and provider-neutral groups use the
+local background service and dedicated workers:
+
+```bash
+rudi agent launch codex --workspace . --prompt-file task.md --detach
+rudi agent attach <launch-id>
+rudi agent diff <launch-id>
+rudi agent promote <launch-id>   # or: rudi agent discard <launch-id>
+
+rudi agent group launch \
+  --workspace . \
+  --task claude:security.md \
+  --task codex:implementation.md \
+  --task google:ux.md \
+  --detach
+```
+
+These dedicated workers survive terminal closure and daemon restarts. The
+versioned Agent Host service is a control plane, not the owner or source of
+truth for provider sessions or transcripts.
 
 ### Inspecting Packages
 
@@ -142,21 +225,22 @@ rudi remove slack        # Uninstall a package
 rudi doctor              # Check system health
 ```
 
-### Legacy Compatibility
+### Retired Commands
 
-RUDI keeps several older Lite/session orchestration commands callable for
-existing local workflows, but they are no longer part of the default core
-capability path:
+Names from the removed imported-session and RUDI-owned execution architecture
+remain visible only as migration notices. They exit nonzero and never load
+legacy runtime code:
 
 ```bash
-rudi help db          # Legacy session database operations
-rudi help session     # Legacy imported-session history operations
-rudi help parallel    # Legacy sidecar run-group launcher
-rudi help run-group   # Legacy sidecar run-group inspection/merge/cleanup
+rudi help db          # Existing rudi.db is preserved but not opened
+rudi help session     # Use the provider-native transcript
+rudi help parallel    # Use native orchestration or rudi agent group
+rudi help run-group   # Use rudi agent group
 ```
 
-Core `rudi init`, package install, router indexing, and agent integration do not
-initialize or require `rudi.db`.
+Removed `/agent/*` and `/sessions/*` endpoints have no compatibility adapter.
+Core CLI and daemon paths do not initialize, open, repair, or require
+`rudi.db`.
 
 ## Directory Structure
 
@@ -174,6 +258,7 @@ initialize or require `rudi.db`.
 ├── router/               # Local MCP router and permission-hook runtime files
 │
 ├── state/                # Persistent per-stack runtime state
+│   ├── agent-hosts.db    # Minimal Agent Host lifecycle projection
 │   └── stacks/
 │       └── google-workspace/
 │           └── accounts/ # OAuth tokens and selected account state
@@ -187,38 +272,40 @@ initialize or require `rudi.db`.
 ├── cache/                # Rebuildable registry/package/tool-index cache
 ├── locks/                # Package install lock files
 ├── logs/                 # Daemon and runtime logs
+├── artifacts/
+│   └── agent-launches/   # Per-launch worktrees or isolated copied workspaces
 ├── notes/                # Local user artifacts from RUDI workflows
 ├── archive/              # Manual cleanup archives
 ├── prompts/              # Legacy prompt directory; new assets map to skills/
 │
-├── rudi.db               # Legacy session database, created by DB/session commands
-├── rudi.db-wal           # SQLite write-ahead log, SQLite-managed
-├── rudi.db-shm           # SQLite shared-memory file, SQLite-managed
-├── .rudi-lite-port       # Legacy daemon port file
-└── .rudi-lite-token      # Legacy daemon auth token
+├── rudi.db               # Retired session data; preserved and never opened by CLI
+├── rudi.db-wal           # Retired SQLite journal, if already present
+├── rudi.db-shm           # Retired SQLite shared memory, if already present
+├── daemon.port           # Active loopback daemon port (mode 0600)
+└── daemon.token          # Active loopback daemon token (mode 0600)
 ```
 
 Use `rudi home` for a lifecycle-oriented view of this tree. It labels each path
-as installed code, persistent state, secret material, generated cache, operational
-logs, or legacy compatibility. Use `rudi home --json` for machine-readable output.
-Core `rudi init` does not create `rudi.db`; legacy session/database commands
-initialize it only when those surfaces are used.
+as installed code, persistent state, secret material, generated cache,
+operational logs, or retired preserved data. Use `rudi home --json` for
+machine-readable output. Core commands do not create or open `rudi.db`.
 
 ## How MCP Integration Works
 
 When you run `rudi integrate claude`, RUDI:
 
-1. Reads the Claude Desktop config at `~/Library/Application Support/Claude/claude_desktop_config.json`
-2. Adds entries for each installed stack pointing to `~/.rudi/bins/rudi-mcp`
-3. Passes the stack ID as an argument
+1. Reads the target host's MCP configuration.
+2. Writes one `rudi` server entry pointing to `~/.rudi/bins/rudi-router`.
+3. Removes obsolete direct RUDI stack entries that the managed router replaces.
 
 When Claude invokes the MCP server:
 
-1. `rudi-mcp` receives the stack ID
-2. Loads secrets from `~/.rudi/secrets.json`
-3. Injects secrets as environment variables
-4. Spawns the actual MCP server process
-5. Proxies stdio between Claude and the server
+1. `rudi-router` loads the generated tool index from
+   `~/.rudi/cache/tool-index.json`.
+2. It maps the requested tool to its installed stack.
+3. It loads only that stack's declared secrets and injects them as environment
+   variables.
+4. It launches the stack MCP server and proxies the request/response.
 
 This architecture means secrets stay local and are never written to agent config files.
 

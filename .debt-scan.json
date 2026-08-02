@@ -44,16 +44,6 @@
     "packages/db/src/service/types.ts",
     "packages/db/src/session-identity.js",
     "packages/db/src/stats.js",
-    "packages/embeddings/src/client.js",
-    "packages/embeddings/src/index.js",
-    "packages/embeddings/src/providers/index.js",
-    "packages/embeddings/src/providers/local.js",
-    "packages/embeddings/src/providers/ollama.js",
-    "packages/embeddings/src/providers/openai.js",
-    "packages/embeddings/src/setup.js",
-    "packages/embeddings/src/stores/sqlite.js",
-    "packages/embeddings/src/utils/hash.js",
-    "packages/embeddings/src/utils/vector.js",
     "packages/env/src/index.js",
     "packages/manifest/src/index.js",
     "packages/manifest/src/prompt.js",
@@ -66,7 +56,6 @@
     "packages/mcp/src/index.js",
     "packages/mcp/src/registry.js",
     "packages/registry-client/src/index.js",
-    "packages/runner/src/db.js",
     "packages/runner/src/index.js",
     "packages/runner/src/secrets.js",
     "packages/runner/src/spawn.js",
@@ -80,42 +69,15 @@
   "allowlists": {
     "orphans": {
       "paths": [
-        "src/commands/serve/routes/packages.js",
         "packages/utils/src/__tests__/unit/args.test.js",
-        "src/__tests__/helpers/serve-mocks.js",
-        "src/commands/serve/routes/*.js",
-        "src/commands/agent/contract-validator.js",
-        "src/commands/agent/helpers.js",
-        "src/commands/agent/routes/lifecycle.js",
-        "src/commands/agent/routes/orchestrate.js",
-        "src/commands/agent/routes/run-group.js",
-        "src/commands/agent/routes/spawn-child.js",
-        "src/commands/agent/routes/start.js",
-        "src/commands/agent/routes/worktree-routes.js",
-        "src/commands/agent/spawn-process.js",
-        "src/daemon/operations/artifacts.js",
-        "src/daemon/operations/run-groups.js",
-        "src/daemon/schemas/artifacts.js",
-        "src/daemon/schemas/common.js",
-        "src/daemon/schemas/daemon.js",
-        "src/daemon/schemas/errors.js",
-        "src/daemon/schemas/events.js",
-        "src/daemon/schemas/index.js",
-        "src/daemon/schemas/jobs.js",
-        "src/daemon/schemas/local-llm.js",
-        "src/daemon/schemas/packages.js",
-        "src/daemon/schemas/run-groups.js",
-        "src/daemon/schemas/secrets.js",
-        "src/daemon/schemas/sessions.js",
-        "src/daemon/schemas/tools.js"
+        "src/__tests__/helpers/serve-mocks.js"
       ]
     },
     "boundaries": {
       "paths": [
+        "src/__tests__/unit/agent-host-routes.test.js",
         "src/__tests__/unit/*-contract.test.js",
-        "src/__tests__/unit/packages-routes.test.js",
-        "src/__tests__/unit/run-group-observability.test.js",
-        "src/__tests__/unit/spawn-retry-integration.test.js"
+        "src/__tests__/unit/packages-routes.test.js"
       ]
     }
   },
@@ -129,10 +91,14 @@
       "entrypoints": [
         "src/index.js",
         "src/router-mcp.js",
-        "src/spawn-mcp.js",
+        "src/agent-host/process-lifecycle.js",
+        "src/agent-host/workspace-lifecycle.js",
+        "src/daemon/schemas/index.js",
+        "src/daemon/schemas/daemon.js",
+        "src/daemon/schemas/errors.js",
+        "scripts/agent-debt-scan.cjs",
         "packages/core/src/index.js",
         "packages/db/src/index.js",
-        "packages/embeddings/src/index.js",
         "packages/env/src/index.js",
         "packages/manifest/src/index.js",
         "packages/mcp/src/index.js",
@@ -142,7 +108,7 @@
         "packages/utils/src/index.js",
         "scripts/agent-debt-runner.mjs",
         "scripts/generate-manifest.js",
-        "scripts/generate-sidecar-openapi.js",
+        "scripts/generate-daemon-openapi.js",
         "scripts/run-tests.js"
       ],
       "checks": [
