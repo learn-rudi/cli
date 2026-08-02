@@ -91,6 +91,8 @@
       "entrypoints": [
         "src/index.js",
         "src/router-mcp.js",
+        "src/agent-host/process-lifecycle.js",
+        "src/agent-host/workspace-lifecycle.js",
         "src/daemon/schemas/index.js",
         "src/daemon/schemas/daemon.js",
         "src/daemon/schemas/errors.js",

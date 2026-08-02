@@ -19,7 +19,7 @@ import {
 import {
   daemonRequest,
   readDaemonInfo,
-} from './daemon-client.js';
+} from '../daemon/client.js';
 
 export {
   extractModelIds,

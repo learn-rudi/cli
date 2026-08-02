@@ -8,7 +8,7 @@ import {
   daemonRequest,
   getDaemonStatus,
   readDaemonInfo,
-} from '../../commands/daemon-client.js';
+} from '../../daemon/client.js';
 
 describe('readDaemonInfo', () => {
   test('reads port and token from explicit connection files', () => {

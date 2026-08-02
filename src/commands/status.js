@@ -16,7 +16,7 @@ import { PATHS, getInstalledPackages, isPackageInstalled, resolveNodeRuntimeBin 
 import fs from 'fs';
 import path from 'path';
 import os from 'os';
-import { getDaemonStatus } from './daemon-client.js';
+import { getDaemonStatus } from '../daemon/client.js';
 import { createWhichCommand, runCommand, runCommandPlan } from '../utils/subprocess.js';
 
 // Agent definitions with credential check info

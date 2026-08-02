@@ -11,7 +11,7 @@ import {
 } from '@learnrudi/core';
 import { listSecretNames } from '@learnrudi/runner';
 import fs from 'fs';
-import { getDaemonStatus } from './daemon-client.js';
+import { getDaemonStatus } from '../daemon/client.js';
 
 export function formatDaemonDoctorState(daemon) {
   if (daemon.ready) return 'ready';

@@ -1,5 +1,5 @@
-import fs from 'fs';
-import path from 'path';
+import fs from 'node:fs';
+import path from 'node:path';
 import { PATHS } from '@learnrudi/env';
 
 export const DAEMON_PORT_FILE = path.join(PATHS.home, 'daemon.port');

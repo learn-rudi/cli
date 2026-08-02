@@ -8,7 +8,7 @@ import {
   daemonRequest,
   getDaemonStatus,
   readDaemonInfo,
-} from '../../commands/daemon-client.js';
+} from '../../daemon/client.js';
 
 test('daemon client exposes daemon-owned connection and request vocabulary', async () => {
   assert.equal(typeof daemonRequest, 'function');
