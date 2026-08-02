@@ -33,3 +33,11 @@ test('debt scan is portable outside the developer workstation', () => {
   assert.doesNotMatch(runner, /\/Users\/hoff\/dev\/dev-help/);
   assert.match(runner, /agent-debt-scan\.cjs/);
 });
+
+test('normal builds use the checked-in package manifest without a sibling registry checkout', () => {
+  const packageJson = JSON.parse(read('package.json'));
+
+  assert.equal(packageJson.scripts.prebuild, undefined);
+  assert.equal(packageJson.scripts['generate:manifest'], 'node scripts/generate-manifest.js');
+  assert.match(packageJson.scripts.build, /src\/packages-manifest\.json/);
+});

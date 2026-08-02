@@ -5,7 +5,8 @@
  * This script reads all package definitions from the registry catalog
  * and generates a unified manifest for shim generation.
  *
- * Run at build time: node scripts/generate-manifest.js
+ * Regenerate explicitly from a registry checkout: pnpm generate:manifest
+ * Normal builds consume the checked-in manifest so this repository builds in isolation.
  * Output: src/packages-manifest.json (bundled with CLI)
  */
 
