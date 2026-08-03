@@ -32,7 +32,7 @@ var __toESM = (mod, isNodeMode, target) => (target = mod != null ? __create(__ge
   mod
 ));
 
-// packages/env/src/index.js
+// ../../../../Users/hoff/dev/RUDI/apps/cli/packages/env/src/index.js
 function getNodeRuntimeRoot() {
   return import_path.default.join(PATHS.runtimes, "node");
 }
@@ -387,7 +387,7 @@ function getInstalledPackages(kind) {
 }
 var import_path, import_os, import_fs, RUDI_HOME, CLAUDE_HOME, PATHS, PACKAGE_KINDS;
 var init_src = __esm({
-  "packages/env/src/index.js"() {
+  "../../../../Users/hoff/dev/RUDI/apps/cli/packages/env/src/index.js"() {
     import_path = __toESM(require("path"), 1);
     import_os = __toESM(require("os"), 1);
     import_fs = __toESM(require("fs"), 1);
@@ -440,7 +440,7 @@ var init_src = __esm({
   }
 });
 
-// node_modules/.pnpm/@learnrudi+env@1.0.0/node_modules/@learnrudi/env/src/index.js
+// ../../../../Users/hoff/dev/RUDI/apps/cli/node_modules/.pnpm/@learnrudi+env@1.0.0/node_modules/@learnrudi/env/src/index.js
 function getPlatformArch2() {
   const platform = import_os2.default.platform();
   const arch = import_os2.default.arch();
@@ -449,7 +449,7 @@ function getPlatformArch2() {
 }
 var import_path2, import_os2, RUDI_HOME2, PATHS2;
 var init_src2 = __esm({
-  "node_modules/.pnpm/@learnrudi+env@1.0.0/node_modules/@learnrudi/env/src/index.js"() {
+  "../../../../Users/hoff/dev/RUDI/apps/cli/node_modules/.pnpm/@learnrudi+env@1.0.0/node_modules/@learnrudi/env/src/index.js"() {
     import_path2 = __toESM(require("path"), 1);
     import_os2 = __toESM(require("os"), 1);
     RUDI_HOME2 = import_path2.default.join(import_os2.default.homedir(), ".rudi");
@@ -490,7 +490,7 @@ var init_src2 = __esm({
   }
 });
 
-// packages/registry-client/src/registry-contract.js
+// ../../../../Users/hoff/dev/RUDI/apps/cli/packages/registry-client/src/registry-contract.js
 function asObject(value, label) {
   if (!value || typeof value !== "object" || Array.isArray(value)) {
     throw new RegistryContractError(`${label} must be an object`);
@@ -541,6 +541,96 @@ function normalizeSecrets(requires) {
     })
   };
 }
+function isCalendarDate(value) {
+  if (typeof value !== "string" || !/^\d{4}-\d{2}-\d{2}$/.test(value)) return false;
+  const parsed = /* @__PURE__ */ new Date(`${value}T00:00:00.000Z`);
+  return !Number.isNaN(parsed.getTime()) && parsed.toISOString().slice(0, 10) === value;
+}
+function normalizePackageLifecycle(value, packageId) {
+  if (value === void 0) return void 0;
+  const lifecycle = asObject(value, `Registry package ${packageId} lifecycle`);
+  const lifecycleKeys = /* @__PURE__ */ new Set(["maturity", "support", "deprecation"]);
+  const unknownLifecycleKey = Object.keys(lifecycle).find((key) => !lifecycleKeys.has(key));
+  if (unknownLifecycleKey) {
+    throw new RegistryContractError(
+      `Registry package ${packageId} lifecycle contains unsupported field: ${unknownLifecycleKey}`,
+      { packageId }
+    );
+  }
+  if (!PACKAGE_MATURITY.has(lifecycle.maturity)) {
+    throw new RegistryContractError(
+      `Registry package ${packageId} lifecycle.maturity is invalid`,
+      { packageId }
+    );
+  }
+  if (!PACKAGE_SUPPORT.has(lifecycle.support)) {
+    throw new RegistryContractError(
+      `Registry package ${packageId} lifecycle.support is invalid`,
+      { packageId }
+    );
+  }
+  let deprecation;
+  if (lifecycle.deprecation !== void 0) {
+    deprecation = asObject(
+      lifecycle.deprecation,
+      `Registry package ${packageId} lifecycle.deprecation`
+    );
+    const deprecationKeys = /* @__PURE__ */ new Set([
+      "announcedAt",
+      "message",
+      "replacementId",
+      "removalAfter"
+    ]);
+    const unknownDeprecationKey = Object.keys(deprecation).find((key) => !deprecationKeys.has(key));
+    if (unknownDeprecationKey) {
+      throw new RegistryContractError(
+        `Registry package ${packageId} lifecycle.deprecation contains unsupported field: ${unknownDeprecationKey}`,
+        { packageId }
+      );
+    }
+    if (!isCalendarDate(deprecation.announcedAt)) {
+      throw new RegistryContractError(
+        `Registry package ${packageId} lifecycle.deprecation.announcedAt is invalid`,
+        { packageId }
+      );
+    }
+    if (typeof deprecation.message !== "string" || deprecation.message.trim() === "") {
+      throw new RegistryContractError(
+        `Registry package ${packageId} lifecycle.deprecation.message is required`,
+        { packageId }
+      );
+    }
+    if (deprecation.replacementId !== void 0 && !PACKAGE_ID_PATTERN.test(deprecation.replacementId)) {
+      throw new RegistryContractError(
+        `Registry package ${packageId} lifecycle.deprecation.replacementId is invalid`,
+        { packageId }
+      );
+    }
+    if (deprecation.removalAfter !== void 0 && !isCalendarDate(deprecation.removalAfter)) {
+      throw new RegistryContractError(
+        `Registry package ${packageId} lifecycle.deprecation.removalAfter is invalid`,
+        { packageId }
+      );
+    }
+    if (deprecation.removalAfter !== void 0 && deprecation.removalAfter < deprecation.announcedAt) {
+      throw new RegistryContractError(
+        `Registry package ${packageId} lifecycle.deprecation.removalAfter precedes announcedAt`,
+        { packageId }
+      );
+    }
+  }
+  if (lifecycle.support === "unsupported" && deprecation === void 0) {
+    throw new RegistryContractError(
+      `Registry package ${packageId} with unsupported lifecycle support requires deprecation guidance`,
+      { packageId }
+    );
+  }
+  return {
+    maturity: lifecycle.maturity,
+    support: lifecycle.support,
+    ...deprecation ? { deprecation: { ...deprecation } } : {}
+  };
+}
 function legacyInstallType(source) {
   if (source === "download") return "binary";
   if (source === "npm" || source === "pip" || source === "system") return source;
@@ -563,6 +653,7 @@ function normalizeRegistryPackage(value, kindHint) {
     path: pkg.path || install.path,
     description: pkg.description || meta.description,
     category: pkg.category || meta.category,
+    ...pkg.lifecycle === void 0 ? {} : { lifecycle: normalizePackageLifecycle(pkg.lifecycle, pkg.id) },
     tags: pkg.tags || meta.tags,
     icon: pkg.icon || meta.icon,
     author: pkg.author || meta.author,
@@ -694,9 +785,9 @@ function getRegistryPackage(value, id, kinds) {
   }
   return null;
 }
-var PACKAGE_KINDS2, RegistryContractError;
+var PACKAGE_KINDS2, RegistryContractError, PACKAGE_ID_PATTERN, PACKAGE_MATURITY, PACKAGE_SUPPORT;
 var init_registry_contract = __esm({
-  "packages/registry-client/src/registry-contract.js"() {
+  "../../../../Users/hoff/dev/RUDI/apps/cli/packages/registry-client/src/registry-contract.js"() {
     PACKAGE_KINDS2 = /* @__PURE__ */ new Set([
       "stack",
       "skill",
@@ -713,10 +804,13 @@ var init_registry_contract = __esm({
         this.details = details;
       }
     };
+    PACKAGE_ID_PATTERN = /^(runtime|binary|agent|stack|skill|prompt):[a-z0-9][a-z0-9-_]*$/;
+    PACKAGE_MATURITY = /* @__PURE__ */ new Set(["experimental", "stable"]);
+    PACKAGE_SUPPORT = /* @__PURE__ */ new Set(["supported", "maintenance", "unsupported"]);
   }
 });
 
-// packages/registry-client/src/index.js
+// ../../../../Users/hoff/dev/RUDI/apps/cli/packages/registry-client/src/index.js
 function assertCommandArg(value, label) {
   if (typeof value !== "string" || value.length === 0 || value.includes("\0")) {
     throw new Error(`Invalid command ${label}`);
@@ -1773,7 +1867,7 @@ async function verifyHash(filePath, expectedHash) {
 }
 var import_fs2, import_path3, import_crypto, import_child_process, DEFAULT_REGISTRY_URL, RUNTIMES_DOWNLOAD_BASE, CACHE_TTL, PACKAGE_KINDS3, GITHUB_RAW_BASE, RUNTIMES_RELEASE_VERSION;
 var init_src3 = __esm({
-  "packages/registry-client/src/index.js"() {
+  "../../../../Users/hoff/dev/RUDI/apps/cli/packages/registry-client/src/index.js"() {
     import_fs2 = __toESM(require("fs"), 1);
     import_path3 = __toESM(require("path"), 1);
     import_crypto = __toESM(require("crypto"), 1);
@@ -1790,7 +1884,7 @@ var init_src3 = __esm({
   }
 });
 
-// packages/core/src/resolver.js
+// ../../../../Users/hoff/dev/RUDI/apps/cli/packages/core/src/resolver.js
 async function getInstallableRegistryPackage(id) {
   const pkg = await getPackage(id);
   if (!pkg) return null;
@@ -1864,6 +1958,16 @@ function normalizeSkillPackageId(id) {
 }
 async function resolveRelatedSkills(pkg) {
   const relatedSkillIds = pkg.related?.skills || [];
+  const operatorSkillId = normalizeSkillPackageId(pkg.related?.operatorSkill);
+  if (pkg.kind === "stack" && !operatorSkillId) {
+    throw new Error(`${pkg.id || "Stack package"} requires related.operatorSkill`);
+  }
+  const normalizedRelatedSkillIds = relatedSkillIds.map((id) => normalizeSkillPackageId(id)).filter(Boolean);
+  if (operatorSkillId && !normalizedRelatedSkillIds.includes(operatorSkillId)) {
+    throw new Error(
+      `${pkg.id || "Stack package"} related.operatorSkill must appear in related.skills`
+    );
+  }
   const relatedSkills = [];
   const seen = /* @__PURE__ */ new Set();
   for (const id of relatedSkillIds) {
@@ -1871,13 +1975,19 @@ async function resolveRelatedSkills(pkg) {
     if (!skillId || seen.has(skillId)) continue;
     seen.add(skillId);
     const skillPkg = await getPackage(skillId);
-    if (!skillPkg) continue;
+    if (!skillPkg) {
+      if (skillId === operatorSkillId) {
+        throw new Error(`operator skill package not found: ${skillId}`);
+      }
+      continue;
+    }
     relatedSkills.push({
       id: skillId,
       kind: "skill",
       name: skillPkg.name,
       version: skillPkg.version,
       installed: isPackageInstalled(skillId),
+      isOperator: skillId === operatorSkillId,
       dependencies: []
     });
   }
@@ -2072,16 +2182,16 @@ function compareVersions(a, b) {
 }
 var SINGLE_FILE_KINDS;
 var init_resolver = __esm({
-  "packages/core/src/resolver.js"() {
+  "../../../../Users/hoff/dev/RUDI/apps/cli/packages/core/src/resolver.js"() {
     init_src3();
     init_src();
     SINGLE_FILE_KINDS = /* @__PURE__ */ new Set(["skill", "prompt", "workflow"]);
   }
 });
 
-// node_modules/.pnpm/yaml@2.8.2/node_modules/yaml/dist/nodes/identity.js
+// ../../../../Users/hoff/dev/RUDI/apps/cli/node_modules/.pnpm/yaml@2.8.2/node_modules/yaml/dist/nodes/identity.js
 var require_identity = __commonJS({
-  "node_modules/.pnpm/yaml@2.8.2/node_modules/yaml/dist/nodes/identity.js"(exports2) {
+  "../../../../Users/hoff/dev/RUDI/apps/cli/node_modules/.pnpm/yaml@2.8.2/node_modules/yaml/dist/nodes/identity.js"(exports2) {
     "use strict";
     var ALIAS = /* @__PURE__ */ Symbol.for("yaml.alias");
     var DOC = /* @__PURE__ */ Symbol.for("yaml.document");
@@ -2136,9 +2246,9 @@ var require_identity = __commonJS({
   }
 });
 
-// node_modules/.pnpm/yaml@2.8.2/node_modules/yaml/dist/visit.js
+// ../../../../Users/hoff/dev/RUDI/apps/cli/node_modules/.pnpm/yaml@2.8.2/node_modules/yaml/dist/visit.js
 var require_visit = __commonJS({
-  "node_modules/.pnpm/yaml@2.8.2/node_modules/yaml/dist/visit.js"(exports2) {
+  "../../../../Users/hoff/dev/RUDI/apps/cli/node_modules/.pnpm/yaml@2.8.2/node_modules/yaml/dist/visit.js"(exports2) {
     "use strict";
     var identity = require_identity();
     var BREAK = /* @__PURE__ */ Symbol("break visit");
@@ -2294,9 +2404,9 @@ var require_visit = __commonJS({
   }
 });
 
-// node_modules/.pnpm/yaml@2.8.2/node_modules/yaml/dist/doc/directives.js
+// ../../../../Users/hoff/dev/RUDI/apps/cli/node_modules/.pnpm/yaml@2.8.2/node_modules/yaml/dist/doc/directives.js
 var require_directives = __commonJS({
-  "node_modules/.pnpm/yaml@2.8.2/node_modules/yaml/dist/doc/directives.js"(exports2) {
+  "../../../../Users/hoff/dev/RUDI/apps/cli/node_modules/.pnpm/yaml@2.8.2/node_modules/yaml/dist/doc/directives.js"(exports2) {
     "use strict";
     var identity = require_identity();
     var visit = require_visit();
@@ -2465,9 +2575,9 @@ var require_directives = __commonJS({
   }
 });
 
-// node_modules/.pnpm/yaml@2.8.2/node_modules/yaml/dist/doc/anchors.js
+// ../../../../Users/hoff/dev/RUDI/apps/cli/node_modules/.pnpm/yaml@2.8.2/node_modules/yaml/dist/doc/anchors.js
 var require_anchors = __commonJS({
-  "node_modules/.pnpm/yaml@2.8.2/node_modules/yaml/dist/doc/anchors.js"(exports2) {
+  "../../../../Users/hoff/dev/RUDI/apps/cli/node_modules/.pnpm/yaml@2.8.2/node_modules/yaml/dist/doc/anchors.js"(exports2) {
     "use strict";
     var identity = require_identity();
     var visit = require_visit();
@@ -2535,9 +2645,9 @@ var require_anchors = __commonJS({
   }
 });
 
-// node_modules/.pnpm/yaml@2.8.2/node_modules/yaml/dist/doc/applyReviver.js
+// ../../../../Users/hoff/dev/RUDI/apps/cli/node_modules/.pnpm/yaml@2.8.2/node_modules/yaml/dist/doc/applyReviver.js
 var require_applyReviver = __commonJS({
-  "node_modules/.pnpm/yaml@2.8.2/node_modules/yaml/dist/doc/applyReviver.js"(exports2) {
+  "../../../../Users/hoff/dev/RUDI/apps/cli/node_modules/.pnpm/yaml@2.8.2/node_modules/yaml/dist/doc/applyReviver.js"(exports2) {
     "use strict";
     function applyReviver(reviver, obj, key, val) {
       if (val && typeof val === "object") {
@@ -2585,9 +2695,9 @@ var require_applyReviver = __commonJS({
   }
 });
 
-// node_modules/.pnpm/yaml@2.8.2/node_modules/yaml/dist/nodes/toJS.js
+// ../../../../Users/hoff/dev/RUDI/apps/cli/node_modules/.pnpm/yaml@2.8.2/node_modules/yaml/dist/nodes/toJS.js
 var require_toJS = __commonJS({
-  "node_modules/.pnpm/yaml@2.8.2/node_modules/yaml/dist/nodes/toJS.js"(exports2) {
+  "../../../../Users/hoff/dev/RUDI/apps/cli/node_modules/.pnpm/yaml@2.8.2/node_modules/yaml/dist/nodes/toJS.js"(exports2) {
     "use strict";
     var identity = require_identity();
     function toJS(value, arg, ctx) {
@@ -2615,9 +2725,9 @@ var require_toJS = __commonJS({
   }
 });
 
-// node_modules/.pnpm/yaml@2.8.2/node_modules/yaml/dist/nodes/Node.js
+// ../../../../Users/hoff/dev/RUDI/apps/cli/node_modules/.pnpm/yaml@2.8.2/node_modules/yaml/dist/nodes/Node.js
 var require_Node = __commonJS({
-  "node_modules/.pnpm/yaml@2.8.2/node_modules/yaml/dist/nodes/Node.js"(exports2) {
+  "../../../../Users/hoff/dev/RUDI/apps/cli/node_modules/.pnpm/yaml@2.8.2/node_modules/yaml/dist/nodes/Node.js"(exports2) {
     "use strict";
     var applyReviver = require_applyReviver();
     var identity = require_identity();
@@ -2656,9 +2766,9 @@ var require_Node = __commonJS({
   }
 });
 
-// node_modules/.pnpm/yaml@2.8.2/node_modules/yaml/dist/nodes/Alias.js
+// ../../../../Users/hoff/dev/RUDI/apps/cli/node_modules/.pnpm/yaml@2.8.2/node_modules/yaml/dist/nodes/Alias.js
 var require_Alias = __commonJS({
-  "node_modules/.pnpm/yaml@2.8.2/node_modules/yaml/dist/nodes/Alias.js"(exports2) {
+  "../../../../Users/hoff/dev/RUDI/apps/cli/node_modules/.pnpm/yaml@2.8.2/node_modules/yaml/dist/nodes/Alias.js"(exports2) {
     "use strict";
     var anchors = require_anchors();
     var visit = require_visit();
@@ -2770,9 +2880,9 @@ var require_Alias = __commonJS({
   }
 });
 
-// node_modules/.pnpm/yaml@2.8.2/node_modules/yaml/dist/nodes/Scalar.js
+// ../../../../Users/hoff/dev/RUDI/apps/cli/node_modules/.pnpm/yaml@2.8.2/node_modules/yaml/dist/nodes/Scalar.js
 var require_Scalar = __commonJS({
-  "node_modules/.pnpm/yaml@2.8.2/node_modules/yaml/dist/nodes/Scalar.js"(exports2) {
+  "../../../../Users/hoff/dev/RUDI/apps/cli/node_modules/.pnpm/yaml@2.8.2/node_modules/yaml/dist/nodes/Scalar.js"(exports2) {
     "use strict";
     var identity = require_identity();
     var Node = require_Node();
@@ -2800,9 +2910,9 @@ var require_Scalar = __commonJS({
   }
 });
 
-// node_modules/.pnpm/yaml@2.8.2/node_modules/yaml/dist/doc/createNode.js
+// ../../../../Users/hoff/dev/RUDI/apps/cli/node_modules/.pnpm/yaml@2.8.2/node_modules/yaml/dist/doc/createNode.js
 var require_createNode = __commonJS({
-  "node_modules/.pnpm/yaml@2.8.2/node_modules/yaml/dist/doc/createNode.js"(exports2) {
+  "../../../../Users/hoff/dev/RUDI/apps/cli/node_modules/.pnpm/yaml@2.8.2/node_modules/yaml/dist/doc/createNode.js"(exports2) {
     "use strict";
     var Alias = require_Alias();
     var identity = require_identity();
@@ -2875,9 +2985,9 @@ var require_createNode = __commonJS({
   }
 });
 
-// node_modules/.pnpm/yaml@2.8.2/node_modules/yaml/dist/nodes/Collection.js
+// ../../../../Users/hoff/dev/RUDI/apps/cli/node_modules/.pnpm/yaml@2.8.2/node_modules/yaml/dist/nodes/Collection.js
 var require_Collection = __commonJS({
-  "node_modules/.pnpm/yaml@2.8.2/node_modules/yaml/dist/nodes/Collection.js"(exports2) {
+  "../../../../Users/hoff/dev/RUDI/apps/cli/node_modules/.pnpm/yaml@2.8.2/node_modules/yaml/dist/nodes/Collection.js"(exports2) {
     "use strict";
     var createNode = require_createNode();
     var identity = require_identity();
@@ -3018,9 +3128,9 @@ var require_Collection = __commonJS({
   }
 });
 
-// node_modules/.pnpm/yaml@2.8.2/node_modules/yaml/dist/stringify/stringifyComment.js
+// ../../../../Users/hoff/dev/RUDI/apps/cli/node_modules/.pnpm/yaml@2.8.2/node_modules/yaml/dist/stringify/stringifyComment.js
 var require_stringifyComment = __commonJS({
-  "node_modules/.pnpm/yaml@2.8.2/node_modules/yaml/dist/stringify/stringifyComment.js"(exports2) {
+  "../../../../Users/hoff/dev/RUDI/apps/cli/node_modules/.pnpm/yaml@2.8.2/node_modules/yaml/dist/stringify/stringifyComment.js"(exports2) {
     "use strict";
     var stringifyComment = (str) => str.replace(/^(?!$)(?: $)?/gm, "#");
     function indentComment(comment, indent) {
@@ -3035,9 +3145,9 @@ var require_stringifyComment = __commonJS({
   }
 });
 
-// node_modules/.pnpm/yaml@2.8.2/node_modules/yaml/dist/stringify/foldFlowLines.js
+// ../../../../Users/hoff/dev/RUDI/apps/cli/node_modules/.pnpm/yaml@2.8.2/node_modules/yaml/dist/stringify/foldFlowLines.js
 var require_foldFlowLines = __commonJS({
-  "node_modules/.pnpm/yaml@2.8.2/node_modules/yaml/dist/stringify/foldFlowLines.js"(exports2) {
+  "../../../../Users/hoff/dev/RUDI/apps/cli/node_modules/.pnpm/yaml@2.8.2/node_modules/yaml/dist/stringify/foldFlowLines.js"(exports2) {
     "use strict";
     var FOLD_FLOW = "flow";
     var FOLD_BLOCK = "block";
@@ -3171,9 +3281,9 @@ ${indent}${text.slice(fold + 1, end2)}`;
   }
 });
 
-// node_modules/.pnpm/yaml@2.8.2/node_modules/yaml/dist/stringify/stringifyString.js
+// ../../../../Users/hoff/dev/RUDI/apps/cli/node_modules/.pnpm/yaml@2.8.2/node_modules/yaml/dist/stringify/stringifyString.js
 var require_stringifyString = __commonJS({
-  "node_modules/.pnpm/yaml@2.8.2/node_modules/yaml/dist/stringify/stringifyString.js"(exports2) {
+  "../../../../Users/hoff/dev/RUDI/apps/cli/node_modules/.pnpm/yaml@2.8.2/node_modules/yaml/dist/stringify/stringifyString.js"(exports2) {
     "use strict";
     var Scalar = require_Scalar();
     var foldFlowLines = require_foldFlowLines();
@@ -3454,9 +3564,9 @@ ${indent}`);
   }
 });
 
-// node_modules/.pnpm/yaml@2.8.2/node_modules/yaml/dist/stringify/stringify.js
+// ../../../../Users/hoff/dev/RUDI/apps/cli/node_modules/.pnpm/yaml@2.8.2/node_modules/yaml/dist/stringify/stringify.js
 var require_stringify = __commonJS({
-  "node_modules/.pnpm/yaml@2.8.2/node_modules/yaml/dist/stringify/stringify.js"(exports2) {
+  "../../../../Users/hoff/dev/RUDI/apps/cli/node_modules/.pnpm/yaml@2.8.2/node_modules/yaml/dist/stringify/stringify.js"(exports2) {
     "use strict";
     var anchors = require_anchors();
     var identity = require_identity();
@@ -3577,9 +3687,9 @@ ${ctx.indent}${str}`;
   }
 });
 
-// node_modules/.pnpm/yaml@2.8.2/node_modules/yaml/dist/stringify/stringifyPair.js
+// ../../../../Users/hoff/dev/RUDI/apps/cli/node_modules/.pnpm/yaml@2.8.2/node_modules/yaml/dist/stringify/stringifyPair.js
 var require_stringifyPair = __commonJS({
-  "node_modules/.pnpm/yaml@2.8.2/node_modules/yaml/dist/stringify/stringifyPair.js"(exports2) {
+  "../../../../Users/hoff/dev/RUDI/apps/cli/node_modules/.pnpm/yaml@2.8.2/node_modules/yaml/dist/stringify/stringifyPair.js"(exports2) {
     "use strict";
     var identity = require_identity();
     var Scalar = require_Scalar();
@@ -3710,9 +3820,9 @@ ${ctx.indent}`;
   }
 });
 
-// node_modules/.pnpm/yaml@2.8.2/node_modules/yaml/dist/log.js
+// ../../../../Users/hoff/dev/RUDI/apps/cli/node_modules/.pnpm/yaml@2.8.2/node_modules/yaml/dist/log.js
 var require_log = __commonJS({
-  "node_modules/.pnpm/yaml@2.8.2/node_modules/yaml/dist/log.js"(exports2) {
+  "../../../../Users/hoff/dev/RUDI/apps/cli/node_modules/.pnpm/yaml@2.8.2/node_modules/yaml/dist/log.js"(exports2) {
     "use strict";
     var node_process = require("process");
     function debug(logLevel, ...messages) {
@@ -3732,9 +3842,9 @@ var require_log = __commonJS({
   }
 });
 
-// node_modules/.pnpm/yaml@2.8.2/node_modules/yaml/dist/schema/yaml-1.1/merge.js
+// ../../../../Users/hoff/dev/RUDI/apps/cli/node_modules/.pnpm/yaml@2.8.2/node_modules/yaml/dist/schema/yaml-1.1/merge.js
 var require_merge = __commonJS({
-  "node_modules/.pnpm/yaml@2.8.2/node_modules/yaml/dist/schema/yaml-1.1/merge.js"(exports2) {
+  "../../../../Users/hoff/dev/RUDI/apps/cli/node_modules/.pnpm/yaml@2.8.2/node_modules/yaml/dist/schema/yaml-1.1/merge.js"(exports2) {
     "use strict";
     var identity = require_identity();
     var Scalar = require_Scalar();
@@ -3789,9 +3899,9 @@ var require_merge = __commonJS({
   }
 });
 
-// node_modules/.pnpm/yaml@2.8.2/node_modules/yaml/dist/nodes/addPairToJSMap.js
+// ../../../../Users/hoff/dev/RUDI/apps/cli/node_modules/.pnpm/yaml@2.8.2/node_modules/yaml/dist/nodes/addPairToJSMap.js
 var require_addPairToJSMap = __commonJS({
-  "node_modules/.pnpm/yaml@2.8.2/node_modules/yaml/dist/nodes/addPairToJSMap.js"(exports2) {
+  "../../../../Users/hoff/dev/RUDI/apps/cli/node_modules/.pnpm/yaml@2.8.2/node_modules/yaml/dist/nodes/addPairToJSMap.js"(exports2) {
     "use strict";
     var log = require_log();
     var merge = require_merge();
@@ -3853,9 +3963,9 @@ var require_addPairToJSMap = __commonJS({
   }
 });
 
-// node_modules/.pnpm/yaml@2.8.2/node_modules/yaml/dist/nodes/Pair.js
+// ../../../../Users/hoff/dev/RUDI/apps/cli/node_modules/.pnpm/yaml@2.8.2/node_modules/yaml/dist/nodes/Pair.js
 var require_Pair = __commonJS({
-  "node_modules/.pnpm/yaml@2.8.2/node_modules/yaml/dist/nodes/Pair.js"(exports2) {
+  "../../../../Users/hoff/dev/RUDI/apps/cli/node_modules/.pnpm/yaml@2.8.2/node_modules/yaml/dist/nodes/Pair.js"(exports2) {
     "use strict";
     var createNode = require_createNode();
     var stringifyPair = require_stringifyPair();
@@ -3893,9 +4003,9 @@ var require_Pair = __commonJS({
   }
 });
 
-// node_modules/.pnpm/yaml@2.8.2/node_modules/yaml/dist/stringify/stringifyCollection.js
+// ../../../../Users/hoff/dev/RUDI/apps/cli/node_modules/.pnpm/yaml@2.8.2/node_modules/yaml/dist/stringify/stringifyCollection.js
 var require_stringifyCollection = __commonJS({
-  "node_modules/.pnpm/yaml@2.8.2/node_modules/yaml/dist/stringify/stringifyCollection.js"(exports2) {
+  "../../../../Users/hoff/dev/RUDI/apps/cli/node_modules/.pnpm/yaml@2.8.2/node_modules/yaml/dist/stringify/stringifyCollection.js"(exports2) {
     "use strict";
     var identity = require_identity();
     var stringify = require_stringify();
@@ -4037,9 +4147,9 @@ ${indent}${end}`;
   }
 });
 
-// node_modules/.pnpm/yaml@2.8.2/node_modules/yaml/dist/nodes/YAMLMap.js
+// ../../../../Users/hoff/dev/RUDI/apps/cli/node_modules/.pnpm/yaml@2.8.2/node_modules/yaml/dist/nodes/YAMLMap.js
 var require_YAMLMap = __commonJS({
-  "node_modules/.pnpm/yaml@2.8.2/node_modules/yaml/dist/nodes/YAMLMap.js"(exports2) {
+  "../../../../Users/hoff/dev/RUDI/apps/cli/node_modules/.pnpm/yaml@2.8.2/node_modules/yaml/dist/nodes/YAMLMap.js"(exports2) {
     "use strict";
     var stringifyCollection = require_stringifyCollection();
     var addPairToJSMap = require_addPairToJSMap();
@@ -4181,9 +4291,9 @@ var require_YAMLMap = __commonJS({
   }
 });
 
-// node_modules/.pnpm/yaml@2.8.2/node_modules/yaml/dist/schema/common/map.js
+// ../../../../Users/hoff/dev/RUDI/apps/cli/node_modules/.pnpm/yaml@2.8.2/node_modules/yaml/dist/schema/common/map.js
 var require_map = __commonJS({
-  "node_modules/.pnpm/yaml@2.8.2/node_modules/yaml/dist/schema/common/map.js"(exports2) {
+  "../../../../Users/hoff/dev/RUDI/apps/cli/node_modules/.pnpm/yaml@2.8.2/node_modules/yaml/dist/schema/common/map.js"(exports2) {
     "use strict";
     var identity = require_identity();
     var YAMLMap = require_YAMLMap();
@@ -4203,9 +4313,9 @@ var require_map = __commonJS({
   }
 });
 
-// node_modules/.pnpm/yaml@2.8.2/node_modules/yaml/dist/nodes/YAMLSeq.js
+// ../../../../Users/hoff/dev/RUDI/apps/cli/node_modules/.pnpm/yaml@2.8.2/node_modules/yaml/dist/nodes/YAMLSeq.js
 var require_YAMLSeq = __commonJS({
-  "node_modules/.pnpm/yaml@2.8.2/node_modules/yaml/dist/nodes/YAMLSeq.js"(exports2) {
+  "../../../../Users/hoff/dev/RUDI/apps/cli/node_modules/.pnpm/yaml@2.8.2/node_modules/yaml/dist/nodes/YAMLSeq.js"(exports2) {
     "use strict";
     var createNode = require_createNode();
     var stringifyCollection = require_stringifyCollection();
@@ -4319,9 +4429,9 @@ var require_YAMLSeq = __commonJS({
   }
 });
 
-// node_modules/.pnpm/yaml@2.8.2/node_modules/yaml/dist/schema/common/seq.js
+// ../../../../Users/hoff/dev/RUDI/apps/cli/node_modules/.pnpm/yaml@2.8.2/node_modules/yaml/dist/schema/common/seq.js
 var require_seq = __commonJS({
-  "node_modules/.pnpm/yaml@2.8.2/node_modules/yaml/dist/schema/common/seq.js"(exports2) {
+  "../../../../Users/hoff/dev/RUDI/apps/cli/node_modules/.pnpm/yaml@2.8.2/node_modules/yaml/dist/schema/common/seq.js"(exports2) {
     "use strict";
     var identity = require_identity();
     var YAMLSeq = require_YAMLSeq();
@@ -4341,9 +4451,9 @@ var require_seq = __commonJS({
   }
 });
 
-// node_modules/.pnpm/yaml@2.8.2/node_modules/yaml/dist/schema/common/string.js
+// ../../../../Users/hoff/dev/RUDI/apps/cli/node_modules/.pnpm/yaml@2.8.2/node_modules/yaml/dist/schema/common/string.js
 var require_string = __commonJS({
-  "node_modules/.pnpm/yaml@2.8.2/node_modules/yaml/dist/schema/common/string.js"(exports2) {
+  "../../../../Users/hoff/dev/RUDI/apps/cli/node_modules/.pnpm/yaml@2.8.2/node_modules/yaml/dist/schema/common/string.js"(exports2) {
     "use strict";
     var stringifyString = require_stringifyString();
     var string = {
@@ -4360,9 +4470,9 @@ var require_string = __commonJS({
   }
 });
 
-// node_modules/.pnpm/yaml@2.8.2/node_modules/yaml/dist/schema/common/null.js
+// ../../../../Users/hoff/dev/RUDI/apps/cli/node_modules/.pnpm/yaml@2.8.2/node_modules/yaml/dist/schema/common/null.js
 var require_null = __commonJS({
-  "node_modules/.pnpm/yaml@2.8.2/node_modules/yaml/dist/schema/common/null.js"(exports2) {
+  "../../../../Users/hoff/dev/RUDI/apps/cli/node_modules/.pnpm/yaml@2.8.2/node_modules/yaml/dist/schema/common/null.js"(exports2) {
     "use strict";
     var Scalar = require_Scalar();
     var nullTag = {
@@ -4378,9 +4488,9 @@ var require_null = __commonJS({
   }
 });
 
-// node_modules/.pnpm/yaml@2.8.2/node_modules/yaml/dist/schema/core/bool.js
+// ../../../../Users/hoff/dev/RUDI/apps/cli/node_modules/.pnpm/yaml@2.8.2/node_modules/yaml/dist/schema/core/bool.js
 var require_bool = __commonJS({
-  "node_modules/.pnpm/yaml@2.8.2/node_modules/yaml/dist/schema/core/bool.js"(exports2) {
+  "../../../../Users/hoff/dev/RUDI/apps/cli/node_modules/.pnpm/yaml@2.8.2/node_modules/yaml/dist/schema/core/bool.js"(exports2) {
     "use strict";
     var Scalar = require_Scalar();
     var boolTag = {
@@ -4402,9 +4512,9 @@ var require_bool = __commonJS({
   }
 });
 
-// node_modules/.pnpm/yaml@2.8.2/node_modules/yaml/dist/stringify/stringifyNumber.js
+// ../../../../Users/hoff/dev/RUDI/apps/cli/node_modules/.pnpm/yaml@2.8.2/node_modules/yaml/dist/stringify/stringifyNumber.js
 var require_stringifyNumber = __commonJS({
-  "node_modules/.pnpm/yaml@2.8.2/node_modules/yaml/dist/stringify/stringifyNumber.js"(exports2) {
+  "../../../../Users/hoff/dev/RUDI/apps/cli/node_modules/.pnpm/yaml@2.8.2/node_modules/yaml/dist/stringify/stringifyNumber.js"(exports2) {
     "use strict";
     function stringifyNumber({ format, minFractionDigits, tag, value }) {
       if (typeof value === "bigint")
@@ -4429,9 +4539,9 @@ var require_stringifyNumber = __commonJS({
   }
 });
 
-// node_modules/.pnpm/yaml@2.8.2/node_modules/yaml/dist/schema/core/float.js
+// ../../../../Users/hoff/dev/RUDI/apps/cli/node_modules/.pnpm/yaml@2.8.2/node_modules/yaml/dist/schema/core/float.js
 var require_float = __commonJS({
-  "node_modules/.pnpm/yaml@2.8.2/node_modules/yaml/dist/schema/core/float.js"(exports2) {
+  "../../../../Users/hoff/dev/RUDI/apps/cli/node_modules/.pnpm/yaml@2.8.2/node_modules/yaml/dist/schema/core/float.js"(exports2) {
     "use strict";
     var Scalar = require_Scalar();
     var stringifyNumber = require_stringifyNumber();
@@ -4475,9 +4585,9 @@ var require_float = __commonJS({
   }
 });
 
-// node_modules/.pnpm/yaml@2.8.2/node_modules/yaml/dist/schema/core/int.js
+// ../../../../Users/hoff/dev/RUDI/apps/cli/node_modules/.pnpm/yaml@2.8.2/node_modules/yaml/dist/schema/core/int.js
 var require_int = __commonJS({
-  "node_modules/.pnpm/yaml@2.8.2/node_modules/yaml/dist/schema/core/int.js"(exports2) {
+  "../../../../Users/hoff/dev/RUDI/apps/cli/node_modules/.pnpm/yaml@2.8.2/node_modules/yaml/dist/schema/core/int.js"(exports2) {
     "use strict";
     var stringifyNumber = require_stringifyNumber();
     var intIdentify = (value) => typeof value === "bigint" || Number.isInteger(value);
@@ -4520,9 +4630,9 @@ var require_int = __commonJS({
   }
 });
 
-// node_modules/.pnpm/yaml@2.8.2/node_modules/yaml/dist/schema/core/schema.js
+// ../../../../Users/hoff/dev/RUDI/apps/cli/node_modules/.pnpm/yaml@2.8.2/node_modules/yaml/dist/schema/core/schema.js
 var require_schema = __commonJS({
-  "node_modules/.pnpm/yaml@2.8.2/node_modules/yaml/dist/schema/core/schema.js"(exports2) {
+  "../../../../Users/hoff/dev/RUDI/apps/cli/node_modules/.pnpm/yaml@2.8.2/node_modules/yaml/dist/schema/core/schema.js"(exports2) {
     "use strict";
     var map = require_map();
     var _null = require_null();
@@ -4548,9 +4658,9 @@ var require_schema = __commonJS({
   }
 });
 
-// node_modules/.pnpm/yaml@2.8.2/node_modules/yaml/dist/schema/json/schema.js
+// ../../../../Users/hoff/dev/RUDI/apps/cli/node_modules/.pnpm/yaml@2.8.2/node_modules/yaml/dist/schema/json/schema.js
 var require_schema2 = __commonJS({
-  "node_modules/.pnpm/yaml@2.8.2/node_modules/yaml/dist/schema/json/schema.js"(exports2) {
+  "../../../../Users/hoff/dev/RUDI/apps/cli/node_modules/.pnpm/yaml@2.8.2/node_modules/yaml/dist/schema/json/schema.js"(exports2) {
     "use strict";
     var Scalar = require_Scalar();
     var map = require_map();
@@ -4615,9 +4725,9 @@ var require_schema2 = __commonJS({
   }
 });
 
-// node_modules/.pnpm/yaml@2.8.2/node_modules/yaml/dist/schema/yaml-1.1/binary.js
+// ../../../../Users/hoff/dev/RUDI/apps/cli/node_modules/.pnpm/yaml@2.8.2/node_modules/yaml/dist/schema/yaml-1.1/binary.js
 var require_binary = __commonJS({
-  "node_modules/.pnpm/yaml@2.8.2/node_modules/yaml/dist/schema/yaml-1.1/binary.js"(exports2) {
+  "../../../../Users/hoff/dev/RUDI/apps/cli/node_modules/.pnpm/yaml@2.8.2/node_modules/yaml/dist/schema/yaml-1.1/binary.js"(exports2) {
     "use strict";
     var node_buffer = require("buffer");
     var Scalar = require_Scalar();
@@ -4681,9 +4791,9 @@ var require_binary = __commonJS({
   }
 });
 
-// node_modules/.pnpm/yaml@2.8.2/node_modules/yaml/dist/schema/yaml-1.1/pairs.js
+// ../../../../Users/hoff/dev/RUDI/apps/cli/node_modules/.pnpm/yaml@2.8.2/node_modules/yaml/dist/schema/yaml-1.1/pairs.js
 var require_pairs = __commonJS({
-  "node_modules/.pnpm/yaml@2.8.2/node_modules/yaml/dist/schema/yaml-1.1/pairs.js"(exports2) {
+  "../../../../Users/hoff/dev/RUDI/apps/cli/node_modules/.pnpm/yaml@2.8.2/node_modules/yaml/dist/schema/yaml-1.1/pairs.js"(exports2) {
     "use strict";
     var identity = require_identity();
     var Pair = require_Pair();
@@ -4759,9 +4869,9 @@ ${cn.comment}` : item.comment;
   }
 });
 
-// node_modules/.pnpm/yaml@2.8.2/node_modules/yaml/dist/schema/yaml-1.1/omap.js
+// ../../../../Users/hoff/dev/RUDI/apps/cli/node_modules/.pnpm/yaml@2.8.2/node_modules/yaml/dist/schema/yaml-1.1/omap.js
 var require_omap = __commonJS({
-  "node_modules/.pnpm/yaml@2.8.2/node_modules/yaml/dist/schema/yaml-1.1/omap.js"(exports2) {
+  "../../../../Users/hoff/dev/RUDI/apps/cli/node_modules/.pnpm/yaml@2.8.2/node_modules/yaml/dist/schema/yaml-1.1/omap.js"(exports2) {
     "use strict";
     var identity = require_identity();
     var toJS = require_toJS();
@@ -4837,9 +4947,9 @@ var require_omap = __commonJS({
   }
 });
 
-// node_modules/.pnpm/yaml@2.8.2/node_modules/yaml/dist/schema/yaml-1.1/bool.js
+// ../../../../Users/hoff/dev/RUDI/apps/cli/node_modules/.pnpm/yaml@2.8.2/node_modules/yaml/dist/schema/yaml-1.1/bool.js
 var require_bool2 = __commonJS({
-  "node_modules/.pnpm/yaml@2.8.2/node_modules/yaml/dist/schema/yaml-1.1/bool.js"(exports2) {
+  "../../../../Users/hoff/dev/RUDI/apps/cli/node_modules/.pnpm/yaml@2.8.2/node_modules/yaml/dist/schema/yaml-1.1/bool.js"(exports2) {
     "use strict";
     var Scalar = require_Scalar();
     function boolStringify({ value, source }, ctx) {
@@ -4869,9 +4979,9 @@ var require_bool2 = __commonJS({
   }
 });
 
-// node_modules/.pnpm/yaml@2.8.2/node_modules/yaml/dist/schema/yaml-1.1/float.js
+// ../../../../Users/hoff/dev/RUDI/apps/cli/node_modules/.pnpm/yaml@2.8.2/node_modules/yaml/dist/schema/yaml-1.1/float.js
 var require_float2 = __commonJS({
-  "node_modules/.pnpm/yaml@2.8.2/node_modules/yaml/dist/schema/yaml-1.1/float.js"(exports2) {
+  "../../../../Users/hoff/dev/RUDI/apps/cli/node_modules/.pnpm/yaml@2.8.2/node_modules/yaml/dist/schema/yaml-1.1/float.js"(exports2) {
     "use strict";
     var Scalar = require_Scalar();
     var stringifyNumber = require_stringifyNumber();
@@ -4918,9 +5028,9 @@ var require_float2 = __commonJS({
   }
 });
 
-// node_modules/.pnpm/yaml@2.8.2/node_modules/yaml/dist/schema/yaml-1.1/int.js
+// ../../../../Users/hoff/dev/RUDI/apps/cli/node_modules/.pnpm/yaml@2.8.2/node_modules/yaml/dist/schema/yaml-1.1/int.js
 var require_int2 = __commonJS({
-  "node_modules/.pnpm/yaml@2.8.2/node_modules/yaml/dist/schema/yaml-1.1/int.js"(exports2) {
+  "../../../../Users/hoff/dev/RUDI/apps/cli/node_modules/.pnpm/yaml@2.8.2/node_modules/yaml/dist/schema/yaml-1.1/int.js"(exports2) {
     "use strict";
     var stringifyNumber = require_stringifyNumber();
     var intIdentify = (value) => typeof value === "bigint" || Number.isInteger(value);
@@ -4997,9 +5107,9 @@ var require_int2 = __commonJS({
   }
 });
 
-// node_modules/.pnpm/yaml@2.8.2/node_modules/yaml/dist/schema/yaml-1.1/set.js
+// ../../../../Users/hoff/dev/RUDI/apps/cli/node_modules/.pnpm/yaml@2.8.2/node_modules/yaml/dist/schema/yaml-1.1/set.js
 var require_set = __commonJS({
-  "node_modules/.pnpm/yaml@2.8.2/node_modules/yaml/dist/schema/yaml-1.1/set.js"(exports2) {
+  "../../../../Users/hoff/dev/RUDI/apps/cli/node_modules/.pnpm/yaml@2.8.2/node_modules/yaml/dist/schema/yaml-1.1/set.js"(exports2) {
     "use strict";
     var identity = require_identity();
     var Pair = require_Pair();
@@ -5086,9 +5196,9 @@ var require_set = __commonJS({
   }
 });
 
-// node_modules/.pnpm/yaml@2.8.2/node_modules/yaml/dist/schema/yaml-1.1/timestamp.js
+// ../../../../Users/hoff/dev/RUDI/apps/cli/node_modules/.pnpm/yaml@2.8.2/node_modules/yaml/dist/schema/yaml-1.1/timestamp.js
 var require_timestamp = __commonJS({
-  "node_modules/.pnpm/yaml@2.8.2/node_modules/yaml/dist/schema/yaml-1.1/timestamp.js"(exports2) {
+  "../../../../Users/hoff/dev/RUDI/apps/cli/node_modules/.pnpm/yaml@2.8.2/node_modules/yaml/dist/schema/yaml-1.1/timestamp.js"(exports2) {
     "use strict";
     var stringifyNumber = require_stringifyNumber();
     function parseSexagesimal(str, asBigInt) {
@@ -5174,9 +5284,9 @@ var require_timestamp = __commonJS({
   }
 });
 
-// node_modules/.pnpm/yaml@2.8.2/node_modules/yaml/dist/schema/yaml-1.1/schema.js
+// ../../../../Users/hoff/dev/RUDI/apps/cli/node_modules/.pnpm/yaml@2.8.2/node_modules/yaml/dist/schema/yaml-1.1/schema.js
 var require_schema3 = __commonJS({
-  "node_modules/.pnpm/yaml@2.8.2/node_modules/yaml/dist/schema/yaml-1.1/schema.js"(exports2) {
+  "../../../../Users/hoff/dev/RUDI/apps/cli/node_modules/.pnpm/yaml@2.8.2/node_modules/yaml/dist/schema/yaml-1.1/schema.js"(exports2) {
     "use strict";
     var map = require_map();
     var _null = require_null();
@@ -5218,9 +5328,9 @@ var require_schema3 = __commonJS({
   }
 });
 
-// node_modules/.pnpm/yaml@2.8.2/node_modules/yaml/dist/schema/tags.js
+// ../../../../Users/hoff/dev/RUDI/apps/cli/node_modules/.pnpm/yaml@2.8.2/node_modules/yaml/dist/schema/tags.js
 var require_tags = __commonJS({
-  "node_modules/.pnpm/yaml@2.8.2/node_modules/yaml/dist/schema/tags.js"(exports2) {
+  "../../../../Users/hoff/dev/RUDI/apps/cli/node_modules/.pnpm/yaml@2.8.2/node_modules/yaml/dist/schema/tags.js"(exports2) {
     "use strict";
     var map = require_map();
     var _null = require_null();
@@ -5312,9 +5422,9 @@ var require_tags = __commonJS({
   }
 });
 
-// node_modules/.pnpm/yaml@2.8.2/node_modules/yaml/dist/schema/Schema.js
+// ../../../../Users/hoff/dev/RUDI/apps/cli/node_modules/.pnpm/yaml@2.8.2/node_modules/yaml/dist/schema/Schema.js
 var require_Schema = __commonJS({
-  "node_modules/.pnpm/yaml@2.8.2/node_modules/yaml/dist/schema/Schema.js"(exports2) {
+  "../../../../Users/hoff/dev/RUDI/apps/cli/node_modules/.pnpm/yaml@2.8.2/node_modules/yaml/dist/schema/Schema.js"(exports2) {
     "use strict";
     var identity = require_identity();
     var map = require_map();
@@ -5344,9 +5454,9 @@ var require_Schema = __commonJS({
   }
 });
 
-// node_modules/.pnpm/yaml@2.8.2/node_modules/yaml/dist/stringify/stringifyDocument.js
+// ../../../../Users/hoff/dev/RUDI/apps/cli/node_modules/.pnpm/yaml@2.8.2/node_modules/yaml/dist/stringify/stringifyDocument.js
 var require_stringifyDocument = __commonJS({
-  "node_modules/.pnpm/yaml@2.8.2/node_modules/yaml/dist/stringify/stringifyDocument.js"(exports2) {
+  "../../../../Users/hoff/dev/RUDI/apps/cli/node_modules/.pnpm/yaml@2.8.2/node_modules/yaml/dist/stringify/stringifyDocument.js"(exports2) {
     "use strict";
     var identity = require_identity();
     var stringify = require_stringify();
@@ -5424,9 +5534,9 @@ var require_stringifyDocument = __commonJS({
   }
 });
 
-// node_modules/.pnpm/yaml@2.8.2/node_modules/yaml/dist/doc/Document.js
+// ../../../../Users/hoff/dev/RUDI/apps/cli/node_modules/.pnpm/yaml@2.8.2/node_modules/yaml/dist/doc/Document.js
 var require_Document = __commonJS({
-  "node_modules/.pnpm/yaml@2.8.2/node_modules/yaml/dist/doc/Document.js"(exports2) {
+  "../../../../Users/hoff/dev/RUDI/apps/cli/node_modules/.pnpm/yaml@2.8.2/node_modules/yaml/dist/doc/Document.js"(exports2) {
     "use strict";
     var Alias = require_Alias();
     var Collection = require_Collection();
@@ -5733,9 +5843,9 @@ var require_Document = __commonJS({
   }
 });
 
-// node_modules/.pnpm/yaml@2.8.2/node_modules/yaml/dist/errors.js
+// ../../../../Users/hoff/dev/RUDI/apps/cli/node_modules/.pnpm/yaml@2.8.2/node_modules/yaml/dist/errors.js
 var require_errors = __commonJS({
-  "node_modules/.pnpm/yaml@2.8.2/node_modules/yaml/dist/errors.js"(exports2) {
+  "../../../../Users/hoff/dev/RUDI/apps/cli/node_modules/.pnpm/yaml@2.8.2/node_modules/yaml/dist/errors.js"(exports2) {
     "use strict";
     var YAMLError = class extends Error {
       constructor(name, pos, code, message) {
@@ -5798,9 +5908,9 @@ ${pointer}
   }
 });
 
-// node_modules/.pnpm/yaml@2.8.2/node_modules/yaml/dist/compose/resolve-props.js
+// ../../../../Users/hoff/dev/RUDI/apps/cli/node_modules/.pnpm/yaml@2.8.2/node_modules/yaml/dist/compose/resolve-props.js
 var require_resolve_props = __commonJS({
-  "node_modules/.pnpm/yaml@2.8.2/node_modules/yaml/dist/compose/resolve-props.js"(exports2) {
+  "../../../../Users/hoff/dev/RUDI/apps/cli/node_modules/.pnpm/yaml@2.8.2/node_modules/yaml/dist/compose/resolve-props.js"(exports2) {
     "use strict";
     function resolveProps(tokens, { flow, indicator, next, offset, onError, parentIndent, startOnNewline }) {
       let spaceBefore = false;
@@ -5932,9 +6042,9 @@ var require_resolve_props = __commonJS({
   }
 });
 
-// node_modules/.pnpm/yaml@2.8.2/node_modules/yaml/dist/compose/util-contains-newline.js
+// ../../../../Users/hoff/dev/RUDI/apps/cli/node_modules/.pnpm/yaml@2.8.2/node_modules/yaml/dist/compose/util-contains-newline.js
 var require_util_contains_newline = __commonJS({
-  "node_modules/.pnpm/yaml@2.8.2/node_modules/yaml/dist/compose/util-contains-newline.js"(exports2) {
+  "../../../../Users/hoff/dev/RUDI/apps/cli/node_modules/.pnpm/yaml@2.8.2/node_modules/yaml/dist/compose/util-contains-newline.js"(exports2) {
     "use strict";
     function containsNewline(key) {
       if (!key)
@@ -5974,9 +6084,9 @@ var require_util_contains_newline = __commonJS({
   }
 });
 
-// node_modules/.pnpm/yaml@2.8.2/node_modules/yaml/dist/compose/util-flow-indent-check.js
+// ../../../../Users/hoff/dev/RUDI/apps/cli/node_modules/.pnpm/yaml@2.8.2/node_modules/yaml/dist/compose/util-flow-indent-check.js
 var require_util_flow_indent_check = __commonJS({
-  "node_modules/.pnpm/yaml@2.8.2/node_modules/yaml/dist/compose/util-flow-indent-check.js"(exports2) {
+  "../../../../Users/hoff/dev/RUDI/apps/cli/node_modules/.pnpm/yaml@2.8.2/node_modules/yaml/dist/compose/util-flow-indent-check.js"(exports2) {
     "use strict";
     var utilContainsNewline = require_util_contains_newline();
     function flowIndentCheck(indent, fc, onError) {
@@ -5992,9 +6102,9 @@ var require_util_flow_indent_check = __commonJS({
   }
 });
 
-// node_modules/.pnpm/yaml@2.8.2/node_modules/yaml/dist/compose/util-map-includes.js
+// ../../../../Users/hoff/dev/RUDI/apps/cli/node_modules/.pnpm/yaml@2.8.2/node_modules/yaml/dist/compose/util-map-includes.js
 var require_util_map_includes = __commonJS({
-  "node_modules/.pnpm/yaml@2.8.2/node_modules/yaml/dist/compose/util-map-includes.js"(exports2) {
+  "../../../../Users/hoff/dev/RUDI/apps/cli/node_modules/.pnpm/yaml@2.8.2/node_modules/yaml/dist/compose/util-map-includes.js"(exports2) {
     "use strict";
     var identity = require_identity();
     function mapIncludes(ctx, items, search) {
@@ -6008,9 +6118,9 @@ var require_util_map_includes = __commonJS({
   }
 });
 
-// node_modules/.pnpm/yaml@2.8.2/node_modules/yaml/dist/compose/resolve-block-map.js
+// ../../../../Users/hoff/dev/RUDI/apps/cli/node_modules/.pnpm/yaml@2.8.2/node_modules/yaml/dist/compose/resolve-block-map.js
 var require_resolve_block_map = __commonJS({
-  "node_modules/.pnpm/yaml@2.8.2/node_modules/yaml/dist/compose/resolve-block-map.js"(exports2) {
+  "../../../../Users/hoff/dev/RUDI/apps/cli/node_modules/.pnpm/yaml@2.8.2/node_modules/yaml/dist/compose/resolve-block-map.js"(exports2) {
     "use strict";
     var Pair = require_Pair();
     var YAMLMap = require_YAMLMap();
@@ -6116,9 +6226,9 @@ var require_resolve_block_map = __commonJS({
   }
 });
 
-// node_modules/.pnpm/yaml@2.8.2/node_modules/yaml/dist/compose/resolve-block-seq.js
+// ../../../../Users/hoff/dev/RUDI/apps/cli/node_modules/.pnpm/yaml@2.8.2/node_modules/yaml/dist/compose/resolve-block-seq.js
 var require_resolve_block_seq = __commonJS({
-  "node_modules/.pnpm/yaml@2.8.2/node_modules/yaml/dist/compose/resolve-block-seq.js"(exports2) {
+  "../../../../Users/hoff/dev/RUDI/apps/cli/node_modules/.pnpm/yaml@2.8.2/node_modules/yaml/dist/compose/resolve-block-seq.js"(exports2) {
     "use strict";
     var YAMLSeq = require_YAMLSeq();
     var resolveProps = require_resolve_props();
@@ -6167,9 +6277,9 @@ var require_resolve_block_seq = __commonJS({
   }
 });
 
-// node_modules/.pnpm/yaml@2.8.2/node_modules/yaml/dist/compose/resolve-end.js
+// ../../../../Users/hoff/dev/RUDI/apps/cli/node_modules/.pnpm/yaml@2.8.2/node_modules/yaml/dist/compose/resolve-end.js
 var require_resolve_end = __commonJS({
-  "node_modules/.pnpm/yaml@2.8.2/node_modules/yaml/dist/compose/resolve-end.js"(exports2) {
+  "../../../../Users/hoff/dev/RUDI/apps/cli/node_modules/.pnpm/yaml@2.8.2/node_modules/yaml/dist/compose/resolve-end.js"(exports2) {
     "use strict";
     function resolveEnd(end, offset, reqSpace, onError) {
       let comment = "";
@@ -6210,9 +6320,9 @@ var require_resolve_end = __commonJS({
   }
 });
 
-// node_modules/.pnpm/yaml@2.8.2/node_modules/yaml/dist/compose/resolve-flow-collection.js
+// ../../../../Users/hoff/dev/RUDI/apps/cli/node_modules/.pnpm/yaml@2.8.2/node_modules/yaml/dist/compose/resolve-flow-collection.js
 var require_resolve_flow_collection = __commonJS({
-  "node_modules/.pnpm/yaml@2.8.2/node_modules/yaml/dist/compose/resolve-flow-collection.js"(exports2) {
+  "../../../../Users/hoff/dev/RUDI/apps/cli/node_modules/.pnpm/yaml@2.8.2/node_modules/yaml/dist/compose/resolve-flow-collection.js"(exports2) {
     "use strict";
     var identity = require_identity();
     var Pair = require_Pair();
@@ -6404,9 +6514,9 @@ var require_resolve_flow_collection = __commonJS({
   }
 });
 
-// node_modules/.pnpm/yaml@2.8.2/node_modules/yaml/dist/compose/compose-collection.js
+// ../../../../Users/hoff/dev/RUDI/apps/cli/node_modules/.pnpm/yaml@2.8.2/node_modules/yaml/dist/compose/compose-collection.js
 var require_compose_collection = __commonJS({
-  "node_modules/.pnpm/yaml@2.8.2/node_modules/yaml/dist/compose/compose-collection.js"(exports2) {
+  "../../../../Users/hoff/dev/RUDI/apps/cli/node_modules/.pnpm/yaml@2.8.2/node_modules/yaml/dist/compose/compose-collection.js"(exports2) {
     "use strict";
     var identity = require_identity();
     var Scalar = require_Scalar();
@@ -6469,9 +6579,9 @@ var require_compose_collection = __commonJS({
   }
 });
 
-// node_modules/.pnpm/yaml@2.8.2/node_modules/yaml/dist/compose/resolve-block-scalar.js
+// ../../../../Users/hoff/dev/RUDI/apps/cli/node_modules/.pnpm/yaml@2.8.2/node_modules/yaml/dist/compose/resolve-block-scalar.js
 var require_resolve_block_scalar = __commonJS({
-  "node_modules/.pnpm/yaml@2.8.2/node_modules/yaml/dist/compose/resolve-block-scalar.js"(exports2) {
+  "../../../../Users/hoff/dev/RUDI/apps/cli/node_modules/.pnpm/yaml@2.8.2/node_modules/yaml/dist/compose/resolve-block-scalar.js"(exports2) {
     "use strict";
     var Scalar = require_Scalar();
     function resolveBlockScalar(ctx, scalar, onError) {
@@ -6652,9 +6762,9 @@ var require_resolve_block_scalar = __commonJS({
   }
 });
 
-// node_modules/.pnpm/yaml@2.8.2/node_modules/yaml/dist/compose/resolve-flow-scalar.js
+// ../../../../Users/hoff/dev/RUDI/apps/cli/node_modules/.pnpm/yaml@2.8.2/node_modules/yaml/dist/compose/resolve-flow-scalar.js
 var require_resolve_flow_scalar = __commonJS({
-  "node_modules/.pnpm/yaml@2.8.2/node_modules/yaml/dist/compose/resolve-flow-scalar.js"(exports2) {
+  "../../../../Users/hoff/dev/RUDI/apps/cli/node_modules/.pnpm/yaml@2.8.2/node_modules/yaml/dist/compose/resolve-flow-scalar.js"(exports2) {
     "use strict";
     var Scalar = require_Scalar();
     var resolveEnd = require_resolve_end();
@@ -6871,9 +6981,9 @@ var require_resolve_flow_scalar = __commonJS({
   }
 });
 
-// node_modules/.pnpm/yaml@2.8.2/node_modules/yaml/dist/compose/compose-scalar.js
+// ../../../../Users/hoff/dev/RUDI/apps/cli/node_modules/.pnpm/yaml@2.8.2/node_modules/yaml/dist/compose/compose-scalar.js
 var require_compose_scalar = __commonJS({
-  "node_modules/.pnpm/yaml@2.8.2/node_modules/yaml/dist/compose/compose-scalar.js"(exports2) {
+  "../../../../Users/hoff/dev/RUDI/apps/cli/node_modules/.pnpm/yaml@2.8.2/node_modules/yaml/dist/compose/compose-scalar.js"(exports2) {
     "use strict";
     var identity = require_identity();
     var Scalar = require_Scalar();
@@ -6952,9 +7062,9 @@ var require_compose_scalar = __commonJS({
   }
 });
 
-// node_modules/.pnpm/yaml@2.8.2/node_modules/yaml/dist/compose/util-empty-scalar-position.js
+// ../../../../Users/hoff/dev/RUDI/apps/cli/node_modules/.pnpm/yaml@2.8.2/node_modules/yaml/dist/compose/util-empty-scalar-position.js
 var require_util_empty_scalar_position = __commonJS({
-  "node_modules/.pnpm/yaml@2.8.2/node_modules/yaml/dist/compose/util-empty-scalar-position.js"(exports2) {
+  "../../../../Users/hoff/dev/RUDI/apps/cli/node_modules/.pnpm/yaml@2.8.2/node_modules/yaml/dist/compose/util-empty-scalar-position.js"(exports2) {
     "use strict";
     function emptyScalarPosition(offset, before, pos) {
       if (before) {
@@ -6982,9 +7092,9 @@ var require_util_empty_scalar_position = __commonJS({
   }
 });
 
-// node_modules/.pnpm/yaml@2.8.2/node_modules/yaml/dist/compose/compose-node.js
+// ../../../../Users/hoff/dev/RUDI/apps/cli/node_modules/.pnpm/yaml@2.8.2/node_modules/yaml/dist/compose/compose-node.js
 var require_compose_node = __commonJS({
-  "node_modules/.pnpm/yaml@2.8.2/node_modules/yaml/dist/compose/compose-node.js"(exports2) {
+  "../../../../Users/hoff/dev/RUDI/apps/cli/node_modules/.pnpm/yaml@2.8.2/node_modules/yaml/dist/compose/compose-node.js"(exports2) {
     "use strict";
     var Alias = require_Alias();
     var identity = require_identity();
@@ -7083,9 +7193,9 @@ var require_compose_node = __commonJS({
   }
 });
 
-// node_modules/.pnpm/yaml@2.8.2/node_modules/yaml/dist/compose/compose-doc.js
+// ../../../../Users/hoff/dev/RUDI/apps/cli/node_modules/.pnpm/yaml@2.8.2/node_modules/yaml/dist/compose/compose-doc.js
 var require_compose_doc = __commonJS({
-  "node_modules/.pnpm/yaml@2.8.2/node_modules/yaml/dist/compose/compose-doc.js"(exports2) {
+  "../../../../Users/hoff/dev/RUDI/apps/cli/node_modules/.pnpm/yaml@2.8.2/node_modules/yaml/dist/compose/compose-doc.js"(exports2) {
     "use strict";
     var Document = require_Document();
     var composeNode = require_compose_node();
@@ -7126,9 +7236,9 @@ var require_compose_doc = __commonJS({
   }
 });
 
-// node_modules/.pnpm/yaml@2.8.2/node_modules/yaml/dist/compose/composer.js
+// ../../../../Users/hoff/dev/RUDI/apps/cli/node_modules/.pnpm/yaml@2.8.2/node_modules/yaml/dist/compose/composer.js
 var require_composer = __commonJS({
-  "node_modules/.pnpm/yaml@2.8.2/node_modules/yaml/dist/compose/composer.js"(exports2) {
+  "../../../../Users/hoff/dev/RUDI/apps/cli/node_modules/.pnpm/yaml@2.8.2/node_modules/yaml/dist/compose/composer.js"(exports2) {
     "use strict";
     var node_process = require("process");
     var directives = require_directives();
@@ -7332,9 +7442,9 @@ ${end.comment}` : end.comment;
   }
 });
 
-// node_modules/.pnpm/yaml@2.8.2/node_modules/yaml/dist/parse/cst-scalar.js
+// ../../../../Users/hoff/dev/RUDI/apps/cli/node_modules/.pnpm/yaml@2.8.2/node_modules/yaml/dist/parse/cst-scalar.js
 var require_cst_scalar = __commonJS({
-  "node_modules/.pnpm/yaml@2.8.2/node_modules/yaml/dist/parse/cst-scalar.js"(exports2) {
+  "../../../../Users/hoff/dev/RUDI/apps/cli/node_modules/.pnpm/yaml@2.8.2/node_modules/yaml/dist/parse/cst-scalar.js"(exports2) {
     "use strict";
     var resolveBlockScalar = require_resolve_block_scalar();
     var resolveFlowScalar = require_resolve_flow_scalar();
@@ -7517,9 +7627,9 @@ var require_cst_scalar = __commonJS({
   }
 });
 
-// node_modules/.pnpm/yaml@2.8.2/node_modules/yaml/dist/parse/cst-stringify.js
+// ../../../../Users/hoff/dev/RUDI/apps/cli/node_modules/.pnpm/yaml@2.8.2/node_modules/yaml/dist/parse/cst-stringify.js
 var require_cst_stringify = __commonJS({
-  "node_modules/.pnpm/yaml@2.8.2/node_modules/yaml/dist/parse/cst-stringify.js"(exports2) {
+  "../../../../Users/hoff/dev/RUDI/apps/cli/node_modules/.pnpm/yaml@2.8.2/node_modules/yaml/dist/parse/cst-stringify.js"(exports2) {
     "use strict";
     var stringify = (cst) => "type" in cst ? stringifyToken(cst) : stringifyItem(cst);
     function stringifyToken(token) {
@@ -7578,9 +7688,9 @@ var require_cst_stringify = __commonJS({
   }
 });
 
-// node_modules/.pnpm/yaml@2.8.2/node_modules/yaml/dist/parse/cst-visit.js
+// ../../../../Users/hoff/dev/RUDI/apps/cli/node_modules/.pnpm/yaml@2.8.2/node_modules/yaml/dist/parse/cst-visit.js
 var require_cst_visit = __commonJS({
-  "node_modules/.pnpm/yaml@2.8.2/node_modules/yaml/dist/parse/cst-visit.js"(exports2) {
+  "../../../../Users/hoff/dev/RUDI/apps/cli/node_modules/.pnpm/yaml@2.8.2/node_modules/yaml/dist/parse/cst-visit.js"(exports2) {
     "use strict";
     var BREAK = /* @__PURE__ */ Symbol("break visit");
     var SKIP = /* @__PURE__ */ Symbol("skip children");
@@ -7640,9 +7750,9 @@ var require_cst_visit = __commonJS({
   }
 });
 
-// node_modules/.pnpm/yaml@2.8.2/node_modules/yaml/dist/parse/cst.js
+// ../../../../Users/hoff/dev/RUDI/apps/cli/node_modules/.pnpm/yaml@2.8.2/node_modules/yaml/dist/parse/cst.js
 var require_cst = __commonJS({
-  "node_modules/.pnpm/yaml@2.8.2/node_modules/yaml/dist/parse/cst.js"(exports2) {
+  "../../../../Users/hoff/dev/RUDI/apps/cli/node_modules/.pnpm/yaml@2.8.2/node_modules/yaml/dist/parse/cst.js"(exports2) {
     "use strict";
     var cstScalar = require_cst_scalar();
     var cstStringify = require_cst_stringify();
@@ -7742,9 +7852,9 @@ var require_cst = __commonJS({
   }
 });
 
-// node_modules/.pnpm/yaml@2.8.2/node_modules/yaml/dist/parse/lexer.js
+// ../../../../Users/hoff/dev/RUDI/apps/cli/node_modules/.pnpm/yaml@2.8.2/node_modules/yaml/dist/parse/lexer.js
 var require_lexer = __commonJS({
-  "node_modules/.pnpm/yaml@2.8.2/node_modules/yaml/dist/parse/lexer.js"(exports2) {
+  "../../../../Users/hoff/dev/RUDI/apps/cli/node_modules/.pnpm/yaml@2.8.2/node_modules/yaml/dist/parse/lexer.js"(exports2) {
     "use strict";
     var cst = require_cst();
     function isEmpty(ch) {
@@ -8321,9 +8431,9 @@ var require_lexer = __commonJS({
   }
 });
 
-// node_modules/.pnpm/yaml@2.8.2/node_modules/yaml/dist/parse/line-counter.js
+// ../../../../Users/hoff/dev/RUDI/apps/cli/node_modules/.pnpm/yaml@2.8.2/node_modules/yaml/dist/parse/line-counter.js
 var require_line_counter = __commonJS({
-  "node_modules/.pnpm/yaml@2.8.2/node_modules/yaml/dist/parse/line-counter.js"(exports2) {
+  "../../../../Users/hoff/dev/RUDI/apps/cli/node_modules/.pnpm/yaml@2.8.2/node_modules/yaml/dist/parse/line-counter.js"(exports2) {
     "use strict";
     var LineCounter = class {
       constructor() {
@@ -8352,9 +8462,9 @@ var require_line_counter = __commonJS({
   }
 });
 
-// node_modules/.pnpm/yaml@2.8.2/node_modules/yaml/dist/parse/parser.js
+// ../../../../Users/hoff/dev/RUDI/apps/cli/node_modules/.pnpm/yaml@2.8.2/node_modules/yaml/dist/parse/parser.js
 var require_parser = __commonJS({
-  "node_modules/.pnpm/yaml@2.8.2/node_modules/yaml/dist/parse/parser.js"(exports2) {
+  "../../../../Users/hoff/dev/RUDI/apps/cli/node_modules/.pnpm/yaml@2.8.2/node_modules/yaml/dist/parse/parser.js"(exports2) {
     "use strict";
     var node_process = require("process");
     var cst = require_cst();
@@ -9219,9 +9329,9 @@ var require_parser = __commonJS({
   }
 });
 
-// node_modules/.pnpm/yaml@2.8.2/node_modules/yaml/dist/public-api.js
+// ../../../../Users/hoff/dev/RUDI/apps/cli/node_modules/.pnpm/yaml@2.8.2/node_modules/yaml/dist/public-api.js
 var require_public_api = __commonJS({
-  "node_modules/.pnpm/yaml@2.8.2/node_modules/yaml/dist/public-api.js"(exports2) {
+  "../../../../Users/hoff/dev/RUDI/apps/cli/node_modules/.pnpm/yaml@2.8.2/node_modules/yaml/dist/public-api.js"(exports2) {
     "use strict";
     var composer = require_composer();
     var Document = require_Document();
@@ -9316,9 +9426,9 @@ var require_public_api = __commonJS({
   }
 });
 
-// node_modules/.pnpm/yaml@2.8.2/node_modules/yaml/dist/index.js
+// ../../../../Users/hoff/dev/RUDI/apps/cli/node_modules/.pnpm/yaml@2.8.2/node_modules/yaml/dist/index.js
 var require_dist = __commonJS({
-  "node_modules/.pnpm/yaml@2.8.2/node_modules/yaml/dist/index.js"(exports2) {
+  "../../../../Users/hoff/dev/RUDI/apps/cli/node_modules/.pnpm/yaml@2.8.2/node_modules/yaml/dist/index.js"(exports2) {
     "use strict";
     var composer = require_composer();
     var Document = require_Document();
@@ -9368,7 +9478,7 @@ var require_dist = __commonJS({
   }
 });
 
-// packages/core/src/lockfile.js
+// ../../../../Users/hoff/dev/RUDI/apps/cli/packages/core/src/lockfile.js
 async function writeLockfile(resolved) {
   const lockPath = getLockfilePath(resolved.id);
   const lockDir = import_path4.default.dirname(lockPath);
@@ -9486,7 +9596,7 @@ async function cleanOrphanedLockfiles() {
 }
 var import_fs3, import_path4, import_yaml;
 var init_lockfile = __esm({
-  "packages/core/src/lockfile.js"() {
+  "../../../../Users/hoff/dev/RUDI/apps/cli/packages/core/src/lockfile.js"() {
     import_fs3 = __toESM(require("fs"), 1);
     import_path4 = __toESM(require("path"), 1);
     import_yaml = __toESM(require_dist(), 1);
@@ -9494,7 +9604,7 @@ var init_lockfile = __esm({
   }
 });
 
-// packages/core/src/shims.js
+// ../../../../Users/hoff/dev/RUDI/apps/cli/packages/core/src/shims.js
 var shims_exports = {};
 __export(shims_exports, {
   createShimsForTool: () => createShimsForTool,
@@ -9684,14 +9794,14 @@ function validateShim(bin) {
 }
 var import_fs4, import_path5;
 var init_shims = __esm({
-  "packages/core/src/shims.js"() {
+  "../../../../Users/hoff/dev/RUDI/apps/cli/packages/core/src/shims.js"() {
     import_fs4 = __toESM(require("fs"), 1);
     import_path5 = __toESM(require("path"), 1);
     init_src();
   }
 });
 
-// packages/core/src/installer.js
+// ../../../../Users/hoff/dev/RUDI/apps/cli/packages/core/src/installer.js
 function getInstallPathForPackage(pkg) {
   if (!pkg || typeof pkg.id !== "string") {
     throw new Error("Package metadata requires an id");
@@ -11212,7 +11322,7 @@ async function installPythonRequirements(pythonPath, onProgress) {
 }
 var import_fs5, import_os3, import_path6, import_child_process2, import_promises, import_fs6, SINGLE_FILE_KINDS2, WORKFLOW_EXTENSIONS, DEFAULT_STACK_STATE_PATHS, NPM_PACKAGE_PATTERN, PIP_PACKAGE_PATTERN, SHELL_CONTROL_PATTERN;
 var init_installer = __esm({
-  "packages/core/src/installer.js"() {
+  "../../../../Users/hoff/dev/RUDI/apps/cli/packages/core/src/installer.js"() {
     import_fs5 = __toESM(require("fs"), 1);
     import_os3 = __toESM(require("os"), 1);
     import_path6 = __toESM(require("path"), 1);
@@ -11233,7 +11343,7 @@ var init_installer = __esm({
   }
 });
 
-// packages/core/src/deps.js
+// ../../../../Users/hoff/dev/RUDI/apps/cli/packages/core/src/deps.js
 function checkRuntime(runtime) {
   const name = runtime.replace(/^runtime:/, "");
   const rudiPath = import_path7.default.join(PATHS.runtimes, name);
@@ -11445,7 +11555,7 @@ async function getAllDepsFromRegistry() {
 }
 var import_fs7, import_path7, import_child_process3;
 var init_deps = __esm({
-  "packages/core/src/deps.js"() {
+  "../../../../Users/hoff/dev/RUDI/apps/cli/packages/core/src/deps.js"() {
     import_fs7 = __toESM(require("fs"), 1);
     import_path7 = __toESM(require("path"), 1);
     import_child_process3 = require("child_process");
@@ -11454,7 +11564,7 @@ var init_deps = __esm({
   }
 });
 
-// packages/core/src/rudi-config.js
+// ../../../../Users/hoff/dev/RUDI/apps/cli/packages/core/src/rudi-config.js
 function createRudiConfig() {
   const now = (/* @__PURE__ */ new Date()).toISOString();
   return {
@@ -11692,7 +11802,7 @@ function updateSecretStatus(secretName, configured, provider) {
 }
 var fs7, path8, RUDI_JSON_PATH, RUDI_JSON_TMP, RUDI_JSON_LOCK, CONFIG_MODE, LOCK_TIMEOUT_MS;
 var init_rudi_config = __esm({
-  "packages/core/src/rudi-config.js"() {
+  "../../../../Users/hoff/dev/RUDI/apps/cli/packages/core/src/rudi-config.js"() {
     fs7 = __toESM(require("fs"), 1);
     path8 = __toESM(require("path"), 1);
     init_src();
@@ -11704,7 +11814,7 @@ var init_rudi_config = __esm({
   }
 });
 
-// packages/core/src/tool-index.js
+// ../../../../Users/hoff/dev/RUDI/apps/cli/packages/core/src/tool-index.js
 function loadSecrets() {
   try {
     const content = fs8.readFileSync(SECRETS_PATH, "utf-8");
@@ -12002,7 +12112,7 @@ async function indexAllStacks(options = {}) {
 }
 var import_child_process4, fs8, path9, readline, TOOL_INDEX_PATH, TOOL_INDEX_TMP, SECRETS_PATH, REQUEST_TIMEOUT_MS, PROTOCOL_VERSION;
 var init_tool_index = __esm({
-  "packages/core/src/tool-index.js"() {
+  "../../../../Users/hoff/dev/RUDI/apps/cli/packages/core/src/tool-index.js"() {
     import_child_process4 = require("child_process");
     fs8 = __toESM(require("fs"), 1);
     path9 = __toESM(require("path"), 1);
@@ -12017,7 +12127,7 @@ var init_tool_index = __esm({
   }
 });
 
-// packages/core/src/system-registry.js
+// ../../../../Users/hoff/dev/RUDI/apps/cli/packages/core/src/system-registry.js
 async function registerSystemBinary(name, options = {}) {
   const {
     searchPaths = getDefaultSearchPaths(),
@@ -12151,7 +12261,7 @@ function getSystemBinaryInfo(name) {
 }
 var import_fs8, import_path8, import_child_process5;
 var init_system_registry = __esm({
-  "packages/core/src/system-registry.js"() {
+  "../../../../Users/hoff/dev/RUDI/apps/cli/packages/core/src/system-registry.js"() {
     import_fs8 = __toESM(require("fs"), 1);
     import_path8 = __toESM(require("path"), 1);
     import_child_process5 = require("child_process");
@@ -12160,7 +12270,7 @@ var init_system_registry = __esm({
   }
 });
 
-// packages/secrets/src/index.js
+// ../../../../Users/hoff/dev/RUDI/apps/cli/packages/secrets/src/index.js
 function isSecretsObject(value) {
   return value !== null && typeof value === "object" && !Array.isArray(value);
 }
@@ -12258,7 +12368,7 @@ function getStorageInfo() {
 }
 var fs10, path11, SECRETS_FILE;
 var init_src4 = __esm({
-  "packages/secrets/src/index.js"() {
+  "../../../../Users/hoff/dev/RUDI/apps/cli/packages/secrets/src/index.js"() {
     fs10 = __toESM(require("fs"), 1);
     path11 = __toESM(require("path"), 1);
     init_src();
@@ -12266,7 +12376,7 @@ var init_src4 = __esm({
   }
 });
 
-// packages/core/src/stack-lifecycle.js
+// ../../../../Users/hoff/dev/RUDI/apps/cli/packages/core/src/stack-lifecycle.js
 function checkInstalled(stackId, stackConfig) {
   try {
     if (stackConfig.installed !== true) {
@@ -12566,7 +12676,7 @@ async function checkStackLifecycle(stackId, stackConfig, opts = {}) {
 }
 var import_node_fs, import_node_path;
 var init_stack_lifecycle = __esm({
-  "packages/core/src/stack-lifecycle.js"() {
+  "../../../../Users/hoff/dev/RUDI/apps/cli/packages/core/src/stack-lifecycle.js"() {
     import_node_fs = __toESM(require("node:fs"), 1);
     import_node_path = __toESM(require("node:path"), 1);
     init_src4();
@@ -12574,7 +12684,7 @@ var init_stack_lifecycle = __esm({
   }
 });
 
-// packages/core/src/index.js
+// ../../../../Users/hoff/dev/RUDI/apps/cli/packages/core/src/index.js
 var src_exports = {};
 __export(src_exports, {
   CLAUDE_HOME: () => CLAUDE_HOME,
@@ -12674,7 +12784,7 @@ __export(src_exports, {
   writeToolIndex: () => writeToolIndex
 });
 var init_src5 = __esm({
-  "packages/core/src/index.js"() {
+  "../../../../Users/hoff/dev/RUDI/apps/cli/packages/core/src/index.js"() {
     init_src();
     init_src3();
     init_resolver();
@@ -12689,9 +12799,9 @@ var init_src5 = __esm({
   }
 });
 
-// node_modules/.pnpm/ajv@8.17.1/node_modules/ajv/dist/compile/codegen/code.js
+// ../../../../Users/hoff/dev/RUDI/apps/cli/node_modules/.pnpm/ajv@8.17.1/node_modules/ajv/dist/compile/codegen/code.js
 var require_code = __commonJS({
-  "node_modules/.pnpm/ajv@8.17.1/node_modules/ajv/dist/compile/codegen/code.js"(exports2) {
+  "../../../../Users/hoff/dev/RUDI/apps/cli/node_modules/.pnpm/ajv@8.17.1/node_modules/ajv/dist/compile/codegen/code.js"(exports2) {
     "use strict";
     Object.defineProperty(exports2, "__esModule", { value: true });
     exports2.regexpCode = exports2.getEsmExportName = exports2.getProperty = exports2.safeStringify = exports2.stringify = exports2.strConcat = exports2.addCodeArg = exports2.str = exports2._ = exports2.nil = exports2._Code = exports2.Name = exports2.IDENTIFIER = exports2._CodeOrName = void 0;
@@ -12843,9 +12953,9 @@ var require_code = __commonJS({
   }
 });
 
-// node_modules/.pnpm/ajv@8.17.1/node_modules/ajv/dist/compile/codegen/scope.js
+// ../../../../Users/hoff/dev/RUDI/apps/cli/node_modules/.pnpm/ajv@8.17.1/node_modules/ajv/dist/compile/codegen/scope.js
 var require_scope = __commonJS({
-  "node_modules/.pnpm/ajv@8.17.1/node_modules/ajv/dist/compile/codegen/scope.js"(exports2) {
+  "../../../../Users/hoff/dev/RUDI/apps/cli/node_modules/.pnpm/ajv@8.17.1/node_modules/ajv/dist/compile/codegen/scope.js"(exports2) {
     "use strict";
     Object.defineProperty(exports2, "__esModule", { value: true });
     exports2.ValueScope = exports2.ValueScopeName = exports2.Scope = exports2.varKinds = exports2.UsedValueState = void 0;
@@ -12988,9 +13098,9 @@ var require_scope = __commonJS({
   }
 });
 
-// node_modules/.pnpm/ajv@8.17.1/node_modules/ajv/dist/compile/codegen/index.js
+// ../../../../Users/hoff/dev/RUDI/apps/cli/node_modules/.pnpm/ajv@8.17.1/node_modules/ajv/dist/compile/codegen/index.js
 var require_codegen = __commonJS({
-  "node_modules/.pnpm/ajv@8.17.1/node_modules/ajv/dist/compile/codegen/index.js"(exports2) {
+  "../../../../Users/hoff/dev/RUDI/apps/cli/node_modules/.pnpm/ajv@8.17.1/node_modules/ajv/dist/compile/codegen/index.js"(exports2) {
     "use strict";
     Object.defineProperty(exports2, "__esModule", { value: true });
     exports2.or = exports2.and = exports2.not = exports2.CodeGen = exports2.operators = exports2.varKinds = exports2.ValueScopeName = exports2.ValueScope = exports2.Scope = exports2.Name = exports2.regexpCode = exports2.stringify = exports2.getProperty = exports2.nil = exports2.strConcat = exports2.str = exports2._ = void 0;
@@ -13708,9 +13818,9 @@ var require_codegen = __commonJS({
   }
 });
 
-// node_modules/.pnpm/ajv@8.17.1/node_modules/ajv/dist/compile/util.js
+// ../../../../Users/hoff/dev/RUDI/apps/cli/node_modules/.pnpm/ajv@8.17.1/node_modules/ajv/dist/compile/util.js
 var require_util = __commonJS({
-  "node_modules/.pnpm/ajv@8.17.1/node_modules/ajv/dist/compile/util.js"(exports2) {
+  "../../../../Users/hoff/dev/RUDI/apps/cli/node_modules/.pnpm/ajv@8.17.1/node_modules/ajv/dist/compile/util.js"(exports2) {
     "use strict";
     Object.defineProperty(exports2, "__esModule", { value: true });
     exports2.checkStrictMode = exports2.getErrorPath = exports2.Type = exports2.useFunc = exports2.setEvaluated = exports2.evaluatedPropsToName = exports2.mergeEvaluated = exports2.eachItem = exports2.unescapeJsonPointer = exports2.escapeJsonPointer = exports2.escapeFragment = exports2.unescapeFragment = exports2.schemaRefOrVal = exports2.schemaHasRulesButRef = exports2.schemaHasRules = exports2.checkUnknownRules = exports2.alwaysValidSchema = exports2.toHash = void 0;
@@ -13875,9 +13985,9 @@ var require_util = __commonJS({
   }
 });
 
-// node_modules/.pnpm/ajv@8.17.1/node_modules/ajv/dist/compile/names.js
+// ../../../../Users/hoff/dev/RUDI/apps/cli/node_modules/.pnpm/ajv@8.17.1/node_modules/ajv/dist/compile/names.js
 var require_names = __commonJS({
-  "node_modules/.pnpm/ajv@8.17.1/node_modules/ajv/dist/compile/names.js"(exports2) {
+  "../../../../Users/hoff/dev/RUDI/apps/cli/node_modules/.pnpm/ajv@8.17.1/node_modules/ajv/dist/compile/names.js"(exports2) {
     "use strict";
     Object.defineProperty(exports2, "__esModule", { value: true });
     var codegen_1 = require_codegen();
@@ -13914,9 +14024,9 @@ var require_names = __commonJS({
   }
 });
 
-// node_modules/.pnpm/ajv@8.17.1/node_modules/ajv/dist/compile/errors.js
+// ../../../../Users/hoff/dev/RUDI/apps/cli/node_modules/.pnpm/ajv@8.17.1/node_modules/ajv/dist/compile/errors.js
 var require_errors2 = __commonJS({
-  "node_modules/.pnpm/ajv@8.17.1/node_modules/ajv/dist/compile/errors.js"(exports2) {
+  "../../../../Users/hoff/dev/RUDI/apps/cli/node_modules/.pnpm/ajv@8.17.1/node_modules/ajv/dist/compile/errors.js"(exports2) {
     "use strict";
     Object.defineProperty(exports2, "__esModule", { value: true });
     exports2.extendErrors = exports2.resetErrorsCount = exports2.reportExtraError = exports2.reportError = exports2.keyword$DataError = exports2.keywordError = void 0;
@@ -14036,9 +14146,9 @@ var require_errors2 = __commonJS({
   }
 });
 
-// node_modules/.pnpm/ajv@8.17.1/node_modules/ajv/dist/compile/validate/boolSchema.js
+// ../../../../Users/hoff/dev/RUDI/apps/cli/node_modules/.pnpm/ajv@8.17.1/node_modules/ajv/dist/compile/validate/boolSchema.js
 var require_boolSchema = __commonJS({
-  "node_modules/.pnpm/ajv@8.17.1/node_modules/ajv/dist/compile/validate/boolSchema.js"(exports2) {
+  "../../../../Users/hoff/dev/RUDI/apps/cli/node_modules/.pnpm/ajv@8.17.1/node_modules/ajv/dist/compile/validate/boolSchema.js"(exports2) {
     "use strict";
     Object.defineProperty(exports2, "__esModule", { value: true });
     exports2.boolOrEmptySchema = exports2.topBoolOrEmptySchema = void 0;
@@ -14087,9 +14197,9 @@ var require_boolSchema = __commonJS({
   }
 });
 
-// node_modules/.pnpm/ajv@8.17.1/node_modules/ajv/dist/compile/rules.js
+// ../../../../Users/hoff/dev/RUDI/apps/cli/node_modules/.pnpm/ajv@8.17.1/node_modules/ajv/dist/compile/rules.js
 var require_rules = __commonJS({
-  "node_modules/.pnpm/ajv@8.17.1/node_modules/ajv/dist/compile/rules.js"(exports2) {
+  "../../../../Users/hoff/dev/RUDI/apps/cli/node_modules/.pnpm/ajv@8.17.1/node_modules/ajv/dist/compile/rules.js"(exports2) {
     "use strict";
     Object.defineProperty(exports2, "__esModule", { value: true });
     exports2.getRules = exports2.isJSONType = void 0;
@@ -14118,9 +14228,9 @@ var require_rules = __commonJS({
   }
 });
 
-// node_modules/.pnpm/ajv@8.17.1/node_modules/ajv/dist/compile/validate/applicability.js
+// ../../../../Users/hoff/dev/RUDI/apps/cli/node_modules/.pnpm/ajv@8.17.1/node_modules/ajv/dist/compile/validate/applicability.js
 var require_applicability = __commonJS({
-  "node_modules/.pnpm/ajv@8.17.1/node_modules/ajv/dist/compile/validate/applicability.js"(exports2) {
+  "../../../../Users/hoff/dev/RUDI/apps/cli/node_modules/.pnpm/ajv@8.17.1/node_modules/ajv/dist/compile/validate/applicability.js"(exports2) {
     "use strict";
     Object.defineProperty(exports2, "__esModule", { value: true });
     exports2.shouldUseRule = exports2.shouldUseGroup = exports2.schemaHasRulesForType = void 0;
@@ -14141,9 +14251,9 @@ var require_applicability = __commonJS({
   }
 });
 
-// node_modules/.pnpm/ajv@8.17.1/node_modules/ajv/dist/compile/validate/dataType.js
+// ../../../../Users/hoff/dev/RUDI/apps/cli/node_modules/.pnpm/ajv@8.17.1/node_modules/ajv/dist/compile/validate/dataType.js
 var require_dataType = __commonJS({
-  "node_modules/.pnpm/ajv@8.17.1/node_modules/ajv/dist/compile/validate/dataType.js"(exports2) {
+  "../../../../Users/hoff/dev/RUDI/apps/cli/node_modules/.pnpm/ajv@8.17.1/node_modules/ajv/dist/compile/validate/dataType.js"(exports2) {
     "use strict";
     Object.defineProperty(exports2, "__esModule", { value: true });
     exports2.reportTypeError = exports2.checkDataTypes = exports2.checkDataType = exports2.coerceAndCheckDataType = exports2.getJSONTypes = exports2.getSchemaTypes = exports2.DataType = void 0;
@@ -14325,9 +14435,9 @@ var require_dataType = __commonJS({
   }
 });
 
-// node_modules/.pnpm/ajv@8.17.1/node_modules/ajv/dist/compile/validate/defaults.js
+// ../../../../Users/hoff/dev/RUDI/apps/cli/node_modules/.pnpm/ajv@8.17.1/node_modules/ajv/dist/compile/validate/defaults.js
 var require_defaults = __commonJS({
-  "node_modules/.pnpm/ajv@8.17.1/node_modules/ajv/dist/compile/validate/defaults.js"(exports2) {
+  "../../../../Users/hoff/dev/RUDI/apps/cli/node_modules/.pnpm/ajv@8.17.1/node_modules/ajv/dist/compile/validate/defaults.js"(exports2) {
     "use strict";
     Object.defineProperty(exports2, "__esModule", { value: true });
     exports2.assignDefaults = void 0;
@@ -14362,9 +14472,9 @@ var require_defaults = __commonJS({
   }
 });
 
-// node_modules/.pnpm/ajv@8.17.1/node_modules/ajv/dist/vocabularies/code.js
+// ../../../../Users/hoff/dev/RUDI/apps/cli/node_modules/.pnpm/ajv@8.17.1/node_modules/ajv/dist/vocabularies/code.js
 var require_code2 = __commonJS({
-  "node_modules/.pnpm/ajv@8.17.1/node_modules/ajv/dist/vocabularies/code.js"(exports2) {
+  "../../../../Users/hoff/dev/RUDI/apps/cli/node_modules/.pnpm/ajv@8.17.1/node_modules/ajv/dist/vocabularies/code.js"(exports2) {
     "use strict";
     Object.defineProperty(exports2, "__esModule", { value: true });
     exports2.validateUnion = exports2.validateArray = exports2.usePattern = exports2.callValidateCode = exports2.schemaProperties = exports2.allSchemaProperties = exports2.noPropertyInData = exports2.propertyInData = exports2.isOwnProperty = exports2.hasPropFunc = exports2.reportMissingProp = exports2.checkMissingProp = exports2.checkReportMissingProp = void 0;
@@ -14495,9 +14605,9 @@ var require_code2 = __commonJS({
   }
 });
 
-// node_modules/.pnpm/ajv@8.17.1/node_modules/ajv/dist/compile/validate/keyword.js
+// ../../../../Users/hoff/dev/RUDI/apps/cli/node_modules/.pnpm/ajv@8.17.1/node_modules/ajv/dist/compile/validate/keyword.js
 var require_keyword = __commonJS({
-  "node_modules/.pnpm/ajv@8.17.1/node_modules/ajv/dist/compile/validate/keyword.js"(exports2) {
+  "../../../../Users/hoff/dev/RUDI/apps/cli/node_modules/.pnpm/ajv@8.17.1/node_modules/ajv/dist/compile/validate/keyword.js"(exports2) {
     "use strict";
     Object.defineProperty(exports2, "__esModule", { value: true });
     exports2.validateKeywordUsage = exports2.validSchemaType = exports2.funcKeywordCode = exports2.macroKeywordCode = void 0;
@@ -14613,9 +14723,9 @@ var require_keyword = __commonJS({
   }
 });
 
-// node_modules/.pnpm/ajv@8.17.1/node_modules/ajv/dist/compile/validate/subschema.js
+// ../../../../Users/hoff/dev/RUDI/apps/cli/node_modules/.pnpm/ajv@8.17.1/node_modules/ajv/dist/compile/validate/subschema.js
 var require_subschema = __commonJS({
-  "node_modules/.pnpm/ajv@8.17.1/node_modules/ajv/dist/compile/validate/subschema.js"(exports2) {
+  "../../../../Users/hoff/dev/RUDI/apps/cli/node_modules/.pnpm/ajv@8.17.1/node_modules/ajv/dist/compile/validate/subschema.js"(exports2) {
     "use strict";
     Object.defineProperty(exports2, "__esModule", { value: true });
     exports2.extendSubschemaMode = exports2.extendSubschemaData = exports2.getSubschema = void 0;
@@ -14696,9 +14806,9 @@ var require_subschema = __commonJS({
   }
 });
 
-// node_modules/.pnpm/fast-deep-equal@3.1.3/node_modules/fast-deep-equal/index.js
+// ../../../../Users/hoff/dev/RUDI/apps/cli/node_modules/.pnpm/fast-deep-equal@3.1.3/node_modules/fast-deep-equal/index.js
 var require_fast_deep_equal = __commonJS({
-  "node_modules/.pnpm/fast-deep-equal@3.1.3/node_modules/fast-deep-equal/index.js"(exports2, module2) {
+  "../../../../Users/hoff/dev/RUDI/apps/cli/node_modules/.pnpm/fast-deep-equal@3.1.3/node_modules/fast-deep-equal/index.js"(exports2, module2) {
     "use strict";
     module2.exports = function equal(a, b) {
       if (a === b) return true;
@@ -14731,9 +14841,9 @@ var require_fast_deep_equal = __commonJS({
   }
 });
 
-// node_modules/.pnpm/json-schema-traverse@1.0.0/node_modules/json-schema-traverse/index.js
+// ../../../../Users/hoff/dev/RUDI/apps/cli/node_modules/.pnpm/json-schema-traverse@1.0.0/node_modules/json-schema-traverse/index.js
 var require_json_schema_traverse = __commonJS({
-  "node_modules/.pnpm/json-schema-traverse@1.0.0/node_modules/json-schema-traverse/index.js"(exports2, module2) {
+  "../../../../Users/hoff/dev/RUDI/apps/cli/node_modules/.pnpm/json-schema-traverse@1.0.0/node_modules/json-schema-traverse/index.js"(exports2, module2) {
     "use strict";
     var traverse = module2.exports = function(schema, opts, cb) {
       if (typeof opts == "function") {
@@ -14819,9 +14929,9 @@ var require_json_schema_traverse = __commonJS({
   }
 });
 
-// node_modules/.pnpm/ajv@8.17.1/node_modules/ajv/dist/compile/resolve.js
+// ../../../../Users/hoff/dev/RUDI/apps/cli/node_modules/.pnpm/ajv@8.17.1/node_modules/ajv/dist/compile/resolve.js
 var require_resolve = __commonJS({
-  "node_modules/.pnpm/ajv@8.17.1/node_modules/ajv/dist/compile/resolve.js"(exports2) {
+  "../../../../Users/hoff/dev/RUDI/apps/cli/node_modules/.pnpm/ajv@8.17.1/node_modules/ajv/dist/compile/resolve.js"(exports2) {
     "use strict";
     Object.defineProperty(exports2, "__esModule", { value: true });
     exports2.getSchemaRefs = exports2.resolveUrl = exports2.normalizeId = exports2._getFullPath = exports2.getFullPath = exports2.inlineRef = void 0;
@@ -14975,9 +15085,9 @@ var require_resolve = __commonJS({
   }
 });
 
-// node_modules/.pnpm/ajv@8.17.1/node_modules/ajv/dist/compile/validate/index.js
+// ../../../../Users/hoff/dev/RUDI/apps/cli/node_modules/.pnpm/ajv@8.17.1/node_modules/ajv/dist/compile/validate/index.js
 var require_validate = __commonJS({
-  "node_modules/.pnpm/ajv@8.17.1/node_modules/ajv/dist/compile/validate/index.js"(exports2) {
+  "../../../../Users/hoff/dev/RUDI/apps/cli/node_modules/.pnpm/ajv@8.17.1/node_modules/ajv/dist/compile/validate/index.js"(exports2) {
     "use strict";
     Object.defineProperty(exports2, "__esModule", { value: true });
     exports2.getData = exports2.KeywordCxt = exports2.validateFunctionCode = void 0;
@@ -15483,9 +15593,9 @@ var require_validate = __commonJS({
   }
 });
 
-// node_modules/.pnpm/ajv@8.17.1/node_modules/ajv/dist/runtime/validation_error.js
+// ../../../../Users/hoff/dev/RUDI/apps/cli/node_modules/.pnpm/ajv@8.17.1/node_modules/ajv/dist/runtime/validation_error.js
 var require_validation_error = __commonJS({
-  "node_modules/.pnpm/ajv@8.17.1/node_modules/ajv/dist/runtime/validation_error.js"(exports2) {
+  "../../../../Users/hoff/dev/RUDI/apps/cli/node_modules/.pnpm/ajv@8.17.1/node_modules/ajv/dist/runtime/validation_error.js"(exports2) {
     "use strict";
     Object.defineProperty(exports2, "__esModule", { value: true });
     var ValidationError = class extends Error {
@@ -15499,9 +15609,9 @@ var require_validation_error = __commonJS({
   }
 });
 
-// node_modules/.pnpm/ajv@8.17.1/node_modules/ajv/dist/compile/ref_error.js
+// ../../../../Users/hoff/dev/RUDI/apps/cli/node_modules/.pnpm/ajv@8.17.1/node_modules/ajv/dist/compile/ref_error.js
 var require_ref_error = __commonJS({
-  "node_modules/.pnpm/ajv@8.17.1/node_modules/ajv/dist/compile/ref_error.js"(exports2) {
+  "../../../../Users/hoff/dev/RUDI/apps/cli/node_modules/.pnpm/ajv@8.17.1/node_modules/ajv/dist/compile/ref_error.js"(exports2) {
     "use strict";
     Object.defineProperty(exports2, "__esModule", { value: true });
     var resolve_1 = require_resolve();
@@ -15516,9 +15626,9 @@ var require_ref_error = __commonJS({
   }
 });
 
-// node_modules/.pnpm/ajv@8.17.1/node_modules/ajv/dist/compile/index.js
+// ../../../../Users/hoff/dev/RUDI/apps/cli/node_modules/.pnpm/ajv@8.17.1/node_modules/ajv/dist/compile/index.js
 var require_compile = __commonJS({
-  "node_modules/.pnpm/ajv@8.17.1/node_modules/ajv/dist/compile/index.js"(exports2) {
+  "../../../../Users/hoff/dev/RUDI/apps/cli/node_modules/.pnpm/ajv@8.17.1/node_modules/ajv/dist/compile/index.js"(exports2) {
     "use strict";
     Object.defineProperty(exports2, "__esModule", { value: true });
     exports2.resolveSchema = exports2.getCompilingSchema = exports2.resolveRef = exports2.compileSchema = exports2.SchemaEnv = void 0;
@@ -15740,9 +15850,9 @@ var require_compile = __commonJS({
   }
 });
 
-// node_modules/.pnpm/ajv@8.17.1/node_modules/ajv/dist/refs/data.json
+// ../../../../Users/hoff/dev/RUDI/apps/cli/node_modules/.pnpm/ajv@8.17.1/node_modules/ajv/dist/refs/data.json
 var require_data = __commonJS({
-  "node_modules/.pnpm/ajv@8.17.1/node_modules/ajv/dist/refs/data.json"(exports2, module2) {
+  "../../../../Users/hoff/dev/RUDI/apps/cli/node_modules/.pnpm/ajv@8.17.1/node_modules/ajv/dist/refs/data.json"(exports2, module2) {
     module2.exports = {
       $id: "https://raw.githubusercontent.com/ajv-validator/ajv/master/lib/refs/data.json#",
       description: "Meta-schema for $data reference (JSON AnySchema extension proposal)",
@@ -15759,9 +15869,9 @@ var require_data = __commonJS({
   }
 });
 
-// node_modules/.pnpm/fast-uri@3.1.0/node_modules/fast-uri/lib/utils.js
+// ../../../../Users/hoff/dev/RUDI/apps/cli/node_modules/.pnpm/fast-uri@3.1.0/node_modules/fast-uri/lib/utils.js
 var require_utils = __commonJS({
-  "node_modules/.pnpm/fast-uri@3.1.0/node_modules/fast-uri/lib/utils.js"(exports2, module2) {
+  "../../../../Users/hoff/dev/RUDI/apps/cli/node_modules/.pnpm/fast-uri@3.1.0/node_modules/fast-uri/lib/utils.js"(exports2, module2) {
     "use strict";
     var isUUID = RegExp.prototype.test.bind(/^[\da-f]{8}-[\da-f]{4}-[\da-f]{4}-[\da-f]{4}-[\da-f]{12}$/iu);
     var isIPv4 = RegExp.prototype.test.bind(/^(?:(?:25[0-5]|2[0-4]\d|1\d{2}|[1-9]\d|\d)\.){3}(?:25[0-5]|2[0-4]\d|1\d{2}|[1-9]\d|\d)$/u);
@@ -16016,9 +16126,9 @@ var require_utils = __commonJS({
   }
 });
 
-// node_modules/.pnpm/fast-uri@3.1.0/node_modules/fast-uri/lib/schemes.js
+// ../../../../Users/hoff/dev/RUDI/apps/cli/node_modules/.pnpm/fast-uri@3.1.0/node_modules/fast-uri/lib/schemes.js
 var require_schemes = __commonJS({
-  "node_modules/.pnpm/fast-uri@3.1.0/node_modules/fast-uri/lib/schemes.js"(exports2, module2) {
+  "../../../../Users/hoff/dev/RUDI/apps/cli/node_modules/.pnpm/fast-uri@3.1.0/node_modules/fast-uri/lib/schemes.js"(exports2, module2) {
     "use strict";
     var { isUUID } = require_utils();
     var URN_REG = /([\da-z][\d\-a-z]{0,31}):((?:[\w!$'()*+,\-.:;=@]|%[\da-f]{2})+)/iu;
@@ -16226,9 +16336,9 @@ var require_schemes = __commonJS({
   }
 });
 
-// node_modules/.pnpm/fast-uri@3.1.0/node_modules/fast-uri/index.js
+// ../../../../Users/hoff/dev/RUDI/apps/cli/node_modules/.pnpm/fast-uri@3.1.0/node_modules/fast-uri/index.js
 var require_fast_uri = __commonJS({
-  "node_modules/.pnpm/fast-uri@3.1.0/node_modules/fast-uri/index.js"(exports2, module2) {
+  "../../../../Users/hoff/dev/RUDI/apps/cli/node_modules/.pnpm/fast-uri@3.1.0/node_modules/fast-uri/index.js"(exports2, module2) {
     "use strict";
     var { normalizeIPv6, removeDotSegments, recomposeAuthority, normalizeComponentEncoding, isIPv4, nonSimpleDomain } = require_utils();
     var { SCHEMES, getSchemeHandler } = require_schemes();
@@ -16481,9 +16591,9 @@ var require_fast_uri = __commonJS({
   }
 });
 
-// node_modules/.pnpm/ajv@8.17.1/node_modules/ajv/dist/runtime/uri.js
+// ../../../../Users/hoff/dev/RUDI/apps/cli/node_modules/.pnpm/ajv@8.17.1/node_modules/ajv/dist/runtime/uri.js
 var require_uri = __commonJS({
-  "node_modules/.pnpm/ajv@8.17.1/node_modules/ajv/dist/runtime/uri.js"(exports2) {
+  "../../../../Users/hoff/dev/RUDI/apps/cli/node_modules/.pnpm/ajv@8.17.1/node_modules/ajv/dist/runtime/uri.js"(exports2) {
     "use strict";
     Object.defineProperty(exports2, "__esModule", { value: true });
     var uri = require_fast_uri();
@@ -16492,9 +16602,9 @@ var require_uri = __commonJS({
   }
 });
 
-// node_modules/.pnpm/ajv@8.17.1/node_modules/ajv/dist/core.js
+// ../../../../Users/hoff/dev/RUDI/apps/cli/node_modules/.pnpm/ajv@8.17.1/node_modules/ajv/dist/core.js
 var require_core = __commonJS({
-  "node_modules/.pnpm/ajv@8.17.1/node_modules/ajv/dist/core.js"(exports2) {
+  "../../../../Users/hoff/dev/RUDI/apps/cli/node_modules/.pnpm/ajv@8.17.1/node_modules/ajv/dist/core.js"(exports2) {
     "use strict";
     Object.defineProperty(exports2, "__esModule", { value: true });
     exports2.CodeGen = exports2.Name = exports2.nil = exports2.stringify = exports2.str = exports2._ = exports2.KeywordCxt = void 0;
@@ -17103,9 +17213,9 @@ var require_core = __commonJS({
   }
 });
 
-// node_modules/.pnpm/ajv@8.17.1/node_modules/ajv/dist/vocabularies/core/id.js
+// ../../../../Users/hoff/dev/RUDI/apps/cli/node_modules/.pnpm/ajv@8.17.1/node_modules/ajv/dist/vocabularies/core/id.js
 var require_id = __commonJS({
-  "node_modules/.pnpm/ajv@8.17.1/node_modules/ajv/dist/vocabularies/core/id.js"(exports2) {
+  "../../../../Users/hoff/dev/RUDI/apps/cli/node_modules/.pnpm/ajv@8.17.1/node_modules/ajv/dist/vocabularies/core/id.js"(exports2) {
     "use strict";
     Object.defineProperty(exports2, "__esModule", { value: true });
     var def = {
@@ -17118,9 +17228,9 @@ var require_id = __commonJS({
   }
 });
 
-// node_modules/.pnpm/ajv@8.17.1/node_modules/ajv/dist/vocabularies/core/ref.js
+// ../../../../Users/hoff/dev/RUDI/apps/cli/node_modules/.pnpm/ajv@8.17.1/node_modules/ajv/dist/vocabularies/core/ref.js
 var require_ref = __commonJS({
-  "node_modules/.pnpm/ajv@8.17.1/node_modules/ajv/dist/vocabularies/core/ref.js"(exports2) {
+  "../../../../Users/hoff/dev/RUDI/apps/cli/node_modules/.pnpm/ajv@8.17.1/node_modules/ajv/dist/vocabularies/core/ref.js"(exports2) {
     "use strict";
     Object.defineProperty(exports2, "__esModule", { value: true });
     exports2.callRef = exports2.getValidate = void 0;
@@ -17240,9 +17350,9 @@ var require_ref = __commonJS({
   }
 });
 
-// node_modules/.pnpm/ajv@8.17.1/node_modules/ajv/dist/vocabularies/core/index.js
+// ../../../../Users/hoff/dev/RUDI/apps/cli/node_modules/.pnpm/ajv@8.17.1/node_modules/ajv/dist/vocabularies/core/index.js
 var require_core2 = __commonJS({
-  "node_modules/.pnpm/ajv@8.17.1/node_modules/ajv/dist/vocabularies/core/index.js"(exports2) {
+  "../../../../Users/hoff/dev/RUDI/apps/cli/node_modules/.pnpm/ajv@8.17.1/node_modules/ajv/dist/vocabularies/core/index.js"(exports2) {
     "use strict";
     Object.defineProperty(exports2, "__esModule", { value: true });
     var id_1 = require_id();
@@ -17261,9 +17371,9 @@ var require_core2 = __commonJS({
   }
 });
 
-// node_modules/.pnpm/ajv@8.17.1/node_modules/ajv/dist/vocabularies/validation/limitNumber.js
+// ../../../../Users/hoff/dev/RUDI/apps/cli/node_modules/.pnpm/ajv@8.17.1/node_modules/ajv/dist/vocabularies/validation/limitNumber.js
 var require_limitNumber = __commonJS({
-  "node_modules/.pnpm/ajv@8.17.1/node_modules/ajv/dist/vocabularies/validation/limitNumber.js"(exports2) {
+  "../../../../Users/hoff/dev/RUDI/apps/cli/node_modules/.pnpm/ajv@8.17.1/node_modules/ajv/dist/vocabularies/validation/limitNumber.js"(exports2) {
     "use strict";
     Object.defineProperty(exports2, "__esModule", { value: true });
     var codegen_1 = require_codegen();
@@ -17293,9 +17403,9 @@ var require_limitNumber = __commonJS({
   }
 });
 
-// node_modules/.pnpm/ajv@8.17.1/node_modules/ajv/dist/vocabularies/validation/multipleOf.js
+// ../../../../Users/hoff/dev/RUDI/apps/cli/node_modules/.pnpm/ajv@8.17.1/node_modules/ajv/dist/vocabularies/validation/multipleOf.js
 var require_multipleOf = __commonJS({
-  "node_modules/.pnpm/ajv@8.17.1/node_modules/ajv/dist/vocabularies/validation/multipleOf.js"(exports2) {
+  "../../../../Users/hoff/dev/RUDI/apps/cli/node_modules/.pnpm/ajv@8.17.1/node_modules/ajv/dist/vocabularies/validation/multipleOf.js"(exports2) {
     "use strict";
     Object.defineProperty(exports2, "__esModule", { value: true });
     var codegen_1 = require_codegen();
@@ -17321,9 +17431,9 @@ var require_multipleOf = __commonJS({
   }
 });
 
-// node_modules/.pnpm/ajv@8.17.1/node_modules/ajv/dist/runtime/ucs2length.js
+// ../../../../Users/hoff/dev/RUDI/apps/cli/node_modules/.pnpm/ajv@8.17.1/node_modules/ajv/dist/runtime/ucs2length.js
 var require_ucs2length = __commonJS({
-  "node_modules/.pnpm/ajv@8.17.1/node_modules/ajv/dist/runtime/ucs2length.js"(exports2) {
+  "../../../../Users/hoff/dev/RUDI/apps/cli/node_modules/.pnpm/ajv@8.17.1/node_modules/ajv/dist/runtime/ucs2length.js"(exports2) {
     "use strict";
     Object.defineProperty(exports2, "__esModule", { value: true });
     function ucs2length(str) {
@@ -17347,9 +17457,9 @@ var require_ucs2length = __commonJS({
   }
 });
 
-// node_modules/.pnpm/ajv@8.17.1/node_modules/ajv/dist/vocabularies/validation/limitLength.js
+// ../../../../Users/hoff/dev/RUDI/apps/cli/node_modules/.pnpm/ajv@8.17.1/node_modules/ajv/dist/vocabularies/validation/limitLength.js
 var require_limitLength = __commonJS({
-  "node_modules/.pnpm/ajv@8.17.1/node_modules/ajv/dist/vocabularies/validation/limitLength.js"(exports2) {
+  "../../../../Users/hoff/dev/RUDI/apps/cli/node_modules/.pnpm/ajv@8.17.1/node_modules/ajv/dist/vocabularies/validation/limitLength.js"(exports2) {
     "use strict";
     Object.defineProperty(exports2, "__esModule", { value: true });
     var codegen_1 = require_codegen();
@@ -17379,9 +17489,9 @@ var require_limitLength = __commonJS({
   }
 });
 
-// node_modules/.pnpm/ajv@8.17.1/node_modules/ajv/dist/vocabularies/validation/pattern.js
+// ../../../../Users/hoff/dev/RUDI/apps/cli/node_modules/.pnpm/ajv@8.17.1/node_modules/ajv/dist/vocabularies/validation/pattern.js
 var require_pattern = __commonJS({
-  "node_modules/.pnpm/ajv@8.17.1/node_modules/ajv/dist/vocabularies/validation/pattern.js"(exports2) {
+  "../../../../Users/hoff/dev/RUDI/apps/cli/node_modules/.pnpm/ajv@8.17.1/node_modules/ajv/dist/vocabularies/validation/pattern.js"(exports2) {
     "use strict";
     Object.defineProperty(exports2, "__esModule", { value: true });
     var code_1 = require_code2();
@@ -17407,9 +17517,9 @@ var require_pattern = __commonJS({
   }
 });
 
-// node_modules/.pnpm/ajv@8.17.1/node_modules/ajv/dist/vocabularies/validation/limitProperties.js
+// ../../../../Users/hoff/dev/RUDI/apps/cli/node_modules/.pnpm/ajv@8.17.1/node_modules/ajv/dist/vocabularies/validation/limitProperties.js
 var require_limitProperties = __commonJS({
-  "node_modules/.pnpm/ajv@8.17.1/node_modules/ajv/dist/vocabularies/validation/limitProperties.js"(exports2) {
+  "../../../../Users/hoff/dev/RUDI/apps/cli/node_modules/.pnpm/ajv@8.17.1/node_modules/ajv/dist/vocabularies/validation/limitProperties.js"(exports2) {
     "use strict";
     Object.defineProperty(exports2, "__esModule", { value: true });
     var codegen_1 = require_codegen();
@@ -17436,9 +17546,9 @@ var require_limitProperties = __commonJS({
   }
 });
 
-// node_modules/.pnpm/ajv@8.17.1/node_modules/ajv/dist/vocabularies/validation/required.js
+// ../../../../Users/hoff/dev/RUDI/apps/cli/node_modules/.pnpm/ajv@8.17.1/node_modules/ajv/dist/vocabularies/validation/required.js
 var require_required = __commonJS({
-  "node_modules/.pnpm/ajv@8.17.1/node_modules/ajv/dist/vocabularies/validation/required.js"(exports2) {
+  "../../../../Users/hoff/dev/RUDI/apps/cli/node_modules/.pnpm/ajv@8.17.1/node_modules/ajv/dist/vocabularies/validation/required.js"(exports2) {
     "use strict";
     Object.defineProperty(exports2, "__esModule", { value: true });
     var code_1 = require_code2();
@@ -17518,9 +17628,9 @@ var require_required = __commonJS({
   }
 });
 
-// node_modules/.pnpm/ajv@8.17.1/node_modules/ajv/dist/vocabularies/validation/limitItems.js
+// ../../../../Users/hoff/dev/RUDI/apps/cli/node_modules/.pnpm/ajv@8.17.1/node_modules/ajv/dist/vocabularies/validation/limitItems.js
 var require_limitItems = __commonJS({
-  "node_modules/.pnpm/ajv@8.17.1/node_modules/ajv/dist/vocabularies/validation/limitItems.js"(exports2) {
+  "../../../../Users/hoff/dev/RUDI/apps/cli/node_modules/.pnpm/ajv@8.17.1/node_modules/ajv/dist/vocabularies/validation/limitItems.js"(exports2) {
     "use strict";
     Object.defineProperty(exports2, "__esModule", { value: true });
     var codegen_1 = require_codegen();
@@ -17547,9 +17657,9 @@ var require_limitItems = __commonJS({
   }
 });
 
-// node_modules/.pnpm/ajv@8.17.1/node_modules/ajv/dist/runtime/equal.js
+// ../../../../Users/hoff/dev/RUDI/apps/cli/node_modules/.pnpm/ajv@8.17.1/node_modules/ajv/dist/runtime/equal.js
 var require_equal = __commonJS({
-  "node_modules/.pnpm/ajv@8.17.1/node_modules/ajv/dist/runtime/equal.js"(exports2) {
+  "../../../../Users/hoff/dev/RUDI/apps/cli/node_modules/.pnpm/ajv@8.17.1/node_modules/ajv/dist/runtime/equal.js"(exports2) {
     "use strict";
     Object.defineProperty(exports2, "__esModule", { value: true });
     var equal = require_fast_deep_equal();
@@ -17558,9 +17668,9 @@ var require_equal = __commonJS({
   }
 });
 
-// node_modules/.pnpm/ajv@8.17.1/node_modules/ajv/dist/vocabularies/validation/uniqueItems.js
+// ../../../../Users/hoff/dev/RUDI/apps/cli/node_modules/.pnpm/ajv@8.17.1/node_modules/ajv/dist/vocabularies/validation/uniqueItems.js
 var require_uniqueItems = __commonJS({
-  "node_modules/.pnpm/ajv@8.17.1/node_modules/ajv/dist/vocabularies/validation/uniqueItems.js"(exports2) {
+  "../../../../Users/hoff/dev/RUDI/apps/cli/node_modules/.pnpm/ajv@8.17.1/node_modules/ajv/dist/vocabularies/validation/uniqueItems.js"(exports2) {
     "use strict";
     Object.defineProperty(exports2, "__esModule", { value: true });
     var dataType_1 = require_dataType();
@@ -17625,9 +17735,9 @@ var require_uniqueItems = __commonJS({
   }
 });
 
-// node_modules/.pnpm/ajv@8.17.1/node_modules/ajv/dist/vocabularies/validation/const.js
+// ../../../../Users/hoff/dev/RUDI/apps/cli/node_modules/.pnpm/ajv@8.17.1/node_modules/ajv/dist/vocabularies/validation/const.js
 var require_const = __commonJS({
-  "node_modules/.pnpm/ajv@8.17.1/node_modules/ajv/dist/vocabularies/validation/const.js"(exports2) {
+  "../../../../Users/hoff/dev/RUDI/apps/cli/node_modules/.pnpm/ajv@8.17.1/node_modules/ajv/dist/vocabularies/validation/const.js"(exports2) {
     "use strict";
     Object.defineProperty(exports2, "__esModule", { value: true });
     var codegen_1 = require_codegen();
@@ -17654,9 +17764,9 @@ var require_const = __commonJS({
   }
 });
 
-// node_modules/.pnpm/ajv@8.17.1/node_modules/ajv/dist/vocabularies/validation/enum.js
+// ../../../../Users/hoff/dev/RUDI/apps/cli/node_modules/.pnpm/ajv@8.17.1/node_modules/ajv/dist/vocabularies/validation/enum.js
 var require_enum = __commonJS({
-  "node_modules/.pnpm/ajv@8.17.1/node_modules/ajv/dist/vocabularies/validation/enum.js"(exports2) {
+  "../../../../Users/hoff/dev/RUDI/apps/cli/node_modules/.pnpm/ajv@8.17.1/node_modules/ajv/dist/vocabularies/validation/enum.js"(exports2) {
     "use strict";
     Object.defineProperty(exports2, "__esModule", { value: true });
     var codegen_1 = require_codegen();
@@ -17703,9 +17813,9 @@ var require_enum = __commonJS({
   }
 });
 
-// node_modules/.pnpm/ajv@8.17.1/node_modules/ajv/dist/vocabularies/validation/index.js
+// ../../../../Users/hoff/dev/RUDI/apps/cli/node_modules/.pnpm/ajv@8.17.1/node_modules/ajv/dist/vocabularies/validation/index.js
 var require_validation = __commonJS({
-  "node_modules/.pnpm/ajv@8.17.1/node_modules/ajv/dist/vocabularies/validation/index.js"(exports2) {
+  "../../../../Users/hoff/dev/RUDI/apps/cli/node_modules/.pnpm/ajv@8.17.1/node_modules/ajv/dist/vocabularies/validation/index.js"(exports2) {
     "use strict";
     Object.defineProperty(exports2, "__esModule", { value: true });
     var limitNumber_1 = require_limitNumber();
@@ -17741,9 +17851,9 @@ var require_validation = __commonJS({
   }
 });
 
-// node_modules/.pnpm/ajv@8.17.1/node_modules/ajv/dist/vocabularies/applicator/additionalItems.js
+// ../../../../Users/hoff/dev/RUDI/apps/cli/node_modules/.pnpm/ajv@8.17.1/node_modules/ajv/dist/vocabularies/applicator/additionalItems.js
 var require_additionalItems = __commonJS({
-  "node_modules/.pnpm/ajv@8.17.1/node_modules/ajv/dist/vocabularies/applicator/additionalItems.js"(exports2) {
+  "../../../../Users/hoff/dev/RUDI/apps/cli/node_modules/.pnpm/ajv@8.17.1/node_modules/ajv/dist/vocabularies/applicator/additionalItems.js"(exports2) {
     "use strict";
     Object.defineProperty(exports2, "__esModule", { value: true });
     exports2.validateAdditionalItems = void 0;
@@ -17794,9 +17904,9 @@ var require_additionalItems = __commonJS({
   }
 });
 
-// node_modules/.pnpm/ajv@8.17.1/node_modules/ajv/dist/vocabularies/applicator/items.js
+// ../../../../Users/hoff/dev/RUDI/apps/cli/node_modules/.pnpm/ajv@8.17.1/node_modules/ajv/dist/vocabularies/applicator/items.js
 var require_items = __commonJS({
-  "node_modules/.pnpm/ajv@8.17.1/node_modules/ajv/dist/vocabularies/applicator/items.js"(exports2) {
+  "../../../../Users/hoff/dev/RUDI/apps/cli/node_modules/.pnpm/ajv@8.17.1/node_modules/ajv/dist/vocabularies/applicator/items.js"(exports2) {
     "use strict";
     Object.defineProperty(exports2, "__esModule", { value: true });
     exports2.validateTuple = void 0;
@@ -17851,9 +17961,9 @@ var require_items = __commonJS({
   }
 });
 
-// node_modules/.pnpm/ajv@8.17.1/node_modules/ajv/dist/vocabularies/applicator/prefixItems.js
+// ../../../../Users/hoff/dev/RUDI/apps/cli/node_modules/.pnpm/ajv@8.17.1/node_modules/ajv/dist/vocabularies/applicator/prefixItems.js
 var require_prefixItems = __commonJS({
-  "node_modules/.pnpm/ajv@8.17.1/node_modules/ajv/dist/vocabularies/applicator/prefixItems.js"(exports2) {
+  "../../../../Users/hoff/dev/RUDI/apps/cli/node_modules/.pnpm/ajv@8.17.1/node_modules/ajv/dist/vocabularies/applicator/prefixItems.js"(exports2) {
     "use strict";
     Object.defineProperty(exports2, "__esModule", { value: true });
     var items_1 = require_items();
@@ -17868,9 +17978,9 @@ var require_prefixItems = __commonJS({
   }
 });
 
-// node_modules/.pnpm/ajv@8.17.1/node_modules/ajv/dist/vocabularies/applicator/items2020.js
+// ../../../../Users/hoff/dev/RUDI/apps/cli/node_modules/.pnpm/ajv@8.17.1/node_modules/ajv/dist/vocabularies/applicator/items2020.js
 var require_items2020 = __commonJS({
-  "node_modules/.pnpm/ajv@8.17.1/node_modules/ajv/dist/vocabularies/applicator/items2020.js"(exports2) {
+  "../../../../Users/hoff/dev/RUDI/apps/cli/node_modules/.pnpm/ajv@8.17.1/node_modules/ajv/dist/vocabularies/applicator/items2020.js"(exports2) {
     "use strict";
     Object.defineProperty(exports2, "__esModule", { value: true });
     var codegen_1 = require_codegen();
@@ -17903,9 +18013,9 @@ var require_items2020 = __commonJS({
   }
 });
 
-// node_modules/.pnpm/ajv@8.17.1/node_modules/ajv/dist/vocabularies/applicator/contains.js
+// ../../../../Users/hoff/dev/RUDI/apps/cli/node_modules/.pnpm/ajv@8.17.1/node_modules/ajv/dist/vocabularies/applicator/contains.js
 var require_contains = __commonJS({
-  "node_modules/.pnpm/ajv@8.17.1/node_modules/ajv/dist/vocabularies/applicator/contains.js"(exports2) {
+  "../../../../Users/hoff/dev/RUDI/apps/cli/node_modules/.pnpm/ajv@8.17.1/node_modules/ajv/dist/vocabularies/applicator/contains.js"(exports2) {
     "use strict";
     Object.defineProperty(exports2, "__esModule", { value: true });
     var codegen_1 = require_codegen();
@@ -17997,9 +18107,9 @@ var require_contains = __commonJS({
   }
 });
 
-// node_modules/.pnpm/ajv@8.17.1/node_modules/ajv/dist/vocabularies/applicator/dependencies.js
+// ../../../../Users/hoff/dev/RUDI/apps/cli/node_modules/.pnpm/ajv@8.17.1/node_modules/ajv/dist/vocabularies/applicator/dependencies.js
 var require_dependencies = __commonJS({
-  "node_modules/.pnpm/ajv@8.17.1/node_modules/ajv/dist/vocabularies/applicator/dependencies.js"(exports2) {
+  "../../../../Users/hoff/dev/RUDI/apps/cli/node_modules/.pnpm/ajv@8.17.1/node_modules/ajv/dist/vocabularies/applicator/dependencies.js"(exports2) {
     "use strict";
     Object.defineProperty(exports2, "__esModule", { value: true });
     exports2.validateSchemaDeps = exports2.validatePropertyDeps = exports2.error = void 0;
@@ -18091,9 +18201,9 @@ var require_dependencies = __commonJS({
   }
 });
 
-// node_modules/.pnpm/ajv@8.17.1/node_modules/ajv/dist/vocabularies/applicator/propertyNames.js
+// ../../../../Users/hoff/dev/RUDI/apps/cli/node_modules/.pnpm/ajv@8.17.1/node_modules/ajv/dist/vocabularies/applicator/propertyNames.js
 var require_propertyNames = __commonJS({
-  "node_modules/.pnpm/ajv@8.17.1/node_modules/ajv/dist/vocabularies/applicator/propertyNames.js"(exports2) {
+  "../../../../Users/hoff/dev/RUDI/apps/cli/node_modules/.pnpm/ajv@8.17.1/node_modules/ajv/dist/vocabularies/applicator/propertyNames.js"(exports2) {
     "use strict";
     Object.defineProperty(exports2, "__esModule", { value: true });
     var codegen_1 = require_codegen();
@@ -18134,9 +18244,9 @@ var require_propertyNames = __commonJS({
   }
 });
 
-// node_modules/.pnpm/ajv@8.17.1/node_modules/ajv/dist/vocabularies/applicator/additionalProperties.js
+// ../../../../Users/hoff/dev/RUDI/apps/cli/node_modules/.pnpm/ajv@8.17.1/node_modules/ajv/dist/vocabularies/applicator/additionalProperties.js
 var require_additionalProperties = __commonJS({
-  "node_modules/.pnpm/ajv@8.17.1/node_modules/ajv/dist/vocabularies/applicator/additionalProperties.js"(exports2) {
+  "../../../../Users/hoff/dev/RUDI/apps/cli/node_modules/.pnpm/ajv@8.17.1/node_modules/ajv/dist/vocabularies/applicator/additionalProperties.js"(exports2) {
     "use strict";
     Object.defineProperty(exports2, "__esModule", { value: true });
     var code_1 = require_code2();
@@ -18240,9 +18350,9 @@ var require_additionalProperties = __commonJS({
   }
 });
 
-// node_modules/.pnpm/ajv@8.17.1/node_modules/ajv/dist/vocabularies/applicator/properties.js
+// ../../../../Users/hoff/dev/RUDI/apps/cli/node_modules/.pnpm/ajv@8.17.1/node_modules/ajv/dist/vocabularies/applicator/properties.js
 var require_properties = __commonJS({
-  "node_modules/.pnpm/ajv@8.17.1/node_modules/ajv/dist/vocabularies/applicator/properties.js"(exports2) {
+  "../../../../Users/hoff/dev/RUDI/apps/cli/node_modules/.pnpm/ajv@8.17.1/node_modules/ajv/dist/vocabularies/applicator/properties.js"(exports2) {
     "use strict";
     Object.defineProperty(exports2, "__esModule", { value: true });
     var validate_1 = require_validate();
@@ -18298,9 +18408,9 @@ var require_properties = __commonJS({
   }
 });
 
-// node_modules/.pnpm/ajv@8.17.1/node_modules/ajv/dist/vocabularies/applicator/patternProperties.js
+// ../../../../Users/hoff/dev/RUDI/apps/cli/node_modules/.pnpm/ajv@8.17.1/node_modules/ajv/dist/vocabularies/applicator/patternProperties.js
 var require_patternProperties = __commonJS({
-  "node_modules/.pnpm/ajv@8.17.1/node_modules/ajv/dist/vocabularies/applicator/patternProperties.js"(exports2) {
+  "../../../../Users/hoff/dev/RUDI/apps/cli/node_modules/.pnpm/ajv@8.17.1/node_modules/ajv/dist/vocabularies/applicator/patternProperties.js"(exports2) {
     "use strict";
     Object.defineProperty(exports2, "__esModule", { value: true });
     var code_1 = require_code2();
@@ -18372,9 +18482,9 @@ var require_patternProperties = __commonJS({
   }
 });
 
-// node_modules/.pnpm/ajv@8.17.1/node_modules/ajv/dist/vocabularies/applicator/not.js
+// ../../../../Users/hoff/dev/RUDI/apps/cli/node_modules/.pnpm/ajv@8.17.1/node_modules/ajv/dist/vocabularies/applicator/not.js
 var require_not = __commonJS({
-  "node_modules/.pnpm/ajv@8.17.1/node_modules/ajv/dist/vocabularies/applicator/not.js"(exports2) {
+  "../../../../Users/hoff/dev/RUDI/apps/cli/node_modules/.pnpm/ajv@8.17.1/node_modules/ajv/dist/vocabularies/applicator/not.js"(exports2) {
     "use strict";
     Object.defineProperty(exports2, "__esModule", { value: true });
     var util_1 = require_util();
@@ -18403,9 +18513,9 @@ var require_not = __commonJS({
   }
 });
 
-// node_modules/.pnpm/ajv@8.17.1/node_modules/ajv/dist/vocabularies/applicator/anyOf.js
+// ../../../../Users/hoff/dev/RUDI/apps/cli/node_modules/.pnpm/ajv@8.17.1/node_modules/ajv/dist/vocabularies/applicator/anyOf.js
 var require_anyOf = __commonJS({
-  "node_modules/.pnpm/ajv@8.17.1/node_modules/ajv/dist/vocabularies/applicator/anyOf.js"(exports2) {
+  "../../../../Users/hoff/dev/RUDI/apps/cli/node_modules/.pnpm/ajv@8.17.1/node_modules/ajv/dist/vocabularies/applicator/anyOf.js"(exports2) {
     "use strict";
     Object.defineProperty(exports2, "__esModule", { value: true });
     var code_1 = require_code2();
@@ -18420,9 +18530,9 @@ var require_anyOf = __commonJS({
   }
 });
 
-// node_modules/.pnpm/ajv@8.17.1/node_modules/ajv/dist/vocabularies/applicator/oneOf.js
+// ../../../../Users/hoff/dev/RUDI/apps/cli/node_modules/.pnpm/ajv@8.17.1/node_modules/ajv/dist/vocabularies/applicator/oneOf.js
 var require_oneOf = __commonJS({
-  "node_modules/.pnpm/ajv@8.17.1/node_modules/ajv/dist/vocabularies/applicator/oneOf.js"(exports2) {
+  "../../../../Users/hoff/dev/RUDI/apps/cli/node_modules/.pnpm/ajv@8.17.1/node_modules/ajv/dist/vocabularies/applicator/oneOf.js"(exports2) {
     "use strict";
     Object.defineProperty(exports2, "__esModule", { value: true });
     var codegen_1 = require_codegen();
@@ -18478,9 +18588,9 @@ var require_oneOf = __commonJS({
   }
 });
 
-// node_modules/.pnpm/ajv@8.17.1/node_modules/ajv/dist/vocabularies/applicator/allOf.js
+// ../../../../Users/hoff/dev/RUDI/apps/cli/node_modules/.pnpm/ajv@8.17.1/node_modules/ajv/dist/vocabularies/applicator/allOf.js
 var require_allOf = __commonJS({
-  "node_modules/.pnpm/ajv@8.17.1/node_modules/ajv/dist/vocabularies/applicator/allOf.js"(exports2) {
+  "../../../../Users/hoff/dev/RUDI/apps/cli/node_modules/.pnpm/ajv@8.17.1/node_modules/ajv/dist/vocabularies/applicator/allOf.js"(exports2) {
     "use strict";
     Object.defineProperty(exports2, "__esModule", { value: true });
     var util_1 = require_util();
@@ -18505,9 +18615,9 @@ var require_allOf = __commonJS({
   }
 });
 
-// node_modules/.pnpm/ajv@8.17.1/node_modules/ajv/dist/vocabularies/applicator/if.js
+// ../../../../Users/hoff/dev/RUDI/apps/cli/node_modules/.pnpm/ajv@8.17.1/node_modules/ajv/dist/vocabularies/applicator/if.js
 var require_if = __commonJS({
-  "node_modules/.pnpm/ajv@8.17.1/node_modules/ajv/dist/vocabularies/applicator/if.js"(exports2) {
+  "../../../../Users/hoff/dev/RUDI/apps/cli/node_modules/.pnpm/ajv@8.17.1/node_modules/ajv/dist/vocabularies/applicator/if.js"(exports2) {
     "use strict";
     Object.defineProperty(exports2, "__esModule", { value: true });
     var codegen_1 = require_codegen();
@@ -18574,9 +18684,9 @@ var require_if = __commonJS({
   }
 });
 
-// node_modules/.pnpm/ajv@8.17.1/node_modules/ajv/dist/vocabularies/applicator/thenElse.js
+// ../../../../Users/hoff/dev/RUDI/apps/cli/node_modules/.pnpm/ajv@8.17.1/node_modules/ajv/dist/vocabularies/applicator/thenElse.js
 var require_thenElse = __commonJS({
-  "node_modules/.pnpm/ajv@8.17.1/node_modules/ajv/dist/vocabularies/applicator/thenElse.js"(exports2) {
+  "../../../../Users/hoff/dev/RUDI/apps/cli/node_modules/.pnpm/ajv@8.17.1/node_modules/ajv/dist/vocabularies/applicator/thenElse.js"(exports2) {
     "use strict";
     Object.defineProperty(exports2, "__esModule", { value: true });
     var util_1 = require_util();
@@ -18592,9 +18702,9 @@ var require_thenElse = __commonJS({
   }
 });
 
-// node_modules/.pnpm/ajv@8.17.1/node_modules/ajv/dist/vocabularies/applicator/index.js
+// ../../../../Users/hoff/dev/RUDI/apps/cli/node_modules/.pnpm/ajv@8.17.1/node_modules/ajv/dist/vocabularies/applicator/index.js
 var require_applicator = __commonJS({
-  "node_modules/.pnpm/ajv@8.17.1/node_modules/ajv/dist/vocabularies/applicator/index.js"(exports2) {
+  "../../../../Users/hoff/dev/RUDI/apps/cli/node_modules/.pnpm/ajv@8.17.1/node_modules/ajv/dist/vocabularies/applicator/index.js"(exports2) {
     "use strict";
     Object.defineProperty(exports2, "__esModule", { value: true });
     var additionalItems_1 = require_additionalItems();
@@ -18640,9 +18750,9 @@ var require_applicator = __commonJS({
   }
 });
 
-// node_modules/.pnpm/ajv@8.17.1/node_modules/ajv/dist/vocabularies/format/format.js
+// ../../../../Users/hoff/dev/RUDI/apps/cli/node_modules/.pnpm/ajv@8.17.1/node_modules/ajv/dist/vocabularies/format/format.js
 var require_format = __commonJS({
-  "node_modules/.pnpm/ajv@8.17.1/node_modules/ajv/dist/vocabularies/format/format.js"(exports2) {
+  "../../../../Users/hoff/dev/RUDI/apps/cli/node_modules/.pnpm/ajv@8.17.1/node_modules/ajv/dist/vocabularies/format/format.js"(exports2) {
     "use strict";
     Object.defineProperty(exports2, "__esModule", { value: true });
     var codegen_1 = require_codegen();
@@ -18730,9 +18840,9 @@ var require_format = __commonJS({
   }
 });
 
-// node_modules/.pnpm/ajv@8.17.1/node_modules/ajv/dist/vocabularies/format/index.js
+// ../../../../Users/hoff/dev/RUDI/apps/cli/node_modules/.pnpm/ajv@8.17.1/node_modules/ajv/dist/vocabularies/format/index.js
 var require_format2 = __commonJS({
-  "node_modules/.pnpm/ajv@8.17.1/node_modules/ajv/dist/vocabularies/format/index.js"(exports2) {
+  "../../../../Users/hoff/dev/RUDI/apps/cli/node_modules/.pnpm/ajv@8.17.1/node_modules/ajv/dist/vocabularies/format/index.js"(exports2) {
     "use strict";
     Object.defineProperty(exports2, "__esModule", { value: true });
     var format_1 = require_format();
@@ -18741,9 +18851,9 @@ var require_format2 = __commonJS({
   }
 });
 
-// node_modules/.pnpm/ajv@8.17.1/node_modules/ajv/dist/vocabularies/metadata.js
+// ../../../../Users/hoff/dev/RUDI/apps/cli/node_modules/.pnpm/ajv@8.17.1/node_modules/ajv/dist/vocabularies/metadata.js
 var require_metadata = __commonJS({
-  "node_modules/.pnpm/ajv@8.17.1/node_modules/ajv/dist/vocabularies/metadata.js"(exports2) {
+  "../../../../Users/hoff/dev/RUDI/apps/cli/node_modules/.pnpm/ajv@8.17.1/node_modules/ajv/dist/vocabularies/metadata.js"(exports2) {
     "use strict";
     Object.defineProperty(exports2, "__esModule", { value: true });
     exports2.contentVocabulary = exports2.metadataVocabulary = void 0;
@@ -18764,9 +18874,9 @@ var require_metadata = __commonJS({
   }
 });
 
-// node_modules/.pnpm/ajv@8.17.1/node_modules/ajv/dist/vocabularies/draft7.js
+// ../../../../Users/hoff/dev/RUDI/apps/cli/node_modules/.pnpm/ajv@8.17.1/node_modules/ajv/dist/vocabularies/draft7.js
 var require_draft7 = __commonJS({
-  "node_modules/.pnpm/ajv@8.17.1/node_modules/ajv/dist/vocabularies/draft7.js"(exports2) {
+  "../../../../Users/hoff/dev/RUDI/apps/cli/node_modules/.pnpm/ajv@8.17.1/node_modules/ajv/dist/vocabularies/draft7.js"(exports2) {
     "use strict";
     Object.defineProperty(exports2, "__esModule", { value: true });
     var core_1 = require_core2();
@@ -18786,9 +18896,9 @@ var require_draft7 = __commonJS({
   }
 });
 
-// node_modules/.pnpm/ajv@8.17.1/node_modules/ajv/dist/vocabularies/discriminator/types.js
+// ../../../../Users/hoff/dev/RUDI/apps/cli/node_modules/.pnpm/ajv@8.17.1/node_modules/ajv/dist/vocabularies/discriminator/types.js
 var require_types = __commonJS({
-  "node_modules/.pnpm/ajv@8.17.1/node_modules/ajv/dist/vocabularies/discriminator/types.js"(exports2) {
+  "../../../../Users/hoff/dev/RUDI/apps/cli/node_modules/.pnpm/ajv@8.17.1/node_modules/ajv/dist/vocabularies/discriminator/types.js"(exports2) {
     "use strict";
     Object.defineProperty(exports2, "__esModule", { value: true });
     exports2.DiscrError = void 0;
@@ -18800,9 +18910,9 @@ var require_types = __commonJS({
   }
 });
 
-// node_modules/.pnpm/ajv@8.17.1/node_modules/ajv/dist/vocabularies/discriminator/index.js
+// ../../../../Users/hoff/dev/RUDI/apps/cli/node_modules/.pnpm/ajv@8.17.1/node_modules/ajv/dist/vocabularies/discriminator/index.js
 var require_discriminator = __commonJS({
-  "node_modules/.pnpm/ajv@8.17.1/node_modules/ajv/dist/vocabularies/discriminator/index.js"(exports2) {
+  "../../../../Users/hoff/dev/RUDI/apps/cli/node_modules/.pnpm/ajv@8.17.1/node_modules/ajv/dist/vocabularies/discriminator/index.js"(exports2) {
     "use strict";
     Object.defineProperty(exports2, "__esModule", { value: true });
     var codegen_1 = require_codegen();
@@ -18905,9 +19015,9 @@ var require_discriminator = __commonJS({
   }
 });
 
-// node_modules/.pnpm/ajv@8.17.1/node_modules/ajv/dist/refs/json-schema-draft-07.json
+// ../../../../Users/hoff/dev/RUDI/apps/cli/node_modules/.pnpm/ajv@8.17.1/node_modules/ajv/dist/refs/json-schema-draft-07.json
 var require_json_schema_draft_07 = __commonJS({
-  "node_modules/.pnpm/ajv@8.17.1/node_modules/ajv/dist/refs/json-schema-draft-07.json"(exports2, module2) {
+  "../../../../Users/hoff/dev/RUDI/apps/cli/node_modules/.pnpm/ajv@8.17.1/node_modules/ajv/dist/refs/json-schema-draft-07.json"(exports2, module2) {
     module2.exports = {
       $schema: "http://json-schema.org/draft-07/schema#",
       $id: "http://json-schema.org/draft-07/schema#",
@@ -19062,9 +19172,9 @@ var require_json_schema_draft_07 = __commonJS({
   }
 });
 
-// node_modules/.pnpm/ajv@8.17.1/node_modules/ajv/dist/ajv.js
+// ../../../../Users/hoff/dev/RUDI/apps/cli/node_modules/.pnpm/ajv@8.17.1/node_modules/ajv/dist/ajv.js
 var require_ajv = __commonJS({
-  "node_modules/.pnpm/ajv@8.17.1/node_modules/ajv/dist/ajv.js"(exports2, module2) {
+  "../../../../Users/hoff/dev/RUDI/apps/cli/node_modules/.pnpm/ajv@8.17.1/node_modules/ajv/dist/ajv.js"(exports2, module2) {
     "use strict";
     Object.defineProperty(exports2, "__esModule", { value: true });
     exports2.MissingRefError = exports2.ValidationError = exports2.CodeGen = exports2.Name = exports2.nil = exports2.stringify = exports2.str = exports2._ = exports2.KeywordCxt = exports2.Ajv = void 0;
@@ -19132,9 +19242,9 @@ var require_ajv = __commonJS({
   }
 });
 
-// node_modules/.pnpm/ajv-formats@3.0.1_ajv@8.17.1/node_modules/ajv-formats/dist/formats.js
+// ../../../../Users/hoff/dev/RUDI/apps/cli/node_modules/.pnpm/ajv-formats@3.0.1_ajv@8.17.1/node_modules/ajv-formats/dist/formats.js
 var require_formats = __commonJS({
-  "node_modules/.pnpm/ajv-formats@3.0.1_ajv@8.17.1/node_modules/ajv-formats/dist/formats.js"(exports2) {
+  "../../../../Users/hoff/dev/RUDI/apps/cli/node_modules/.pnpm/ajv-formats@3.0.1_ajv@8.17.1/node_modules/ajv-formats/dist/formats.js"(exports2) {
     "use strict";
     Object.defineProperty(exports2, "__esModule", { value: true });
     exports2.formatNames = exports2.fastFormats = exports2.fullFormats = void 0;
@@ -19335,9 +19445,9 @@ var require_formats = __commonJS({
   }
 });
 
-// node_modules/.pnpm/ajv-formats@3.0.1_ajv@8.17.1/node_modules/ajv-formats/dist/limit.js
+// ../../../../Users/hoff/dev/RUDI/apps/cli/node_modules/.pnpm/ajv-formats@3.0.1_ajv@8.17.1/node_modules/ajv-formats/dist/limit.js
 var require_limit = __commonJS({
-  "node_modules/.pnpm/ajv-formats@3.0.1_ajv@8.17.1/node_modules/ajv-formats/dist/limit.js"(exports2) {
+  "../../../../Users/hoff/dev/RUDI/apps/cli/node_modules/.pnpm/ajv-formats@3.0.1_ajv@8.17.1/node_modules/ajv-formats/dist/limit.js"(exports2) {
     "use strict";
     Object.defineProperty(exports2, "__esModule", { value: true });
     exports2.formatLimitDefinition = void 0;
@@ -19407,9 +19517,9 @@ var require_limit = __commonJS({
   }
 });
 
-// node_modules/.pnpm/ajv-formats@3.0.1_ajv@8.17.1/node_modules/ajv-formats/dist/index.js
+// ../../../../Users/hoff/dev/RUDI/apps/cli/node_modules/.pnpm/ajv-formats@3.0.1_ajv@8.17.1/node_modules/ajv-formats/dist/index.js
 var require_dist2 = __commonJS({
-  "node_modules/.pnpm/ajv-formats@3.0.1_ajv@8.17.1/node_modules/ajv-formats/dist/index.js"(exports2, module2) {
+  "../../../../Users/hoff/dev/RUDI/apps/cli/node_modules/.pnpm/ajv-formats@3.0.1_ajv@8.17.1/node_modules/ajv-formats/dist/index.js"(exports2, module2) {
     "use strict";
     Object.defineProperty(exports2, "__esModule", { value: true });
     var formats_1 = require_formats();
@@ -19449,7 +19559,7 @@ var require_dist2 = __commonJS({
   }
 });
 
-// packages/utils/src/args.js
+// ../../../../Users/hoff/dev/RUDI/apps/cli/packages/utils/src/args.js
 function parseArgs(argv) {
   const flags = {};
   const args = [];
@@ -19497,7 +19607,7 @@ function parseArgs(argv) {
   return { command, args, flags, passthrough };
 }
 
-// packages/utils/src/help.js
+// ../../../../Users/hoff/dev/RUDI/apps/cli/packages/utils/src/help.js
 function printVersion(version) {
   console.log(`rudi v${version}`);
 }
@@ -20176,7 +20286,7 @@ var path16 = __toESM(require("path"), 1);
 init_src5();
 init_src4();
 
-// packages/mcp/src/agents.js
+// ../../../../Users/hoff/dev/RUDI/apps/cli/packages/mcp/src/agents.js
 var import_fs9 = __toESM(require("fs"), 1);
 var import_path9 = __toESM(require("path"), 1);
 var import_os4 = __toESM(require("os"), 1);
@@ -20412,7 +20522,7 @@ function getMcpServerSummary() {
   return summary;
 }
 
-// packages/mcp/src/registry.js
+// ../../../../Users/hoff/dev/RUDI/apps/cli/packages/mcp/src/registry.js
 var fs13 = __toESM(require("fs/promises"), 1);
 var path14 = __toESM(require("path"), 1);
 var os5 = __toESM(require("os"), 1);
@@ -20657,15 +20767,27 @@ init_src();
 init_src5();
 
 // src/commands/related-skills.js
+function normalizeSkillId(value) {
+  if (typeof value !== "string") return null;
+  const trimmed = value.trim();
+  if (!trimmed) return null;
+  return trimmed.startsWith("skill:") ? trimmed : trimmed.startsWith("prompt:") ? trimmed.replace(/^prompt:/, "skill:") : trimmed.includes(":") ? null : `skill:${trimmed}`;
+}
+function getOperatorSkillId(pkg) {
+  return normalizeSkillId(pkg?.related?.operatorSkill);
+}
+function formatOperatorSkillLine(pkg, options = {}) {
+  const { label = "Operator skill" } = options;
+  const id = getOperatorSkillId(pkg);
+  if (!id) return null;
+  return `${label}: ${id}`;
+}
 function getRelatedSkillIds(pkg) {
   const skills = Array.isArray(pkg?.related?.skills) ? pkg.related.skills : [];
   const ids = [];
   const seen = /* @__PURE__ */ new Set();
   for (const value of skills) {
-    if (typeof value !== "string") continue;
-    const trimmed = value.trim();
-    if (!trimmed) continue;
-    const id = trimmed.startsWith("skill:") ? trimmed : trimmed.startsWith("prompt:") ? trimmed.replace(/^prompt:/, "skill:") : trimmed.includes(":") ? null : `skill:${trimmed}`;
+    const id = normalizeSkillId(value);
     if (!id || seen.has(id)) continue;
     seen.add(id);
     ids.push(id);
@@ -20674,7 +20796,8 @@ function getRelatedSkillIds(pkg) {
 }
 function formatRelatedSkillsLine(pkg, options = {}) {
   const { label = "Related skills" } = options;
-  const ids = getRelatedSkillIds(pkg);
+  const operatorSkill = getOperatorSkillId(pkg);
+  const ids = getRelatedSkillIds(pkg).filter((id) => id !== operatorSkill);
   if (ids.length === 0) return null;
   return `${label}: ${ids.join(", ")}`;
 }
@@ -20864,6 +20987,10 @@ ${headingForKind2(pkgKind)} (${pkgs.length}):`);
         if (pkg.tags && pkg.tags.length > 0) {
           console.log(`    Tags: ${pkg.tags.join(", ")}`);
         }
+        const operatorSkillLine = formatOperatorSkillLine(pkg);
+        if (operatorSkillLine) {
+          console.log(`    ${operatorSkillLine}`);
+        }
         const relatedSkillsLine = formatRelatedSkillsLine(pkg);
         if (relatedSkillsLine) {
           console.log(`    ${relatedSkillsLine}`);
@@ -21009,7 +21136,7 @@ function buildClaudeSkillFiles(pkg, sourceContent) {
   const body = parsed.body || `Use the installed RUDI skill \`skill:${skillName}\` as the source of truth.`;
   const skillMd = [
     "---",
-    `name: ${yamlString(displayName)}`,
+    `name: ${yamlString(skillName)}`,
     `description: ${yamlString(description)}`,
     "---",
     "",
@@ -21401,13 +21528,32 @@ function getRelatedSkillInstallMode(flags = {}) {
 function buildRelatedSkillInstallPlan(resolved, flags = {}) {
   const mode = getRelatedSkillInstallMode(flags);
   const relatedSkills = Array.isArray(resolved?.relatedSkills) ? resolved.relatedSkills : [];
-  const missing = relatedSkills.filter((skill) => !skill.installed);
+  const operatorSkill = relatedSkills.find((skill) => skill.isOperator) || null;
+  const companionSkills = relatedSkills.filter((skill) => !skill.isOperator);
+  const missingOperator = operatorSkill && !operatorSkill.installed ? [operatorSkill] : [];
+  const missingCompanions = companionSkills.filter((skill) => !skill.installed);
+  const missing = [...missingOperator, ...missingCompanions];
   return {
     mode,
     relatedSkills,
+    operatorSkill,
+    companionSkills,
+    missingOperator,
+    missingCompanions,
     missing,
-    toInstall: mode === "include" ? missing : []
+    toInstall: [
+      ...missingOperator,
+      ...mode === "include" ? missingCompanions : []
+    ]
   };
+}
+function selectRelatedSkillsForInstall(plan, includeCompanions = false) {
+  if (!plan) return [];
+  const selected = [...plan.missingOperator || []];
+  if (plan.mode === "include" || plan.mode === "offer" && includeCompanions) {
+    selected.push(...plan.missingCompanions || []);
+  }
+  return selected;
 }
 async function activateInstalledStack(stackId, options = {}, dependencies = {}) {
   const missingSecrets = Array.isArray(options.missingSecrets) ? [...new Set(options.missingSecrets.filter(Boolean))] : [];
@@ -21467,36 +21613,51 @@ async function syncRelatedSkillWrappers(relatedSkills, installResults, installed
 function printRelatedSkillSummary(plan) {
   if (!plan || plan.relatedSkills.length === 0) return;
   console.log(`
-Related skills:`);
-  for (const skill of plan.relatedSkills) {
+Operator skill:`);
+  if (plan.operatorSkill) {
+    const status = plan.operatorSkill.installed ? "(installed)" : "(will install with stack)";
+    console.log(`  - ${plan.operatorSkill.id} ${status}`);
+  } else {
+    console.log(`  - missing from registry metadata`);
+  }
+  if (plan.companionSkills.length === 0) return;
+  console.log(`
+Companion skills:`);
+  for (const skill of plan.companionSkills) {
     const status = skill.installed ? "(installed)" : "(available)";
     console.log(`  - ${skill.id} ${status}`);
   }
-  if (plan.missing.length === 0) {
-    console.log(`  All related skills are already installed.`);
+  if (plan.missingCompanions.length === 0) {
+    console.log(`  All companion skills are already installed.`);
   } else if (plan.mode === "include") {
-    console.log(`  Missing related skills will be installed after the stack.`);
+    console.log(`  Missing companion skills will be installed after the stack.`);
   } else if (plan.mode === "skip") {
-    console.log(`  Skipping related skills because --no-related-skills was set.`);
+    console.log(`  Skipping companion skills because --no-related-skills was set.`);
   } else {
-    console.log(`  Related skills are editable workflow playbooks installed into ~/.rudi/skills.`);
+    console.log(`  Companion skills are editable workflow playbooks installed into ~/.rudi/skills.`);
   }
 }
 async function promptForRelatedSkills(plan) {
   if (!plan || plan.missing.length === 0) return [];
-  if (plan.mode === "include") return plan.toInstall;
-  if (plan.mode === "skip") return [];
-  if (!process.stdin.isTTY || !process.stdout.isTTY) return [];
+  if (plan.mode === "include" || plan.mode === "skip") {
+    return selectRelatedSkillsForInstall(plan);
+  }
+  if (plan.missingCompanions.length === 0) {
+    return selectRelatedSkillsForInstall(plan);
+  }
+  if (!process.stdin.isTTY || !process.stdout.isTTY) {
+    return selectRelatedSkillsForInstall(plan);
+  }
   const { createInterface: createInterface2 } = await import("node:readline/promises");
   const readline3 = createInterface2({
     input: process.stdin,
     output: process.stdout
   });
   try {
-    const label = plan.missing.length === 1 ? plan.missing[0].id : `${plan.missing.length} related skills`;
+    const label = plan.missingCompanions.length === 1 ? plan.missingCompanions[0].id : `${plan.missingCompanions.length} companion skills`;
     const answer = await readline3.question(`
 Install ${label} now? [y/N] `);
-    return /^(y|yes)$/i.test(answer.trim()) ? plan.missing : [];
+    return selectRelatedSkillsForInstall(plan, /^(y|yes)$/i.test(answer.trim()));
   } finally {
     readline3.close();
   }
@@ -21525,6 +21686,40 @@ async function installRelatedSkills(skills, options = {}) {
     });
   }
   return results;
+}
+async function installAndSyncStackSkills(plan, options = {}) {
+  const {
+    allowScripts = false,
+    withShims = false,
+    installedAgents = getInstalledAgents()
+  } = options;
+  const selectedSkills = await promptForRelatedSkills(plan);
+  const installResults = selectedSkills.length > 0 ? await installRelatedSkills(selectedSkills, { allowScripts, withShims }) : [];
+  if (installResults.length > 0) {
+    console.log(`
+  Installed skills:`);
+    for (const result of installResults) {
+      if (result.success) {
+        console.log(`    - ${result.id} installed`);
+      } else {
+        console.log(`    - ${result.id} failed: ${result.error}`);
+      }
+    }
+  }
+  const wrapperSync = await syncRelatedSkillWrappers(
+    plan.relatedSkills,
+    installResults,
+    installedAgents
+  );
+  for (const target of wrapperSync.targets) {
+    if (wrapperSync.errors[target]) {
+      console.log(`    - ${target} native skill sync failed: ${wrapperSync.errors[target]}`);
+      console.log(`      Retry with: rudi skills sync ${target}`);
+    } else {
+      console.log(`    - ${target} native skill wrapper synced`);
+    }
+  }
+  return { selectedSkills, installResults, wrapperSync };
 }
 function getStackEntryPoint(stackPath, manifest) {
   const command = getStackCommand(manifest);
@@ -21711,6 +21906,12 @@ Package: ${resolved.name} (${resolved.id})`);
       console.log(`Description: ${resolved.description}`);
     }
     if (resolved.installed && !force) {
+      if (resolved.kind === "stack" && relatedSkillPlan.missing.length > 0) {
+        console.log(`
+Stack already installed. Installing missing operator or companion skills.`);
+        await installAndSyncStackSkills(relatedSkillPlan, { allowScripts, withShims });
+        return;
+      }
       console.log(`
 Already installed. Use --force to reinstall.`);
       return;
@@ -21856,32 +22057,10 @@ ${depResult.error}`);
         console.log(`    - ${id}`);
       }
     }
-    const selectedRelatedSkills = await promptForRelatedSkills(relatedSkillPlan);
-    const relatedSkillResults = selectedRelatedSkills.length > 0 ? await installRelatedSkills(selectedRelatedSkills, { allowScripts, withShims }) : [];
-    if (relatedSkillResults.length > 0) {
-      console.log(`
-  Related skills:`);
-      for (const relatedResult of relatedSkillResults) {
-        if (relatedResult.success) {
-          console.log(`    - ${relatedResult.id} installed`);
-        } else {
-          console.log(`    - ${relatedResult.id} failed: ${relatedResult.error}`);
-        }
-      }
-    }
-    const wrapperSync = await syncRelatedSkillWrappers(
-      relatedSkillPlan.relatedSkills,
-      relatedSkillResults,
-      getInstalledAgents()
+    const { installResults: relatedSkillResults } = await installAndSyncStackSkills(
+      relatedSkillPlan,
+      { allowScripts, withShims }
     );
-    for (const target of wrapperSync.targets) {
-      if (wrapperSync.errors[target]) {
-        console.log(`    - ${target} native skill sync failed: ${wrapperSync.errors[target]}`);
-        console.log(`      Retry with: rudi skills sync ${target}`);
-      } else {
-        console.log(`    - ${target} native skill wrapper synced`);
-      }
-    }
     const { found, missing } = await checkSecrets(manifest);
     const envExampleKeys = await parseEnvExample(result.path);
     for (const key of envExampleKeys) {
@@ -21975,13 +22154,13 @@ Next steps:`);
 // src/commands/run.js
 init_src5();
 
-// packages/runner/src/spawn.js
+// ../../../../Users/hoff/dev/RUDI/apps/cli/packages/runner/src/spawn.js
 var import_child_process6 = require("child_process");
 var import_path11 = __toESM(require("path"), 1);
 var import_fs11 = __toESM(require("fs"), 1);
 init_src();
 
-// packages/runner/src/secrets.js
+// ../../../../Users/hoff/dev/RUDI/apps/cli/packages/runner/src/secrets.js
 init_src4();
 function loadSecrets3() {
   return loadSecrets2();
@@ -22031,7 +22210,7 @@ function redactSecrets(text, secrets) {
   return result;
 }
 
-// packages/runner/src/spawn.js
+// ../../../../Users/hoff/dev/RUDI/apps/cli/packages/runner/src/spawn.js
 function existingDirectory2(dirPath) {
   return typeof dirPath === "string" && import_fs11.default.existsSync(dirPath) && import_fs11.default.statSync(dirPath).isDirectory();
 }
@@ -22197,7 +22376,7 @@ function resolveRelativePath(value, basePath) {
   return value;
 }
 
-// packages/manifest/src/stack.js
+// ../../../../Users/hoff/dev/RUDI/apps/cli/packages/manifest/src/stack.js
 var import_yaml2 = __toESM(require_dist(), 1);
 var import_fs12 = __toESM(require("fs"), 1);
 var import_path12 = __toESM(require("path"), 1);
@@ -22328,16 +22507,16 @@ function findStackManifest(dir) {
   return null;
 }
 
-// packages/manifest/src/skill.js
+// ../../../../Users/hoff/dev/RUDI/apps/cli/packages/manifest/src/skill.js
 var import_yaml3 = __toESM(require_dist(), 1);
 
-// packages/manifest/src/prompt.js
+// ../../../../Users/hoff/dev/RUDI/apps/cli/packages/manifest/src/prompt.js
 var import_yaml4 = __toESM(require_dist(), 1);
 
-// packages/manifest/src/runtime.js
+// ../../../../Users/hoff/dev/RUDI/apps/cli/packages/manifest/src/runtime.js
 var import_yaml5 = __toESM(require_dist(), 1);
 
-// packages/manifest/src/validate.js
+// ../../../../Users/hoff/dev/RUDI/apps/cli/packages/manifest/src/validate.js
 var import_ajv = __toESM(require_ajv(), 1);
 var import_ajv_formats = __toESM(require_dist2(), 1);
 var ajv = new import_ajv.default({ allErrors: true, strict: false });
@@ -23914,8 +24093,8 @@ function buildRudiInstructionBlock(agent = "generic") {
     "- Router binary: `~/.rudi/bins/rudi-router`.",
     "- Tool index cache: `~/.rudi/cache/tool-index.json`.",
     "- Installed stacks: `rudi list stacks --json`.",
-    "- Stack manifests may declare related skills; inspect package details with `rudi which <stack>` when workflow behavior matters.",
-    "- Install a stack with its missing related skills: `rudi install <stack> --with-related-skills`.",
+    "- Every stack declares a primary operator skill; inspect it and any optional companions with `rudi which <stack>`.",
+    "- The operator is installed automatically with the stack. Add all optional companions with `rudi install <stack> --with-related-skills`.",
     "- Rebuild router cache: `rudi index --json`.",
     "- Daemon status: `rudi daemon status --json`.",
     "",
@@ -24598,6 +24777,10 @@ Installed stacks:`);
     if (stack.description) {
       console.log(`About:      ${stack.description}`);
     }
+    const operatorSkillLine = formatOperatorSkillLine(stack);
+    if (operatorSkillLine) {
+      console.log(operatorSkillLine);
+    }
     const relatedSkillsLine = formatRelatedSkillsLine(stack);
     if (relatedSkillsLine) {
       console.log(relatedSkillsLine);
@@ -24627,9 +24810,9 @@ Installed stacks:`);
     console.log("Commands:");
     console.log(`  rudi run ${stack.id}          Test the stack`);
     console.log(`  rudi secrets ${stack.id}      Configure secrets`);
-    if (getRelatedSkillIds(stack).length > 0) {
+    if (relatedSkillsLine) {
       console.log(`  rudi install ${stack.id} --with-related-skills`);
-      console.log(`                         Install editable related skills`);
+      console.log(`                         Install optional companion skills`);
     }
     if (runtimeInfo.entry) {
       console.log("");
