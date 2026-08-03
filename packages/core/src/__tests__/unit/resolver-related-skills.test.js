@@ -31,7 +31,10 @@ test('resolvePackage surfaces related skills without adding them to dependency i
         runtime: 'node',
         provides: { tools: ['video_render'] },
         mcp: { transport: 'stdio', command: 'node', args: ['src/index.js'] },
-        related: { skills: ['skill:shortform-your-words-script'] },
+        related: {
+          operatorSkill: 'skill:shortform-your-words-script',
+          skills: ['skill:shortform-your-words-script'],
+        },
       },
       'skill:shortform-your-words-script': {
         id: 'skill:shortform-your-words-script',
@@ -49,6 +52,7 @@ test('resolvePackage surfaces related skills without adding them to dependency i
     name: 'Video Editor',
     version: '1.0.0',
     related: {
+      operatorSkill: 'skill:shortform-your-words-script',
       skills: ['skill:shortform-your-words-script']
     }
   });
@@ -63,6 +67,7 @@ test('resolvePackage surfaces related skills without adding them to dependency i
       kind: skill.kind,
       name: skill.name,
       installed: skill.installed,
+      isOperator: skill.isOperator,
     })),
     [
       {
@@ -70,10 +75,136 @@ test('resolvePackage surfaces related skills without adding them to dependency i
         kind: 'skill',
         name: 'Shortform Your Words Script',
         installed: false,
+        isOperator: true,
       },
     ]
   );
   assert.deepEqual(getInstallOrder(resolved).map((pkg) => pkg.id), ['stack:video-editor']);
+
+  fs.rmSync(root, { recursive: true, force: true });
+});
+
+test('resolvePackage rejects a stack whose primary operator skill is missing', async () => {
+  const root = fs.mkdtempSync(path.join(os.tmpdir(), 'rudi-missing-operator-skill-'));
+  const registryRoot = path.join(root, 'registry');
+  const rudiHome = path.join(root, '.rudi');
+
+  process.env.RUDI_HOME = rudiHome;
+  process.env.USE_LOCAL_REGISTRY = 'true';
+  process.env.RUDI_REGISTRY_ROOT = registryRoot;
+
+  writeJson(path.join(registryRoot, 'index.json'), {
+    schemaVersion: '2',
+    packages: {
+      'stack:demo': {
+        id: 'stack:demo',
+        kind: 'stack',
+        name: 'Demo',
+        version: '1.0.0',
+        delivery: 'remote',
+        install: { source: 'catalog', path: 'catalog/stacks/demo' },
+        runtime: 'node',
+        provides: { tools: ['demo_run'] },
+        mcp: { transport: 'stdio', command: 'node', args: ['src/index.js'] },
+        related: { skills: [] },
+      },
+    },
+  });
+
+  const { resolvePackage } = await import('../../resolver.js');
+
+  await assert.rejects(
+    resolvePackage('stack:demo'),
+    /stack:demo requires related\.operatorSkill/
+  );
+
+  fs.rmSync(root, { recursive: true, force: true });
+});
+
+test('resolvePackage rejects an operator skill omitted from related.skills', async () => {
+  const root = fs.mkdtempSync(path.join(os.tmpdir(), 'rudi-unrelated-operator-skill-'));
+  const registryRoot = path.join(root, 'registry');
+  const rudiHome = path.join(root, '.rudi');
+
+  process.env.RUDI_HOME = rudiHome;
+  process.env.USE_LOCAL_REGISTRY = 'true';
+  process.env.RUDI_REGISTRY_ROOT = registryRoot;
+
+  writeJson(path.join(registryRoot, 'index.json'), {
+    schemaVersion: '2',
+    packages: {
+      'stack:demo': {
+        id: 'stack:demo',
+        kind: 'stack',
+        name: 'Demo',
+        version: '1.0.0',
+        delivery: 'remote',
+        install: { source: 'catalog', path: 'catalog/stacks/demo' },
+        runtime: 'node',
+        provides: { tools: ['demo_run'] },
+        mcp: { transport: 'stdio', command: 'node', args: ['src/index.js'] },
+        related: {
+          operatorSkill: 'skill:demo',
+          skills: [],
+        },
+      },
+      'skill:demo': {
+        id: 'skill:demo',
+        kind: 'skill',
+        name: 'Demo Operator',
+        version: '1.0.0',
+        delivery: 'remote',
+        install: { source: 'catalog', path: 'catalog/skills/demo.md' },
+      },
+    },
+  });
+
+  const { resolvePackage } = await import('../../resolver.js');
+
+  await assert.rejects(
+    resolvePackage('stack:demo'),
+    /related\.operatorSkill must appear in related\.skills/
+  );
+
+  fs.rmSync(root, { recursive: true, force: true });
+});
+
+test('resolvePackage rejects an unknown primary operator skill package', async () => {
+  const root = fs.mkdtempSync(path.join(os.tmpdir(), 'rudi-unknown-operator-skill-'));
+  const registryRoot = path.join(root, 'registry');
+  const rudiHome = path.join(root, '.rudi');
+
+  process.env.RUDI_HOME = rudiHome;
+  process.env.USE_LOCAL_REGISTRY = 'true';
+  process.env.RUDI_REGISTRY_ROOT = registryRoot;
+
+  writeJson(path.join(registryRoot, 'index.json'), {
+    schemaVersion: '2',
+    packages: {
+      'stack:demo': {
+        id: 'stack:demo',
+        kind: 'stack',
+        name: 'Demo',
+        version: '1.0.0',
+        delivery: 'remote',
+        install: { source: 'catalog', path: 'catalog/stacks/demo' },
+        runtime: 'node',
+        provides: { tools: ['demo_run'] },
+        mcp: { transport: 'stdio', command: 'node', args: ['src/index.js'] },
+        related: {
+          operatorSkill: 'skill:missing',
+          skills: ['skill:missing'],
+        },
+      },
+    },
+  });
+
+  const { resolvePackage } = await import('../../resolver.js');
+
+  await assert.rejects(
+    resolvePackage('stack:demo'),
+    /operator skill package not found: skill:missing/
+  );
 
   fs.rmSync(root, { recursive: true, force: true });
 });

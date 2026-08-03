@@ -106,6 +106,18 @@ function normalizeSkillPackageId(id) {
 
 async function resolveRelatedSkills(pkg) {
   const relatedSkillIds = pkg.related?.skills || [];
+  const operatorSkillId = normalizeSkillPackageId(pkg.related?.operatorSkill);
+  if (pkg.kind === 'stack' && !operatorSkillId) {
+    throw new Error(`${pkg.id || 'Stack package'} requires related.operatorSkill`);
+  }
+  const normalizedRelatedSkillIds = relatedSkillIds
+    .map((id) => normalizeSkillPackageId(id))
+    .filter(Boolean);
+  if (operatorSkillId && !normalizedRelatedSkillIds.includes(operatorSkillId)) {
+    throw new Error(
+      `${pkg.id || 'Stack package'} related.operatorSkill must appear in related.skills`
+    );
+  }
   const relatedSkills = [];
   const seen = new Set();
 
@@ -115,7 +127,12 @@ async function resolveRelatedSkills(pkg) {
     seen.add(skillId);
 
     const skillPkg = await getPackage(skillId);
-    if (!skillPkg) continue;
+    if (!skillPkg) {
+      if (skillId === operatorSkillId) {
+        throw new Error(`operator skill package not found: ${skillId}`);
+      }
+      continue;
+    }
 
     relatedSkills.push({
       id: skillId,
@@ -123,6 +140,7 @@ async function resolveRelatedSkills(pkg) {
       name: skillPkg.name,
       version: skillPkg.version,
       installed: isPackageInstalled(skillId),
+      isOperator: skillId === operatorSkillId,
       dependencies: []
     });
   }

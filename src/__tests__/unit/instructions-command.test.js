@@ -29,7 +29,8 @@ test('buildRudiInstructionBlock emits a bounded discover-first block', () => {
   assert.match(block, /~\/\.rudi\/skills/);
   assert.match(block, /single RUDI MCP router/);
   assert.match(block, /rudi list stacks --json/);
-  assert.match(block, /Stack manifests may declare related skills/);
+  assert.match(block, /Every stack declares a primary operator skill/);
+  assert.match(block, /operator is installed automatically/);
   assert.match(block, /--with-related-skills/);
   assert.match(block, /rudi integrate codex/);
   assert.doesNotMatch(block, /rudi mcp --list/);

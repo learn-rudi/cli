@@ -117,6 +117,22 @@ rudi integrate all         # Add the router to all detected agents
 This modifies the agent's MCP configuration to include one managed RUDI router;
 stack discovery and secret injection stay inside RUDI.
 
+Every registry stack declares a primary operator skill. A normal stack install
+installs that skill automatically and creates a native wrapper for detected
+Codex and Claude hosts without overwriting an existing wrapper. Additional
+companion workflows remain optional:
+
+```bash
+rudi install stack:video-editor                 # operator skill included
+rudi install stack:video-editor --with-related-skills # include companions
+rudi install stack:video-editor --no-related-skills   # operator only
+```
+
+In Claude Code, invoke the operator as `/skill-name`. In Codex, use `/skills`
+to select it or mention it as `$skill-name`. The operator guides the host
+through the stack's MCP tools; users do not need to know the individual tool
+names.
+
 Each native host has its own skill directory. After installing RUDI skills,
 sync editable native wrappers when you want them to appear in the host's
 skill/slash UI:
