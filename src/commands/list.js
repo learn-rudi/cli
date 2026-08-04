@@ -13,6 +13,7 @@
 import { listInstalled } from '@learnrudi/core';
 import { detectAllMcpServers, getInstalledAgents, getMcpServerSummary, AGENT_CONFIGS } from '@learnrudi/mcp';
 import { formatOperatorSkillLine, formatRelatedSkillsLine } from './related-skills.js';
+import { printPackageLifecycle } from './package-lifecycle.js';
 
 function pluralizeKind(kind) {
   if (!kind) return 'packages';
@@ -183,6 +184,7 @@ export async function cmdList(args, flags) {
           if (pkg.description) {
             console.log(`      ${pkg.description}`);
           }
+          printPackageLifecycle(pkg, '      ');
           if (pkg.requires && pkg.requires.stacks && pkg.requires.stacks.length > 0) {
             console.log(`      Requires: ${pkg.requires.stacks.join(', ')}`);
           }
@@ -223,6 +225,7 @@ export async function cmdList(args, flags) {
         if (pkg.description) {
           console.log(`    ${pkg.description}`);
         }
+        printPackageLifecycle(pkg, '    ');
         if (pkg.category) {
           console.log(`    Category: ${pkg.category}`);
         }

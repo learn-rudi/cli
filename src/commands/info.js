@@ -14,6 +14,7 @@ import fs from 'fs';
 import path from 'path';
 import { getPackagePath, parsePackageId, PATHS } from '@learnrudi/env';
 import { getShimOwner, validateShim } from '@learnrudi/core';
+import { printPackageLifecycle } from './package-lifecycle.js';
 
 export async function cmdInfo(args, flags) {
   const pkgId = args[0];
@@ -58,6 +59,7 @@ export async function cmdInfo(args, flags) {
     const installType = manifest?.installType ||
       (manifest?.npmPackage ? 'npm' : manifest?.pipPackage ? 'pip' : kind);
     console.log(`  Install Type: ${installType}`);
+    printPackageLifecycle(manifest, '  ');
 
     // Source
     if (manifest?.source) {
