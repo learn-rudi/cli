@@ -117,6 +117,22 @@ rudi integrate all         # Add the router to all detected agents
 This modifies the agent's MCP configuration to include one managed RUDI router;
 stack discovery and secret injection stay inside RUDI.
 
+Every registry stack declares a primary operator skill. A normal stack install
+installs that skill automatically and creates a native wrapper for detected
+Codex and Claude hosts without overwriting an existing wrapper. Additional
+companion workflows remain optional:
+
+```bash
+rudi install stack:video-editor                 # operator skill included
+rudi install stack:video-editor --with-related-skills # include companions
+rudi install stack:video-editor --no-related-skills   # operator only
+```
+
+In Claude Code, invoke the operator as `/skill-name`. In Codex, use `/skills`
+to select it or mention it as `$skill-name`. The operator guides the host
+through the stack's MCP tools; users do not need to know the individual tool
+names.
+
 Each native host has its own skill directory. After installing RUDI skills,
 sync editable native wrappers when you want them to appear in the host's
 skill/slash UI:
@@ -329,16 +345,17 @@ Each package installs to its own directory. Shims are thin wrappers that set up 
 
 ## Available Stacks
 
-| Stack | Description | Required Secrets |
-|-------|-------------|------------------|
-| slack | Channels, messages, reactions | `SLACK_BOT_TOKEN` |
-| google-workspace | Gmail, Sheets, Docs, Drive | `GOOGLE_CLIENT_ID`, `GOOGLE_CLIENT_SECRET` |
-| notion-workspace | Pages, databases, search | `NOTION_API_KEY` |
-| github | Issues, PRs, repos, actions | `GITHUB_TOKEN` |
-| postgres | SQL queries | `DATABASE_URL` |
-| stripe | Payments, subscriptions | `STRIPE_SECRET_KEY` |
-| openai | DALL-E, Whisper, TTS | `OPENAI_API_KEY` |
-| google-ai | Gemini, Imagen | `GOOGLE_AI_API_KEY` |
+The registry inventory changes independently of the CLI. Discover the current
+catalog instead of relying on a checked-in list:
+
+```bash
+rudi search --all --stacks
+```
+
+When a registry package declares lifecycle metadata, package search, listings,
+and `rudi info` show its maturity, support posture, and any deprecation,
+replacement, or removal guidance. Packages without lifecycle metadata are
+unclassified; the CLI does not infer support from version numbers.
 
 ## Available Binaries
 

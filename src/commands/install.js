@@ -225,14 +225,39 @@ export function buildRelatedSkillInstallPlan(resolved, flags = {}) {
   const relatedSkills = Array.isArray(resolved?.relatedSkills)
     ? resolved.relatedSkills
     : [];
-  const missing = relatedSkills.filter((skill) => !skill.installed);
+  const operatorSkill = relatedSkills.find((skill) => skill.isOperator) || null;
+  const companionSkills = relatedSkills.filter((skill) => !skill.isOperator);
+  const missingOperator = operatorSkill && !operatorSkill.installed
+    ? [operatorSkill]
+    : [];
+  const missingCompanions = companionSkills.filter((skill) => !skill.installed);
+  const missing = [...missingOperator, ...missingCompanions];
 
   return {
     mode,
     relatedSkills,
+    operatorSkill,
+    companionSkills,
+    missingOperator,
+    missingCompanions,
     missing,
-    toInstall: mode === 'include' ? missing : [],
+    toInstall: [
+      ...missingOperator,
+      ...(mode === 'include' ? missingCompanions : []),
+    ],
   };
+}
+
+export function selectRelatedSkillsForInstall(plan, includeCompanions = false) {
+  if (!plan) return [];
+  const selected = [...(plan.missingOperator || [])];
+  if (
+    plan.mode === 'include' ||
+    (plan.mode === 'offer' && includeCompanions)
+  ) {
+    selected.push(...(plan.missingCompanions || []));
+  }
+  return selected;
 }
 
 export async function activateInstalledStack(stackId, options = {}, dependencies = {}) {
@@ -309,28 +334,44 @@ export async function syncRelatedSkillWrappers(
 function printRelatedSkillSummary(plan) {
   if (!plan || plan.relatedSkills.length === 0) return;
 
-  console.log(`\nRelated skills:`);
-  for (const skill of plan.relatedSkills) {
+  console.log(`\nOperator skill:`);
+  if (plan.operatorSkill) {
+    const status = plan.operatorSkill.installed ? '(installed)' : '(will install with stack)';
+    console.log(`  - ${plan.operatorSkill.id} ${status}`);
+  } else {
+    console.log(`  - missing from registry metadata`);
+  }
+
+  if (plan.companionSkills.length === 0) return;
+
+  console.log(`\nCompanion skills:`);
+  for (const skill of plan.companionSkills) {
     const status = skill.installed ? '(installed)' : '(available)';
     console.log(`  - ${skill.id} ${status}`);
   }
 
-  if (plan.missing.length === 0) {
-    console.log(`  All related skills are already installed.`);
+  if (plan.missingCompanions.length === 0) {
+    console.log(`  All companion skills are already installed.`);
   } else if (plan.mode === 'include') {
-    console.log(`  Missing related skills will be installed after the stack.`);
+    console.log(`  Missing companion skills will be installed after the stack.`);
   } else if (plan.mode === 'skip') {
-    console.log(`  Skipping related skills because --no-related-skills was set.`);
+    console.log(`  Skipping companion skills because --no-related-skills was set.`);
   } else {
-    console.log(`  Related skills are editable workflow playbooks installed into ~/.rudi/skills.`);
+    console.log(`  Companion skills are editable workflow playbooks installed into ~/.rudi/skills.`);
   }
 }
 
 async function promptForRelatedSkills(plan) {
   if (!plan || plan.missing.length === 0) return [];
-  if (plan.mode === 'include') return plan.toInstall;
-  if (plan.mode === 'skip') return [];
-  if (!process.stdin.isTTY || !process.stdout.isTTY) return [];
+  if (plan.mode === 'include' || plan.mode === 'skip') {
+    return selectRelatedSkillsForInstall(plan);
+  }
+  if (plan.missingCompanions.length === 0) {
+    return selectRelatedSkillsForInstall(plan);
+  }
+  if (!process.stdin.isTTY || !process.stdout.isTTY) {
+    return selectRelatedSkillsForInstall(plan);
+  }
 
   const { createInterface } = await import('node:readline/promises');
   const readline = createInterface({
@@ -339,9 +380,11 @@ async function promptForRelatedSkills(plan) {
   });
 
   try {
-    const label = plan.missing.length === 1 ? plan.missing[0].id : `${plan.missing.length} related skills`;
+    const label = plan.missingCompanions.length === 1
+      ? plan.missingCompanions[0].id
+      : `${plan.missingCompanions.length} companion skills`;
     const answer = await readline.question(`\nInstall ${label} now? [y/N] `);
-    return /^(y|yes)$/i.test(answer.trim()) ? plan.missing : [];
+    return selectRelatedSkillsForInstall(plan, /^(y|yes)$/i.test(answer.trim()));
   } finally {
     readline.close();
   }
@@ -374,6 +417,45 @@ async function installRelatedSkills(skills, options = {}) {
   }
 
   return results;
+}
+
+async function installAndSyncStackSkills(plan, options = {}) {
+  const {
+    allowScripts = false,
+    withShims = false,
+    installedAgents = getInstalledAgents(),
+  } = options;
+  const selectedSkills = await promptForRelatedSkills(plan);
+  const installResults = selectedSkills.length > 0
+    ? await installRelatedSkills(selectedSkills, { allowScripts, withShims })
+    : [];
+
+  if (installResults.length > 0) {
+    console.log(`\n  Installed skills:`);
+    for (const result of installResults) {
+      if (result.success) {
+        console.log(`    - ${result.id} installed`);
+      } else {
+        console.log(`    - ${result.id} failed: ${result.error}`);
+      }
+    }
+  }
+
+  const wrapperSync = await syncRelatedSkillWrappers(
+    plan.relatedSkills,
+    installResults,
+    installedAgents
+  );
+  for (const target of wrapperSync.targets) {
+    if (wrapperSync.errors[target]) {
+      console.log(`    - ${target} native skill sync failed: ${wrapperSync.errors[target]}`);
+      console.log(`      Retry with: rudi skills sync ${target}`);
+    } else {
+      console.log(`    - ${target} native skill wrapper synced`);
+    }
+  }
+
+  return { selectedSkills, installResults, wrapperSync };
 }
 
 /**
@@ -615,6 +697,11 @@ export async function cmdInstall(args, flags) {
     }
 
     if (resolved.installed && !force) {
+      if (resolved.kind === 'stack' && relatedSkillPlan.missing.length > 0) {
+        console.log(`\nStack already installed. Installing missing operator or companion skills.`);
+        await installAndSyncStackSkills(relatedSkillPlan, { allowScripts, withShims });
+        return;
+      }
       console.log(`\nAlready installed. Use --force to reinstall.`);
       return;
     }
@@ -779,35 +866,10 @@ export async function cmdInstall(args, flags) {
       }
     }
 
-    const selectedRelatedSkills = await promptForRelatedSkills(relatedSkillPlan);
-    const relatedSkillResults = selectedRelatedSkills.length > 0
-      ? await installRelatedSkills(selectedRelatedSkills, { allowScripts, withShims })
-      : [];
-
-    if (relatedSkillResults.length > 0) {
-      console.log(`\n  Related skills:`);
-      for (const relatedResult of relatedSkillResults) {
-        if (relatedResult.success) {
-          console.log(`    - ${relatedResult.id} installed`);
-        } else {
-          console.log(`    - ${relatedResult.id} failed: ${relatedResult.error}`);
-        }
-      }
-    }
-
-    const wrapperSync = await syncRelatedSkillWrappers(
-      relatedSkillPlan.relatedSkills,
-      relatedSkillResults,
-      getInstalledAgents()
+    const { installResults: relatedSkillResults } = await installAndSyncStackSkills(
+      relatedSkillPlan,
+      { allowScripts, withShims }
     );
-    for (const target of wrapperSync.targets) {
-      if (wrapperSync.errors[target]) {
-        console.log(`    - ${target} native skill sync failed: ${wrapperSync.errors[target]}`);
-        console.log(`      Retry with: rudi skills sync ${target}`);
-      } else {
-        console.log(`    - ${target} native skill wrapper synced`);
-      }
-    }
 
     // Check secrets status
     const { found, missing } = await checkSecrets(manifest);

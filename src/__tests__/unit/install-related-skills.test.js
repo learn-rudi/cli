@@ -5,6 +5,7 @@ import {
   activateInstalledStack,
   buildRelatedSkillInstallPlan,
   getRelatedSkillInstallMode,
+  selectRelatedSkillsForInstall,
   syncRelatedSkillWrappers,
 } from '../../commands/install.js';
 
@@ -17,12 +18,14 @@ const resolvedStack = {
       kind: 'skill',
       name: 'Shortform Your Words Script',
       installed: false,
+      isOperator: true,
     },
     {
       id: 'skill:shortform-render-qa',
       kind: 'skill',
       name: 'Shortform Render QA',
-      installed: true,
+      installed: false,
+      isOperator: false,
     },
   ],
 };
@@ -35,18 +38,39 @@ test('getRelatedSkillInstallMode maps explicit related-skill flags', () => {
   assert.equal(getRelatedSkillInstallMode({}), 'offer');
 });
 
-test('buildRelatedSkillInstallPlan only installs missing related skills when explicitly requested', () => {
+test('buildRelatedSkillInstallPlan always installs the operator and gates companion skills by mode', () => {
   const include = buildRelatedSkillInstallPlan(resolvedStack, { 'with-related-skills': true });
-  assert.deepEqual(include.missing.map((skill) => skill.id), ['skill:shortform-your-words-script']);
-  assert.deepEqual(include.toInstall.map((skill) => skill.id), ['skill:shortform-your-words-script']);
+  assert.equal(include.operatorSkill.id, 'skill:shortform-your-words-script');
+  assert.deepEqual(include.missingCompanions.map((skill) => skill.id), ['skill:shortform-render-qa']);
+  assert.deepEqual(include.toInstall.map((skill) => skill.id), [
+    'skill:shortform-your-words-script',
+    'skill:shortform-render-qa',
+  ]);
 
   const skip = buildRelatedSkillInstallPlan(resolvedStack, { 'no-related-skills': true });
-  assert.deepEqual(skip.missing.map((skill) => skill.id), ['skill:shortform-your-words-script']);
-  assert.deepEqual(skip.toInstall, []);
+  assert.deepEqual(skip.toInstall.map((skill) => skill.id), ['skill:shortform-your-words-script']);
 
   const offer = buildRelatedSkillInstallPlan(resolvedStack, {});
   assert.equal(offer.mode, 'offer');
-  assert.deepEqual(offer.toInstall, []);
+  assert.deepEqual(offer.toInstall.map((skill) => skill.id), ['skill:shortform-your-words-script']);
+});
+
+test('selectRelatedSkillsForInstall keeps the operator mandatory and companions optional', () => {
+  const offer = buildRelatedSkillInstallPlan(resolvedStack, {});
+  assert.deepEqual(
+    selectRelatedSkillsForInstall(offer, false).map((skill) => skill.id),
+    ['skill:shortform-your-words-script']
+  );
+  assert.deepEqual(
+    selectRelatedSkillsForInstall(offer, true).map((skill) => skill.id),
+    ['skill:shortform-your-words-script', 'skill:shortform-render-qa']
+  );
+
+  const skip = buildRelatedSkillInstallPlan(resolvedStack, { 'no-related-skills': true });
+  assert.deepEqual(
+    selectRelatedSkillsForInstall(skip, true).map((skill) => skill.id),
+    ['skill:shortform-your-words-script']
+  );
 });
 
 test('activateInstalledStack indexes immediately when configured and defers when secrets are missing', async () => {

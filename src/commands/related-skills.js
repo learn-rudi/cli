@@ -1,20 +1,34 @@
+function normalizeSkillId(value) {
+  if (typeof value !== 'string') return null;
+  const trimmed = value.trim();
+  if (!trimmed) return null;
+  return trimmed.startsWith('skill:')
+    ? trimmed
+    : trimmed.startsWith('prompt:')
+      ? trimmed.replace(/^prompt:/, 'skill:')
+      : trimmed.includes(':')
+        ? null
+        : `skill:${trimmed}`;
+}
+
+export function getOperatorSkillId(pkg) {
+  return normalizeSkillId(pkg?.related?.operatorSkill);
+}
+
+export function formatOperatorSkillLine(pkg, options = {}) {
+  const { label = 'Operator skill' } = options;
+  const id = getOperatorSkillId(pkg);
+  if (!id) return null;
+  return `${label}: ${id}`;
+}
+
 export function getRelatedSkillIds(pkg) {
   const skills = Array.isArray(pkg?.related?.skills) ? pkg.related.skills : [];
   const ids = [];
   const seen = new Set();
 
   for (const value of skills) {
-    if (typeof value !== 'string') continue;
-    const trimmed = value.trim();
-    if (!trimmed) continue;
-
-    const id = trimmed.startsWith('skill:')
-      ? trimmed
-      : trimmed.startsWith('prompt:')
-        ? trimmed.replace(/^prompt:/, 'skill:')
-        : trimmed.includes(':')
-          ? null
-          : `skill:${trimmed}`;
+    const id = normalizeSkillId(value);
 
     if (!id || seen.has(id)) continue;
     seen.add(id);
@@ -26,7 +40,8 @@ export function getRelatedSkillIds(pkg) {
 
 export function formatRelatedSkillsLine(pkg, options = {}) {
   const { label = 'Related skills' } = options;
-  const ids = getRelatedSkillIds(pkg);
+  const operatorSkill = getOperatorSkillId(pkg);
+  const ids = getRelatedSkillIds(pkg).filter((id) => id !== operatorSkill);
   if (ids.length === 0) return null;
   return `${label}: ${ids.join(', ')}`;
 }

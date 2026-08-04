@@ -185,7 +185,7 @@ export function buildClaudeSkillFiles(pkg, sourceContent) {
 
   const skillMd = [
     '---',
-    `name: ${yamlString(displayName)}`,
+    `name: ${yamlString(skillName)}`,
     `description: ${yamlString(description)}`,
     '---',
     '',

@@ -67,7 +67,10 @@ test('updatePackage migrates install-local stack state unless preservation is ex
   const rudiHome = path.join(root, '.rudi');
   const registryRoot = path.join(root, 'registry');
   const stackSource = path.join(registryRoot, 'catalog/stacks/state-demo');
+  const skillSource = path.join(registryRoot, 'catalog/skills/state-demo.md');
   fs.mkdirSync(stackSource, { recursive: true });
+  fs.mkdirSync(path.dirname(skillSource), { recursive: true });
+  fs.writeFileSync(skillSource, '# State Demo Operator\n');
   fs.writeFileSync(path.join(registryRoot, 'index.json'), JSON.stringify({
     schemaVersion: '2',
     packages: {
@@ -81,6 +84,19 @@ test('updatePackage migrates install-local stack state unless preservation is ex
         runtime: 'node',
         provides: { tools: ['state_demo'] },
         mcp: { transport: 'stdio', command: 'node', args: ['src/index.js'] },
+        related: {
+          operatorSkill: 'skill:state-demo',
+          skills: ['skill:state-demo'],
+        },
+      },
+      'skill:state-demo': {
+        id: 'skill:state-demo',
+        kind: 'skill',
+        name: 'State Demo Operator',
+        version: '1.0.0',
+        delivery: 'remote',
+        install: { source: 'catalog', path: 'catalog/skills/state-demo.md' },
+        requires: { stacks: ['stack:state-demo'] },
       },
     },
   }, null, 2));
@@ -94,6 +110,10 @@ test('updatePackage migrates install-local stack state unless preservation is ex
     runtime: 'node',
     provides: { tools: ['state_demo'] },
     mcp: { transport: 'stdio', command: 'node', args: ['src/index.js'] },
+    related: {
+      operatorSkill: 'skill:state-demo',
+      skills: ['skill:state-demo'],
+    },
   }, null, 2));
 
   try {

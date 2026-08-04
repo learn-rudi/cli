@@ -3,6 +3,7 @@
  */
 
 import { fetchIndex, searchPackages, listPackages } from '@learnrudi/core';
+import { printPackageLifecycle } from './package-lifecycle.js';
 
 function pluralizeKind(kind) {
   if (!kind) return 'packages';
@@ -103,6 +104,7 @@ export async function cmdSearch(args, flags) {
         if (pkg.version) {
           console.log(`    v${pkg.version}`);
         }
+        printPackageLifecycle(pkg, '    ');
         console.log();
       }
     }
@@ -170,6 +172,7 @@ async function listAllPackages(flags) {
         const runtime = pkg.runtime ? ` [${pkg.runtime.replace('runtime:', '')}]` : '';
         console.log(`  ${id}${runtime}`);
         console.log(`    ${pkg.description || 'No description'}`);
+        printPackageLifecycle(pkg, '    ');
       }
     }
 

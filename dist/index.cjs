@@ -541,6 +541,96 @@ function normalizeSecrets(requires) {
     })
   };
 }
+function isCalendarDate(value) {
+  if (typeof value !== "string" || !/^\d{4}-\d{2}-\d{2}$/.test(value)) return false;
+  const parsed = /* @__PURE__ */ new Date(`${value}T00:00:00.000Z`);
+  return !Number.isNaN(parsed.getTime()) && parsed.toISOString().slice(0, 10) === value;
+}
+function normalizePackageLifecycle(value, packageId) {
+  if (value === void 0) return void 0;
+  const lifecycle = asObject(value, `Registry package ${packageId} lifecycle`);
+  const lifecycleKeys = /* @__PURE__ */ new Set(["maturity", "support", "deprecation"]);
+  const unknownLifecycleKey = Object.keys(lifecycle).find((key) => !lifecycleKeys.has(key));
+  if (unknownLifecycleKey) {
+    throw new RegistryContractError(
+      `Registry package ${packageId} lifecycle contains unsupported field: ${unknownLifecycleKey}`,
+      { packageId }
+    );
+  }
+  if (!PACKAGE_MATURITY.has(lifecycle.maturity)) {
+    throw new RegistryContractError(
+      `Registry package ${packageId} lifecycle.maturity is invalid`,
+      { packageId }
+    );
+  }
+  if (!PACKAGE_SUPPORT.has(lifecycle.support)) {
+    throw new RegistryContractError(
+      `Registry package ${packageId} lifecycle.support is invalid`,
+      { packageId }
+    );
+  }
+  let deprecation;
+  if (lifecycle.deprecation !== void 0) {
+    deprecation = asObject(
+      lifecycle.deprecation,
+      `Registry package ${packageId} lifecycle.deprecation`
+    );
+    const deprecationKeys = /* @__PURE__ */ new Set([
+      "announcedAt",
+      "message",
+      "replacementId",
+      "removalAfter"
+    ]);
+    const unknownDeprecationKey = Object.keys(deprecation).find((key) => !deprecationKeys.has(key));
+    if (unknownDeprecationKey) {
+      throw new RegistryContractError(
+        `Registry package ${packageId} lifecycle.deprecation contains unsupported field: ${unknownDeprecationKey}`,
+        { packageId }
+      );
+    }
+    if (!isCalendarDate(deprecation.announcedAt)) {
+      throw new RegistryContractError(
+        `Registry package ${packageId} lifecycle.deprecation.announcedAt is invalid`,
+        { packageId }
+      );
+    }
+    if (typeof deprecation.message !== "string" || deprecation.message.trim() === "") {
+      throw new RegistryContractError(
+        `Registry package ${packageId} lifecycle.deprecation.message is required`,
+        { packageId }
+      );
+    }
+    if (deprecation.replacementId !== void 0 && !PACKAGE_ID_PATTERN.test(deprecation.replacementId)) {
+      throw new RegistryContractError(
+        `Registry package ${packageId} lifecycle.deprecation.replacementId is invalid`,
+        { packageId }
+      );
+    }
+    if (deprecation.removalAfter !== void 0 && !isCalendarDate(deprecation.removalAfter)) {
+      throw new RegistryContractError(
+        `Registry package ${packageId} lifecycle.deprecation.removalAfter is invalid`,
+        { packageId }
+      );
+    }
+    if (deprecation.removalAfter !== void 0 && deprecation.removalAfter < deprecation.announcedAt) {
+      throw new RegistryContractError(
+        `Registry package ${packageId} lifecycle.deprecation.removalAfter precedes announcedAt`,
+        { packageId }
+      );
+    }
+  }
+  if (lifecycle.support === "unsupported" && deprecation === void 0) {
+    throw new RegistryContractError(
+      `Registry package ${packageId} with unsupported lifecycle support requires deprecation guidance`,
+      { packageId }
+    );
+  }
+  return {
+    maturity: lifecycle.maturity,
+    support: lifecycle.support,
+    ...deprecation ? { deprecation: { ...deprecation } } : {}
+  };
+}
 function legacyInstallType(source) {
   if (source === "download") return "binary";
   if (source === "npm" || source === "pip" || source === "system") return source;
@@ -563,6 +653,7 @@ function normalizeRegistryPackage(value, kindHint) {
     path: pkg.path || install.path,
     description: pkg.description || meta.description,
     category: pkg.category || meta.category,
+    ...pkg.lifecycle === void 0 ? {} : { lifecycle: normalizePackageLifecycle(pkg.lifecycle, pkg.id) },
     tags: pkg.tags || meta.tags,
     icon: pkg.icon || meta.icon,
     author: pkg.author || meta.author,
@@ -694,7 +785,7 @@ function getRegistryPackage(value, id, kinds) {
   }
   return null;
 }
-var PACKAGE_KINDS2, RegistryContractError;
+var PACKAGE_KINDS2, RegistryContractError, PACKAGE_ID_PATTERN, PACKAGE_MATURITY, PACKAGE_SUPPORT;
 var init_registry_contract = __esm({
   "packages/registry-client/src/registry-contract.js"() {
     PACKAGE_KINDS2 = /* @__PURE__ */ new Set([
@@ -713,6 +804,9 @@ var init_registry_contract = __esm({
         this.details = details;
       }
     };
+    PACKAGE_ID_PATTERN = /^(runtime|binary|agent|stack|skill|prompt):[a-z0-9][a-z0-9-_]*$/;
+    PACKAGE_MATURITY = /* @__PURE__ */ new Set(["experimental", "stable"]);
+    PACKAGE_SUPPORT = /* @__PURE__ */ new Set(["supported", "maintenance", "unsupported"]);
   }
 });
 
@@ -1864,6 +1958,16 @@ function normalizeSkillPackageId(id) {
 }
 async function resolveRelatedSkills(pkg) {
   const relatedSkillIds = pkg.related?.skills || [];
+  const operatorSkillId = normalizeSkillPackageId(pkg.related?.operatorSkill);
+  if (pkg.kind === "stack" && !operatorSkillId) {
+    throw new Error(`${pkg.id || "Stack package"} requires related.operatorSkill`);
+  }
+  const normalizedRelatedSkillIds = relatedSkillIds.map((id) => normalizeSkillPackageId(id)).filter(Boolean);
+  if (operatorSkillId && !normalizedRelatedSkillIds.includes(operatorSkillId)) {
+    throw new Error(
+      `${pkg.id || "Stack package"} related.operatorSkill must appear in related.skills`
+    );
+  }
   const relatedSkills = [];
   const seen = /* @__PURE__ */ new Set();
   for (const id of relatedSkillIds) {
@@ -1871,13 +1975,19 @@ async function resolveRelatedSkills(pkg) {
     if (!skillId || seen.has(skillId)) continue;
     seen.add(skillId);
     const skillPkg = await getPackage(skillId);
-    if (!skillPkg) continue;
+    if (!skillPkg) {
+      if (skillId === operatorSkillId) {
+        throw new Error(`operator skill package not found: ${skillId}`);
+      }
+      continue;
+    }
     relatedSkills.push({
       id: skillId,
       kind: "skill",
       name: skillPkg.name,
       version: skillPkg.version,
       installed: isPackageInstalled(skillId),
+      isOperator: skillId === operatorSkillId,
       dependencies: []
     });
   }
@@ -20047,6 +20157,30 @@ EXAMPLES
 
 // src/commands/search.js
 init_src5();
+
+// src/commands/package-lifecycle.js
+function formatPackageLifecycleLines(pkg) {
+  const lifecycle = pkg?.lifecycle;
+  if (!lifecycle) return [];
+  const lines = [`Lifecycle: ${lifecycle.maturity} \xB7 ${lifecycle.support}`];
+  const deprecation = lifecycle.deprecation;
+  if (!deprecation) return lines;
+  lines.push(`Deprecated since ${deprecation.announcedAt}: ${deprecation.message}`);
+  if (deprecation.replacementId) {
+    lines.push(`Replacement: ${deprecation.replacementId}`);
+  }
+  if (deprecation.removalAfter) {
+    lines.push(`Removal after: ${deprecation.removalAfter}`);
+  }
+  return lines;
+}
+function printPackageLifecycle(pkg, indent = "") {
+  for (const line of formatPackageLifecycleLines(pkg)) {
+    console.log(`${indent}${line}`);
+  }
+}
+
+// src/commands/search.js
 function pluralizeKind(kind) {
   if (!kind) return "packages";
   if (kind === "binary") return "binaries";
@@ -20118,6 +20252,7 @@ Found ${results.length} package(s):
         if (pkg.version) {
           console.log(`    v${pkg.version}`);
         }
+        printPackageLifecycle(pkg, "    ");
         console.log();
       }
     }
@@ -20158,6 +20293,7 @@ ${headingForKind(k)} (${packages.length}):`);
         const runtime = pkg.runtime ? ` [${pkg.runtime.replace("runtime:", "")}]` : "";
         console.log(`  ${id}${runtime}`);
         console.log(`    ${pkg.description || "No description"}`);
+        printPackageLifecycle(pkg, "    ");
       }
     }
     console.log(`
@@ -20657,15 +20793,27 @@ init_src();
 init_src5();
 
 // src/commands/related-skills.js
+function normalizeSkillId(value) {
+  if (typeof value !== "string") return null;
+  const trimmed = value.trim();
+  if (!trimmed) return null;
+  return trimmed.startsWith("skill:") ? trimmed : trimmed.startsWith("prompt:") ? trimmed.replace(/^prompt:/, "skill:") : trimmed.includes(":") ? null : `skill:${trimmed}`;
+}
+function getOperatorSkillId(pkg) {
+  return normalizeSkillId(pkg?.related?.operatorSkill);
+}
+function formatOperatorSkillLine(pkg, options = {}) {
+  const { label = "Operator skill" } = options;
+  const id = getOperatorSkillId(pkg);
+  if (!id) return null;
+  return `${label}: ${id}`;
+}
 function getRelatedSkillIds(pkg) {
   const skills = Array.isArray(pkg?.related?.skills) ? pkg.related.skills : [];
   const ids = [];
   const seen = /* @__PURE__ */ new Set();
   for (const value of skills) {
-    if (typeof value !== "string") continue;
-    const trimmed = value.trim();
-    if (!trimmed) continue;
-    const id = trimmed.startsWith("skill:") ? trimmed : trimmed.startsWith("prompt:") ? trimmed.replace(/^prompt:/, "skill:") : trimmed.includes(":") ? null : `skill:${trimmed}`;
+    const id = normalizeSkillId(value);
     if (!id || seen.has(id)) continue;
     seen.add(id);
     ids.push(id);
@@ -20674,7 +20822,8 @@ function getRelatedSkillIds(pkg) {
 }
 function formatRelatedSkillsLine(pkg, options = {}) {
   const { label = "Related skills" } = options;
-  const ids = getRelatedSkillIds(pkg);
+  const operatorSkill = getOperatorSkillId(pkg);
+  const ids = getRelatedSkillIds(pkg).filter((id) => id !== operatorSkill);
   if (ids.length === 0) return null;
   return `${label}: ${ids.join(", ")}`;
 }
@@ -20822,6 +20971,7 @@ SKILLS (${packages.length}):`);
           if (pkg.description) {
             console.log(`      ${pkg.description}`);
           }
+          printPackageLifecycle(pkg, "      ");
           if (pkg.requires && pkg.requires.stacks && pkg.requires.stacks.length > 0) {
             console.log(`      Requires: ${pkg.requires.stacks.join(", ")}`);
           }
@@ -20858,11 +21008,16 @@ ${headingForKind2(pkgKind)} (${pkgs.length}):`);
         if (pkg.description) {
           console.log(`    ${pkg.description}`);
         }
+        printPackageLifecycle(pkg, "    ");
         if (pkg.category) {
           console.log(`    Category: ${pkg.category}`);
         }
         if (pkg.tags && pkg.tags.length > 0) {
           console.log(`    Tags: ${pkg.tags.join(", ")}`);
+        }
+        const operatorSkillLine = formatOperatorSkillLine(pkg);
+        if (operatorSkillLine) {
+          console.log(`    ${operatorSkillLine}`);
         }
         const relatedSkillsLine = formatRelatedSkillsLine(pkg);
         if (relatedSkillsLine) {
@@ -21009,7 +21164,7 @@ function buildClaudeSkillFiles(pkg, sourceContent) {
   const body = parsed.body || `Use the installed RUDI skill \`skill:${skillName}\` as the source of truth.`;
   const skillMd = [
     "---",
-    `name: ${yamlString(displayName)}`,
+    `name: ${yamlString(skillName)}`,
     `description: ${yamlString(description)}`,
     "---",
     "",
@@ -21401,13 +21556,32 @@ function getRelatedSkillInstallMode(flags = {}) {
 function buildRelatedSkillInstallPlan(resolved, flags = {}) {
   const mode = getRelatedSkillInstallMode(flags);
   const relatedSkills = Array.isArray(resolved?.relatedSkills) ? resolved.relatedSkills : [];
-  const missing = relatedSkills.filter((skill) => !skill.installed);
+  const operatorSkill = relatedSkills.find((skill) => skill.isOperator) || null;
+  const companionSkills = relatedSkills.filter((skill) => !skill.isOperator);
+  const missingOperator = operatorSkill && !operatorSkill.installed ? [operatorSkill] : [];
+  const missingCompanions = companionSkills.filter((skill) => !skill.installed);
+  const missing = [...missingOperator, ...missingCompanions];
   return {
     mode,
     relatedSkills,
+    operatorSkill,
+    companionSkills,
+    missingOperator,
+    missingCompanions,
     missing,
-    toInstall: mode === "include" ? missing : []
+    toInstall: [
+      ...missingOperator,
+      ...mode === "include" ? missingCompanions : []
+    ]
   };
+}
+function selectRelatedSkillsForInstall(plan, includeCompanions = false) {
+  if (!plan) return [];
+  const selected = [...plan.missingOperator || []];
+  if (plan.mode === "include" || plan.mode === "offer" && includeCompanions) {
+    selected.push(...plan.missingCompanions || []);
+  }
+  return selected;
 }
 async function activateInstalledStack(stackId, options = {}, dependencies = {}) {
   const missingSecrets = Array.isArray(options.missingSecrets) ? [...new Set(options.missingSecrets.filter(Boolean))] : [];
@@ -21467,36 +21641,51 @@ async function syncRelatedSkillWrappers(relatedSkills, installResults, installed
 function printRelatedSkillSummary(plan) {
   if (!plan || plan.relatedSkills.length === 0) return;
   console.log(`
-Related skills:`);
-  for (const skill of plan.relatedSkills) {
+Operator skill:`);
+  if (plan.operatorSkill) {
+    const status = plan.operatorSkill.installed ? "(installed)" : "(will install with stack)";
+    console.log(`  - ${plan.operatorSkill.id} ${status}`);
+  } else {
+    console.log(`  - missing from registry metadata`);
+  }
+  if (plan.companionSkills.length === 0) return;
+  console.log(`
+Companion skills:`);
+  for (const skill of plan.companionSkills) {
     const status = skill.installed ? "(installed)" : "(available)";
     console.log(`  - ${skill.id} ${status}`);
   }
-  if (plan.missing.length === 0) {
-    console.log(`  All related skills are already installed.`);
+  if (plan.missingCompanions.length === 0) {
+    console.log(`  All companion skills are already installed.`);
   } else if (plan.mode === "include") {
-    console.log(`  Missing related skills will be installed after the stack.`);
+    console.log(`  Missing companion skills will be installed after the stack.`);
   } else if (plan.mode === "skip") {
-    console.log(`  Skipping related skills because --no-related-skills was set.`);
+    console.log(`  Skipping companion skills because --no-related-skills was set.`);
   } else {
-    console.log(`  Related skills are editable workflow playbooks installed into ~/.rudi/skills.`);
+    console.log(`  Companion skills are editable workflow playbooks installed into ~/.rudi/skills.`);
   }
 }
 async function promptForRelatedSkills(plan) {
   if (!plan || plan.missing.length === 0) return [];
-  if (plan.mode === "include") return plan.toInstall;
-  if (plan.mode === "skip") return [];
-  if (!process.stdin.isTTY || !process.stdout.isTTY) return [];
+  if (plan.mode === "include" || plan.mode === "skip") {
+    return selectRelatedSkillsForInstall(plan);
+  }
+  if (plan.missingCompanions.length === 0) {
+    return selectRelatedSkillsForInstall(plan);
+  }
+  if (!process.stdin.isTTY || !process.stdout.isTTY) {
+    return selectRelatedSkillsForInstall(plan);
+  }
   const { createInterface: createInterface2 } = await import("node:readline/promises");
   const readline3 = createInterface2({
     input: process.stdin,
     output: process.stdout
   });
   try {
-    const label = plan.missing.length === 1 ? plan.missing[0].id : `${plan.missing.length} related skills`;
+    const label = plan.missingCompanions.length === 1 ? plan.missingCompanions[0].id : `${plan.missingCompanions.length} companion skills`;
     const answer = await readline3.question(`
 Install ${label} now? [y/N] `);
-    return /^(y|yes)$/i.test(answer.trim()) ? plan.missing : [];
+    return selectRelatedSkillsForInstall(plan, /^(y|yes)$/i.test(answer.trim()));
   } finally {
     readline3.close();
   }
@@ -21525,6 +21714,40 @@ async function installRelatedSkills(skills, options = {}) {
     });
   }
   return results;
+}
+async function installAndSyncStackSkills(plan, options = {}) {
+  const {
+    allowScripts = false,
+    withShims = false,
+    installedAgents = getInstalledAgents()
+  } = options;
+  const selectedSkills = await promptForRelatedSkills(plan);
+  const installResults = selectedSkills.length > 0 ? await installRelatedSkills(selectedSkills, { allowScripts, withShims }) : [];
+  if (installResults.length > 0) {
+    console.log(`
+  Installed skills:`);
+    for (const result of installResults) {
+      if (result.success) {
+        console.log(`    - ${result.id} installed`);
+      } else {
+        console.log(`    - ${result.id} failed: ${result.error}`);
+      }
+    }
+  }
+  const wrapperSync = await syncRelatedSkillWrappers(
+    plan.relatedSkills,
+    installResults,
+    installedAgents
+  );
+  for (const target of wrapperSync.targets) {
+    if (wrapperSync.errors[target]) {
+      console.log(`    - ${target} native skill sync failed: ${wrapperSync.errors[target]}`);
+      console.log(`      Retry with: rudi skills sync ${target}`);
+    } else {
+      console.log(`    - ${target} native skill wrapper synced`);
+    }
+  }
+  return { selectedSkills, installResults, wrapperSync };
 }
 function getStackEntryPoint(stackPath, manifest) {
   const command = getStackCommand(manifest);
@@ -21711,6 +21934,12 @@ Package: ${resolved.name} (${resolved.id})`);
       console.log(`Description: ${resolved.description}`);
     }
     if (resolved.installed && !force) {
+      if (resolved.kind === "stack" && relatedSkillPlan.missing.length > 0) {
+        console.log(`
+Stack already installed. Installing missing operator or companion skills.`);
+        await installAndSyncStackSkills(relatedSkillPlan, { allowScripts, withShims });
+        return;
+      }
       console.log(`
 Already installed. Use --force to reinstall.`);
       return;
@@ -21856,32 +22085,10 @@ ${depResult.error}`);
         console.log(`    - ${id}`);
       }
     }
-    const selectedRelatedSkills = await promptForRelatedSkills(relatedSkillPlan);
-    const relatedSkillResults = selectedRelatedSkills.length > 0 ? await installRelatedSkills(selectedRelatedSkills, { allowScripts, withShims }) : [];
-    if (relatedSkillResults.length > 0) {
-      console.log(`
-  Related skills:`);
-      for (const relatedResult of relatedSkillResults) {
-        if (relatedResult.success) {
-          console.log(`    - ${relatedResult.id} installed`);
-        } else {
-          console.log(`    - ${relatedResult.id} failed: ${relatedResult.error}`);
-        }
-      }
-    }
-    const wrapperSync = await syncRelatedSkillWrappers(
-      relatedSkillPlan.relatedSkills,
-      relatedSkillResults,
-      getInstalledAgents()
+    const { installResults: relatedSkillResults } = await installAndSyncStackSkills(
+      relatedSkillPlan,
+      { allowScripts, withShims }
     );
-    for (const target of wrapperSync.targets) {
-      if (wrapperSync.errors[target]) {
-        console.log(`    - ${target} native skill sync failed: ${wrapperSync.errors[target]}`);
-        console.log(`      Retry with: rudi skills sync ${target}`);
-      } else {
-        console.log(`    - ${target} native skill wrapper synced`);
-      }
-    }
     const { found, missing } = await checkSecrets(manifest);
     const envExampleKeys = await parseEnvExample(result.path);
     for (const key of envExampleKeys) {
@@ -23914,8 +24121,8 @@ function buildRudiInstructionBlock(agent = "generic") {
     "- Router binary: `~/.rudi/bins/rudi-router`.",
     "- Tool index cache: `~/.rudi/cache/tool-index.json`.",
     "- Installed stacks: `rudi list stacks --json`.",
-    "- Stack manifests may declare related skills; inspect package details with `rudi which <stack>` when workflow behavior matters.",
-    "- Install a stack with its missing related skills: `rudi install <stack> --with-related-skills`.",
+    "- Every stack declares a primary operator skill; inspect it and any optional companions with `rudi which <stack>`.",
+    "- The operator is installed automatically with the stack. Add all optional companions with `rudi install <stack> --with-related-skills`.",
     "- Rebuild router cache: `rudi index --json`.",
     "- Daemon status: `rudi daemon status --json`.",
     "",
@@ -24598,6 +24805,10 @@ Installed stacks:`);
     if (stack.description) {
       console.log(`About:      ${stack.description}`);
     }
+    const operatorSkillLine = formatOperatorSkillLine(stack);
+    if (operatorSkillLine) {
+      console.log(operatorSkillLine);
+    }
     const relatedSkillsLine = formatRelatedSkillsLine(stack);
     if (relatedSkillsLine) {
       console.log(relatedSkillsLine);
@@ -24627,9 +24838,9 @@ Installed stacks:`);
     console.log("Commands:");
     console.log(`  rudi run ${stack.id}          Test the stack`);
     console.log(`  rudi secrets ${stack.id}      Configure secrets`);
-    if (getRelatedSkillIds(stack).length > 0) {
+    if (relatedSkillsLine) {
       console.log(`  rudi install ${stack.id} --with-related-skills`);
-      console.log(`                         Install editable related skills`);
+      console.log(`                         Install optional companion skills`);
     }
     if (runtimeInfo.entry) {
       console.log("");
@@ -27622,6 +27833,7 @@ Package: ${pkgId}`);
     console.log(`  Install Dir: ${installPath}`);
     const installType = manifest?.installType || (manifest?.npmPackage ? "npm" : manifest?.pipPackage ? "pip" : kind);
     console.log(`  Install Type: ${installType}`);
+    printPackageLifecycle(manifest, "  ");
     if (manifest?.source) {
       if (typeof manifest.source === "string") {
         console.log(`  Source:      ${manifest.source}`);

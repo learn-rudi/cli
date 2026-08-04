@@ -48,6 +48,16 @@ const v2Index = {
         description: 'Demo package',
         category: 'testing',
       },
+      lifecycle: {
+        maturity: 'stable',
+        support: 'maintenance',
+        deprecation: {
+          announcedAt: '2026-08-02',
+          message: 'Use stack:replacement for new installs.',
+          replacementId: 'stack:replacement',
+          removalAfter: '2026-11-01',
+        },
+      },
     },
   },
 };
@@ -80,11 +90,37 @@ test('registry contract: enumerates canonical v2 packages', () => {
     description: v2Packages[0].description,
     category: v2Packages[0].category,
     command: v2Packages[0].command,
+    lifecycle: v2Packages[0].lifecycle,
   }, {
     description: 'Demo package',
     category: 'testing',
     command: ['node', 'src/index.js'],
+    lifecycle: {
+      maturity: 'stable',
+      support: 'maintenance',
+      deprecation: {
+        announcedAt: '2026-08-02',
+        message: 'Use stack:replacement for new installs.',
+        replacementId: 'stack:replacement',
+        removalAfter: '2026-11-01',
+      },
+    },
   });
+});
+
+test('registry contract: rejects invalid lifecycle metadata at the client boundary', () => {
+  assert.throws(
+    () => listRegistryPackages({
+      ...v2Index,
+      packages: {
+        'stack:demo': {
+          ...v2Index.packages['stack:demo'],
+          lifecycle: { maturity: 'beta', support: 'supported' },
+        },
+      },
+    }, 'stack'),
+    /Registry package stack:demo lifecycle.maturity is invalid/
+  );
 });
 
 test('registry contract: rejects unsupported explicit schema versions', () => {
