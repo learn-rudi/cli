@@ -71,6 +71,114 @@ function normalizeSecrets(requires) {
   };
 }
 
+const PACKAGE_ID_PATTERN = /^(runtime|binary|agent|stack|skill|prompt):[a-z0-9][a-z0-9-_]*$/;
+const PACKAGE_MATURITY = new Set(['experimental', 'stable']);
+const PACKAGE_SUPPORT = new Set(['supported', 'maintenance', 'unsupported']);
+
+function isCalendarDate(value) {
+  if (typeof value !== 'string' || !/^\d{4}-\d{2}-\d{2}$/.test(value)) return false;
+  const parsed = new Date(`${value}T00:00:00.000Z`);
+  return !Number.isNaN(parsed.getTime()) && parsed.toISOString().slice(0, 10) === value;
+}
+
+function normalizePackageLifecycle(value, packageId) {
+  if (value === undefined) return undefined;
+  const lifecycle = asObject(value, `Registry package ${packageId} lifecycle`);
+  const lifecycleKeys = new Set(['maturity', 'support', 'deprecation']);
+  const unknownLifecycleKey = Object.keys(lifecycle).find((key) => !lifecycleKeys.has(key));
+  if (unknownLifecycleKey) {
+    throw new RegistryContractError(
+      `Registry package ${packageId} lifecycle contains unsupported field: ${unknownLifecycleKey}`,
+      { packageId }
+    );
+  }
+  if (!PACKAGE_MATURITY.has(lifecycle.maturity)) {
+    throw new RegistryContractError(
+      `Registry package ${packageId} lifecycle.maturity is invalid`,
+      { packageId }
+    );
+  }
+  if (!PACKAGE_SUPPORT.has(lifecycle.support)) {
+    throw new RegistryContractError(
+      `Registry package ${packageId} lifecycle.support is invalid`,
+      { packageId }
+    );
+  }
+
+  let deprecation;
+  if (lifecycle.deprecation !== undefined) {
+    deprecation = asObject(
+      lifecycle.deprecation,
+      `Registry package ${packageId} lifecycle.deprecation`
+    );
+    const deprecationKeys = new Set([
+      'announcedAt',
+      'message',
+      'replacementId',
+      'removalAfter',
+    ]);
+    const unknownDeprecationKey = Object.keys(deprecation)
+      .find((key) => !deprecationKeys.has(key));
+    if (unknownDeprecationKey) {
+      throw new RegistryContractError(
+        `Registry package ${packageId} lifecycle.deprecation contains unsupported field: ${unknownDeprecationKey}`,
+        { packageId }
+      );
+    }
+    if (!isCalendarDate(deprecation.announcedAt)) {
+      throw new RegistryContractError(
+        `Registry package ${packageId} lifecycle.deprecation.announcedAt is invalid`,
+        { packageId }
+      );
+    }
+    if (typeof deprecation.message !== 'string' || deprecation.message.trim() === '') {
+      throw new RegistryContractError(
+        `Registry package ${packageId} lifecycle.deprecation.message is required`,
+        { packageId }
+      );
+    }
+    if (
+      deprecation.replacementId !== undefined &&
+      !PACKAGE_ID_PATTERN.test(deprecation.replacementId)
+    ) {
+      throw new RegistryContractError(
+        `Registry package ${packageId} lifecycle.deprecation.replacementId is invalid`,
+        { packageId }
+      );
+    }
+    if (
+      deprecation.removalAfter !== undefined &&
+      !isCalendarDate(deprecation.removalAfter)
+    ) {
+      throw new RegistryContractError(
+        `Registry package ${packageId} lifecycle.deprecation.removalAfter is invalid`,
+        { packageId }
+      );
+    }
+    if (
+      deprecation.removalAfter !== undefined &&
+      deprecation.removalAfter < deprecation.announcedAt
+    ) {
+      throw new RegistryContractError(
+        `Registry package ${packageId} lifecycle.deprecation.removalAfter precedes announcedAt`,
+        { packageId }
+      );
+    }
+  }
+  if (lifecycle.support === 'unsupported' && deprecation === undefined) {
+    throw new RegistryContractError(
+      `Registry package ${packageId} with unsupported lifecycle support requires deprecation guidance`,
+      { packageId }
+    );
+  }
+
+  return {
+    maturity: lifecycle.maturity,
+    support: lifecycle.support,
+    ...(deprecation ? { deprecation: { ...deprecation } } : {}),
+  };
+}
+
 function legacyInstallType(source) {
   if (source === 'download') return 'binary';
   if (source === 'npm' || source === 'pip' || source === 'system') return source;
@@ -103,6 +211,9 @@ export function normalizeRegistryPackage(value, kindHint) {
     path: pkg.path || install.path,
     description: pkg.description || meta.description,
     category: pkg.category || meta.category,
+    ...(pkg.lifecycle === undefined
+      ? {}
+      : { lifecycle: normalizePackageLifecycle(pkg.lifecycle, pkg.id) }),
     tags: pkg.tags || meta.tags,
     icon: pkg.icon || meta.icon,
     author: pkg.author || meta.author,
