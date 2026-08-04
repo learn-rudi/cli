@@ -345,16 +345,17 @@ Each package installs to its own directory. Shims are thin wrappers that set up 
 
 ## Available Stacks
 
-| Stack | Description | Required Secrets |
-|-------|-------------|------------------|
-| slack | Channels, messages, reactions | `SLACK_BOT_TOKEN` |
-| google-workspace | Gmail, Sheets, Docs, Drive | `GOOGLE_CLIENT_ID`, `GOOGLE_CLIENT_SECRET` |
-| notion-workspace | Pages, databases, search | `NOTION_API_KEY` |
-| github | Issues, PRs, repos, actions | `GITHUB_TOKEN` |
-| postgres | SQL queries | `DATABASE_URL` |
-| stripe | Payments, subscriptions | `STRIPE_SECRET_KEY` |
-| openai | DALL-E, Whisper, TTS | `OPENAI_API_KEY` |
-| google-ai | Gemini, Imagen | `GOOGLE_AI_API_KEY` |
+The registry inventory changes independently of the CLI. Discover the current
+catalog instead of relying on a checked-in list:
+
+```bash
+rudi search --all --stacks
+```
+
+When a registry package declares lifecycle metadata, package search, listings,
+and `rudi info` show its maturity, support posture, and any deprecation,
+replacement, or removal guidance. Packages without lifecycle metadata are
+unclassified; the CLI does not infer support from version numbers.
 
 ## Available Binaries
 
