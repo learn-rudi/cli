@@ -5,8 +5,10 @@ import os from 'node:os';
 import path from 'node:path';
 import { spawn } from 'node:child_process';
 import test from 'node:test';
+import { fileURLToPath } from 'node:url';
 
-const CLI_ENTRYPOINT = path.resolve(import.meta.dirname, '../../index.js');
+const TEST_DIR = path.dirname(fileURLToPath(import.meta.url));
+const CLI_ENTRYPOINT = path.resolve(TEST_DIR, '../../index.js');
 
 async function waitForFile(filePath, child, timeoutMs = 5_000) {
   const deadline = Date.now() + timeoutMs;

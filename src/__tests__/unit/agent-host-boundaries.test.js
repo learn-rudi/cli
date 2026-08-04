@@ -1,10 +1,12 @@
 import assert from 'node:assert/strict';
 import fs from 'node:fs';
+import { fileURLToPath } from 'node:url';
 import path from 'node:path';
 import test from 'node:test';
 
-const AGENT_HOST_ROOT = path.resolve(import.meta.dirname, '../../agent-host');
-const SOURCE_ROOT = path.resolve(import.meta.dirname, '../..');
+const TEST_DIR = path.dirname(fileURLToPath(import.meta.url));
+const AGENT_HOST_ROOT = path.resolve(TEST_DIR, '../../agent-host');
+const SOURCE_ROOT = path.resolve(TEST_DIR, '../..');
 
 function listJavaScriptFiles(directory) {
   return fs.readdirSync(directory, { withFileTypes: true }).flatMap((entry) => {
