@@ -301,6 +301,62 @@ export function listShims() {
   });
 }
 
+function findExecutable(command, searchPath = process.env.PATH || '') {
+  if (!command || command.includes('\0')) return null;
+
+  const candidates = path.isAbsolute(command) || command.includes(path.sep)
+    ? [command]
+    : searchPath.split(path.delimiter)
+      .filter(Boolean)
+      .map(directory => path.join(directory, command));
+
+  for (const candidate of candidates) {
+    try {
+      if (!fs.statSync(candidate).isFile()) continue;
+      fs.accessSync(candidate, fs.constants.X_OK);
+      return candidate;
+    } catch {
+      // Try the next declared location.
+    }
+  }
+
+  return null;
+}
+
+function resolveWrapperTarget(content, rawTarget) {
+  const variableMatch = rawTarget.match(/^\$\{?([A-Za-z_][A-Za-z0-9_]*)\}?$/);
+  if (!variableMatch) return rawTarget;
+
+  const variableName = variableMatch[1];
+  const assignmentPattern = new RegExp(
+    `^${variableName}=(?:"([^"]*)"|'([^']*)')\\s*$`,
+    'm',
+  );
+  const assignment = content.match(assignmentPattern);
+  if (assignment) return assignment[1] ?? assignment[2];
+
+  const commandLookupPattern = new RegExp(
+    `^${variableName}=\\$\\(PATH=(?:"([^"]*)"|'([^']*)')\\s+command\\s+-v\\s+(?:"([^"]+)"|'([^']+)'|([^\\s)]+))[^)]*\\)\\s*$`,
+    'm',
+  );
+  const commandLookup = content.match(commandLookupPattern);
+  if (!commandLookup) return rawTarget;
+
+  const searchPath = commandLookup[1] ?? commandLookup[2];
+  const command = commandLookup[3] ?? commandLookup[4] ?? commandLookup[5];
+  return findExecutable(command, searchPath) || rawTarget;
+}
+
+function getWrapperTargets(content) {
+  const targets = [];
+  const execPattern = /^\s*exec\s+(?:"([^"]+)"|'([^']+)'|([^\s]+))/gm;
+  for (const match of content.matchAll(execPattern)) {
+    const rawTarget = match[1] ?? match[2] ?? match[3];
+    targets.push(resolveWrapperTarget(content, rawTarget));
+  }
+  return targets;
+}
+
 /**
  * Validate a shim (check if target exists)
  * @param {string} bin - Binary name
@@ -331,15 +387,15 @@ export function validateShim(bin) {
     } else if (stat.isFile()) {
       // For wrappers, extract target from script
       const content = fs.readFileSync(shimPath, 'utf8');
-      const match = content.match(/exec "([^"]+)"/);
-      const target = match?.[1];
+      const targets = getWrapperTargets(content);
+      const target = targets.map(candidate => findExecutable(candidate)).find(Boolean);
 
-      if (!target) {
+      if (targets.length === 0) {
         return { valid: false, error: 'Cannot parse wrapper script' };
       }
 
-      if (!fs.existsSync(target)) {
-        return { valid: false, target, error: 'Wrapper target does not exist' };
+      if (!target) {
+        return { valid: false, target: targets[0], error: 'Wrapper target does not exist' };
       }
 
       return { valid: true, target };
