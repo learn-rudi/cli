@@ -175,7 +175,7 @@
 
 ## Phase 5: Full Verification
 
-- Status: in progress.
+- Status: complete.
 - Targeted tests: core tool-index and index command/daemon operation suites.
 - Full suite: `pnpm test` in a state that does not mix unrelated dirty work.
 - Build/typecheck/lint: `pnpm build`, `npm pack --dry-run`, and
@@ -188,39 +188,106 @@
   - run exactly one forced index rebuild with an outer watchdog
   - verify command exit, cache validity, and zero surviving descendants
   - verify daemon/Compute/Service Desk/LaunchAgent health and user-only modes
-- Exit criteria: tests/build/package/debt checks pass and the Admin Mac live
-  smoke leaves no orphaned child processes.
-- Evidence so far:
+- Exit criteria: complete; tests/build/package/debt checks pass and the Admin
+  Mac live smoke leaves no orphaned child processes.
+- Evidence:
   - full clean Admin Mac suite: 617 passed, 0 failed
   - architecture-aware edited-file debt scan: zero findings
   - source/install mismatch localized: clean source declared `1.10.12`, the
     installed package declared uncommitted `1.10.14`; the repaired release is
     therefore versioned `1.10.15` for exact-commit traceability
+  - `pnpm build`, bundled `rudi --version`, `npm pack --dry-run`, and
+    `git diff --check` passed; source commit `1e0b9aa7` and dedicated bundle
+    commit `3721facc` are retained on
+    `codex/admin-mac-index-lifecycle-20260807`
+  - installed CLI and clean source both report `1.10.15`; the prior installed
+    package, wrapper, and new tarball are checksummed in the rollback archive
+  - the forced all-stack rebuild completed at `2026-08-07T03:56:35Z`; after
+    supported stack updates and targeted repair checks, the final cache is
+    healthy with 30 stacks, 405 tools, and zero failures
+  - the forced rebuild and every targeted index returned with no surviving
+    process group; a fourth pre-fix index tree launched concurrently was
+    independently ancestry-validated and terminated, bringing total retired
+    stale processes to 161 across four process groups
 
 ## Phase 6: Docs, Contracts, And Closure
 
-- Status: pending.
+- Status: complete.
 - Docs or API contracts to update: only lifecycle/operational documentation
   whose verified behavior changed; preserve Service Desk's ingestion-only
   boundary.
-- Final files touched: record after implementation.
-- Commands run and results: record red, green, refactor, build, debt, archive,
-  permission, release, and live-smoke evidence.
-- Accepted debt: record any stack capability-profile decision, dependency
-  storage redesign, Compute lifecycle integration, or expired archive removal
-  intentionally deferred.
+- Final source files touched:
+  - `package.json`
+  - `packages/core/src/tool-index.js`
+  - `packages/core/src/__tests__/unit/tool-index.test.js`
+  - `dist/index.cjs`
+  - this checklist
+- Operational closure:
+  - checksummed private archive root:
+    `/Users/admin/.rudi/archive/admin-mac-cleanup/20260807T034751Z`
+    (310,224 KB)
+  - archived/unloaded five retired LaunchAgents; preserved the three required
+    RUDI LaunchAgents and both healthy MLB jobs
+  - archived and removed the approved legacy Service Desk/runtime/output,
+    automation, workspace, registry, incoming-transfer, and retired-DB paths
+  - verified both the original three-file retired DB archive and the standalone
+    rollback database; both pass SQLite integrity checks
+  - compressed six older Service Desk recoveries; retained the required final
+    `cf53adfc` rollback unit; reduced Google Workspace recovery to its state
+    snapshot by removing only reinstallable dependencies
+  - removed the unowned 258,572 KB video cache and empty legacy roots
+  - pinned daemon and CLI wrappers to managed Node 20.10.0; daemon is ready
+  - hardened RUDI, organization, state, log, archive, output, recovery, and
+    Compute state/config/log roots to mode 700; secret files remain mode 600
+  - updated Notion, Audio Tools, and Google Workspace through the installed
+    Registry lifecycle; rebuilt Google Workspace's omitted generated `dist/`
+  - synchronized only the verified canonical output-path literals in the
+    installed Video Editor and Web Export copies when their normal lifecycle
+    path was blocked; backups and exact diffs are archived
+- Final Service Desk proof:
+  - organization SQLite `quick_check` is `ok`
+  - checkpoint version advanced to 5 with updated time
+    `2026-08-07T04:06:46.568Z`
+  - 802 conversations, 1,327 interactions, 1,512 source receipts
+  - 3,958 artifact rows exactly match 3,958 artifact files
+  - ingestion PID 30490 remains running; stdout advanced during the run and
+    stderr remains empty
+  - canonical organization, runtime, stack, Registry, router, bin, config,
+    secret, Compute, and MLB paths are present; every approved retired path is
+    absent
+- Space result: live `~/.rudi` decreased from 6,656,188 KB to 6,063,708 KB
+  while retaining verified rollback archives, a reduction of 592,480 KB.
+- Accepted debt and explicit deferrals:
+  - the 2.3 GB MLB Chrome profile remains product-owned and preserved
+  - the installed stack set remains unchanged pending an Admin Mac capability
+    profile; no stack was manually uninstalled
+  - the 97 MB historical Service Desk archive and final 54.7 MB rollback unit
+    remain until their rollback windows close
+  - Compute remains at exact code release `0.3.1-c6b020e`; the three later
+    `c55948da` source commits are documentation-only, so no risk-bearing
+    redeploy was performed
+  - the public Registry URL returned 404 and needs publication repair; this
+    run used the audited immutable local Registry release
+  - stack update packaging must build required generated output (Google
+    Workspace omitted `dist/`), Video Editor dependency detection must not
+    block same-version source refreshes, and Web Export's canonical Registry
+    source still needs the plural output default
+  - Video Editor still needs its mutable media root moved out of installed
+    package code; this run removed only the verified unowned cache
+  - `rudi home`/`doctor` still need canonical organization/Registry/recovery,
+    unclassified-root, and orphan-process visibility
 - Definition of Done:
-  - [ ] stale index trees are gone
-  - [ ] lifecycle regression test proves cleanup before resolution
-  - [ ] relevant source verification passes
-  - [ ] retired LaunchAgents are unloaded and archived
-  - [ ] approved legacy paths are archived, verified, and absent from live root
-  - [ ] canonical, Compute, and MLB state is preserved
-  - [ ] installed releases are traceable to exact commits or the unresolved
+  - [x] stale index trees are gone
+  - [x] lifecycle regression test proves cleanup before resolution
+  - [x] relevant source verification passes
+  - [x] retired LaunchAgents are unloaded and archived
+  - [x] approved legacy paths are archived, verified, and absent from live root
+  - [x] canonical, Compute, and MLB state is preserved
+  - [x] installed releases are traceable to exact commits or the unresolved
         release is explicitly blocked with evidence
-  - [ ] permissions are user-only at sensitive boundaries
-  - [ ] one index rebuild exits cleanly without descendants
-  - [ ] Service Desk checkpoint, counts, artifacts, Gmail polling, and health
+  - [x] permissions are user-only at sensitive boundaries
+  - [x] one index rebuild exits cleanly without descendants
+  - [x] Service Desk checkpoint, counts, artifacts, Gmail polling, and health
         match the baseline
 
 ## Rollback Units
