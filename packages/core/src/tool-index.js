@@ -27,6 +27,9 @@ const TOOL_INDEX_TMP = path.join(RUDI_HOME, 'cache', 'tool-index.json.tmp');
 const SECRETS_PATH = path.join(RUDI_HOME, 'secrets.json');
 
 const REQUEST_TIMEOUT_MS = 15000;
+const PROCESS_TERMINATION_GRACE_MS = 500;
+const PROCESS_KILL_WAIT_MS = 1000;
+const PROCESS_EXIT_POLL_MS = 25;
 const PROTOCOL_VERSION = '2024-11-05';
 
 // =============================================================================
@@ -136,6 +139,63 @@ function prependRudiExecutionPath(env) {
   env.PATH = entries.join(path.delimiter);
 }
 
+function positiveDuration(value, fallback) {
+  return Number.isFinite(value) && value > 0 ? value : fallback;
+}
+
+function processTreeIsAlive(childProcess) {
+  if (!Number.isInteger(childProcess?.pid) || childProcess.pid <= 1) return false;
+
+  const target = process.platform === 'win32' ? childProcess.pid : -childProcess.pid;
+  try {
+    process.kill(target, 0);
+    return true;
+  } catch (error) {
+    if (error?.code === 'ESRCH') return false;
+    if (error?.code === 'EPERM') return true;
+    throw error;
+  }
+}
+
+function signalProcessTree(childProcess, signal) {
+  if (!Number.isInteger(childProcess?.pid) || childProcess.pid <= 1) return false;
+
+  const target = process.platform === 'win32' ? childProcess.pid : -childProcess.pid;
+  try {
+    process.kill(target, signal);
+    return true;
+  } catch (error) {
+    if (error?.code === 'ESRCH') return false;
+    throw error;
+  }
+}
+
+async function waitForProcessTreeExit(childProcess, timeoutMs) {
+  const deadline = Date.now() + timeoutMs;
+  while (processTreeIsAlive(childProcess)) {
+    const remaining = deadline - Date.now();
+    if (remaining <= 0) return false;
+    await new Promise(resolve => setTimeout(resolve, Math.min(PROCESS_EXIT_POLL_MS, remaining)));
+  }
+  return true;
+}
+
+async function terminateProcessTree(childProcess, options = {}) {
+  if (!Number.isInteger(childProcess?.pid) || childProcess.pid <= 1) return;
+
+  const graceMs = positiveDuration(options.graceMs, PROCESS_TERMINATION_GRACE_MS);
+  const killWaitMs = positiveDuration(options.killWaitMs, PROCESS_KILL_WAIT_MS);
+
+  if (!processTreeIsAlive(childProcess)) return;
+  signalProcessTree(childProcess, 'SIGTERM');
+  if (await waitForProcessTreeExit(childProcess, graceMs)) return;
+
+  signalProcessTree(childProcess, 'SIGKILL');
+  if (await waitForProcessTreeExit(childProcess, killWaitMs)) return;
+
+  throw new Error(`process tree ${childProcess.pid} did not exit after SIGKILL`);
+}
+
 // =============================================================================
 // STACK TOOL DISCOVERY
 // =============================================================================
@@ -146,11 +206,17 @@ function prependRudiExecutionPath(env) {
  * @param {Object} stackConfig - Stack config from rudi.json
  * @param {Object} [options]
  * @param {number} [options.timeout=15000] - Timeout in ms
+ * @param {number} [options.terminationGraceMs=500] - Grace period before SIGKILL
  * @param {(msg: string) => void} [options.log] - Log function
  * @returns {Promise<{ tools: CachedTool[], error: string|null, missingSecrets: string[] }>}
  */
 export async function discoverStackTools(stackId, stackConfig, options = {}) {
-  const { timeout = REQUEST_TIMEOUT_MS, log = () => {} } = options;
+  const timeout = positiveDuration(options.timeout, REQUEST_TIMEOUT_MS);
+  const terminationGraceMs = positiveDuration(
+    options.terminationGraceMs,
+    PROCESS_TERMINATION_GRACE_MS,
+  );
+  const log = typeof options.log === 'function' ? options.log : () => {};
 
   // Check launch config
   const launch = stackConfig.launch;
@@ -179,21 +245,62 @@ export async function discoverStackTools(stackId, stackConfig, options = {}) {
   log(`  Spawning ${stackId}...`);
 
   return new Promise((resolve) => {
-    let resolved = false;
+    let finishing = false;
     let childProcess;
+    let rl;
+    let timeoutId;
+    const pending = new Map();
 
-    const cleanup = () => {
-      if (childProcess && !childProcess.killed) {
-        childProcess.kill();
+    const finish = async (result) => {
+      if (finishing) return;
+      finishing = true;
+      clearTimeout(timeoutId);
+
+      const interrupted = new Error(`Stack discovery finished before the RPC response for ${stackId}`);
+      for (const request of pending.values()) {
+        request.reject(interrupted);
       }
+      pending.clear();
+
+      try {
+        rl?.close();
+      } catch {
+        // The child may have already closed stdout.
+      }
+      try {
+        childProcess?.stdin?.end();
+      } catch {
+        // The child may have already closed stdin.
+      }
+
+      let cleanupError = null;
+      try {
+        await terminateProcessTree(childProcess, { graceMs: terminationGraceMs });
+      } catch (error) {
+        cleanupError = error;
+      } finally {
+        childProcess?.stdin?.destroy();
+        childProcess?.stdout?.destroy();
+        childProcess?.stderr?.destroy();
+      }
+
+      if (cleanupError) {
+        const prefix = result.error ? `${result.error}; ` : '';
+        resolve({
+          tools: [],
+          error: `${prefix}Process cleanup failed for ${stackId}: ${cleanupError.message}`,
+          missingSecrets: result.missingSecrets,
+        });
+        return;
+      }
+
+      resolve(result);
     };
 
     // Timeout
-    const timeoutId = setTimeout(() => {
-      if (!resolved) {
-        resolved = true;
-        cleanup();
-        resolve({
+    timeoutId = setTimeout(() => {
+      if (!finishing) {
+        void finish({
           tools: [],
           error: `Timeout after ${timeout}ms`,
           missingSecrets: []
@@ -205,20 +312,28 @@ export async function discoverStackTools(stackId, stackConfig, options = {}) {
       childProcess = spawn(launch.bin, launch.args || [], {
         cwd: launch.cwd || stackConfig.path,
         stdio: ['pipe', 'pipe', 'pipe'],
-        env
+        env,
+        detached: process.platform !== 'win32',
       });
 
-      const rl = readline.createInterface({
+      childProcess.stdin.on('error', () => {
+        // Process exit/error handlers provide the stack-specific result.
+      });
+
+      rl = readline.createInterface({
         input: childProcess.stdout,
         terminal: false
       });
 
       let requestId = 0;
-      const pending = new Map();
 
       // Send JSON-RPC request
       const send = (method, params = {}) => {
         return new Promise((resolveReq, rejectReq) => {
+          if (finishing || !childProcess.stdin.writable) {
+            rejectReq(new Error(`Stack process is not writable for ${method}`));
+            return;
+          }
           const id = ++requestId;
           pending.set(id, { resolve: resolveReq, reject: rejectReq });
 
@@ -255,11 +370,8 @@ export async function discoverStackTools(stackId, stackConfig, options = {}) {
 
       // Handle errors
       childProcess.on('error', (err) => {
-        if (!resolved) {
-          resolved = true;
-          clearTimeout(timeoutId);
-          cleanup();
-          resolve({
+        if (!finishing) {
+          void finish({
             tools: [],
             error: `Spawn error: ${err.message}`,
             missingSecrets: []
@@ -267,13 +379,12 @@ export async function discoverStackTools(stackId, stackConfig, options = {}) {
         }
       });
 
-      childProcess.on('exit', (code) => {
-        if (!resolved && code !== 0) {
-          resolved = true;
-          clearTimeout(timeoutId);
-          resolve({
+      childProcess.on('exit', (code, signal) => {
+        if (!finishing) {
+          const detail = signal ? `signal ${signal}` : `code ${code}`;
+          void finish({
             tools: [],
-            error: `Process exited with code ${code}`,
+            error: `Process exited before tool discovery completed with ${detail}`,
             missingSecrets: []
           });
         }
@@ -303,22 +414,16 @@ export async function discoverStackTools(stackId, stackConfig, options = {}) {
             inputSchema: t.inputSchema || { type: 'object', properties: {} }
           }));
 
-          if (!resolved) {
-            resolved = true;
-            clearTimeout(timeoutId);
-            cleanup();
-            resolve({
+          if (!finishing) {
+            await finish({
               tools,
               error: null,
               missingSecrets: []
             });
           }
         } catch (err) {
-          if (!resolved) {
-            resolved = true;
-            clearTimeout(timeoutId);
-            cleanup();
-            resolve({
+          if (!finishing) {
+            await finish({
               tools: [],
               error: err.message,
               missingSecrets: []
@@ -328,10 +433,8 @@ export async function discoverStackTools(stackId, stackConfig, options = {}) {
       })();
 
     } catch (err) {
-      if (!resolved) {
-        resolved = true;
-        clearTimeout(timeoutId);
-        resolve({
+      if (!finishing) {
+        void finish({
           tools: [],
           error: `Failed to spawn: ${err.message}`,
           missingSecrets: []
