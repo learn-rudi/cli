@@ -464,23 +464,23 @@ describe('private Agent Host automation profile', () => {
       provider: 'claude',
       timeoutMs: 160_000,
     });
-    const claudeHelp = [
-      '--disable-slash-commands',
-      '--input-format',
-      '--mcp-config',
-      '--no-chrome',
-      '--no-session-persistence',
-      '--safe-mode',
-      '--setting-sources',
-      '--strict-mcp-config',
-      '--tools',
-    ].join('\n');
+    const claudeCalls = [];
     assert.equal(assertPrivateAutomationHostCapabilities({
       binaryPath: '/fake/claude',
       profile: claudeProfile,
     }, {
-      spawnSyncImpl: () => ({ status: 0, stdout: claudeHelp }),
+      spawnSyncImpl(command, args, options) {
+        claudeCalls.push({ args, command, options });
+        return {
+          status: 1,
+          stderr: 'Input must be provided either through stdin or as a prompt argument when using --print',
+        };
+      },
     }), true);
+    assert.equal(claudeCalls[0].args.includes('--safe-mode'), true);
+    assert.equal(claudeCalls[0].args.includes('--tools'), true);
+    assert.equal(claudeCalls[0].args.includes('--json-schema'), false);
+    assert.equal(claudeCalls[0].options.input, '');
   });
 
   test('prefers the RUDI Claude wrapper that mediates private authentication', () => {

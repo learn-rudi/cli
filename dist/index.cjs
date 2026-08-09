@@ -31238,27 +31238,27 @@ function assertPrivateAutomationHostCapabilities({ binaryPath, profile }, depend
       "-s",
       "read-only"
     );
-    const configProbe = spawnSyncImpl(binaryPath, configArgs, {
+    const configProbe2 = spawnSyncImpl(binaryPath, configArgs, {
       encoding: "utf8",
       input: "",
       timeout: 5e3
     });
-    if (configProbe?.error || configProbe?.status === 0 || !probeOutput(configProbe).includes("No prompt provided via stdin.")) {
+    if (configProbe2?.error || configProbe2?.status === 0 || !probeOutput(configProbe2).includes("No prompt provided via stdin.")) {
       throw new Error("Codex host does not satisfy private automation config controls");
     }
-    const helpProbe2 = spawnSyncImpl(binaryPath, ["exec", "--help"], {
+    const helpProbe = spawnSyncImpl(binaryPath, ["exec", "--help"], {
       encoding: "utf8",
       timeout: 5e3
     });
-    const help2 = probeOutput(helpProbe2);
-    const requiredHelp2 = [
+    const help = probeOutput(helpProbe);
+    const requiredHelp = [
       "--ephemeral",
       "--ignore-rules",
       "--ignore-user-config",
       "--output-schema",
       "--sandbox"
     ];
-    if (!successfulProbe(helpProbe2) || requiredHelp2.some((flag) => !help2.includes(flag))) {
+    if (!successfulProbe(helpProbe) || requiredHelp.some((flag) => !help.includes(flag))) {
       throw new Error("Codex host does not satisfy private automation config and CLI capabilities");
     }
     const featureProbe = spawnSyncImpl(binaryPath, ["features", "list"], {
@@ -31275,20 +31275,34 @@ function assertPrivateAutomationHostCapabilities({ binaryPath, profile }, depend
     }
     return true;
   }
-  const helpProbe = spawnSyncImpl(binaryPath, ["--help"], { encoding: "utf8", timeout: 5e3 });
-  const help = probeOutput(helpProbe);
-  const requiredHelp = [
-    "--disable-slash-commands",
+  const configProbe = spawnSyncImpl(binaryPath, [
+    "--output-format",
+    "stream-json",
+    "--verbose",
+    "--print",
     "--input-format",
-    "--mcp-config",
-    "--no-chrome",
+    "text",
+    "--model",
+    profile.model,
     "--no-session-persistence",
     "--safe-mode",
-    "--setting-sources",
+    "--no-chrome",
+    "--disable-slash-commands",
+    "--tools",
+    "",
     "--strict-mcp-config",
-    "--tools"
-  ];
-  if (!successfulProbe(helpProbe) || requiredHelp.some((flag) => !help.includes(flag))) {
+    "--mcp-config",
+    '{"mcpServers":{}}',
+    "--setting-sources",
+    "",
+    "--permission-mode",
+    "plan"
+  ], {
+    encoding: "utf8",
+    input: "",
+    timeout: 5e3
+  });
+  if (configProbe?.error || configProbe?.status === 0 || !probeOutput(configProbe).includes("Input must be provided either through stdin")) {
     throw new Error("Claude host does not satisfy private automation CLI capabilities");
   }
   return true;

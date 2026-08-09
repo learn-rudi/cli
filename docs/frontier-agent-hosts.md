@@ -117,8 +117,9 @@ Codex private automation currently requires Codex CLI `0.146.0` or newer. The
 launcher checks that version, executes an empty-stdin strict-config sentinel to
 prove the no-web/no-image fields are accepted, verifies all named feature
 controls, and checks the required `exec` flags before it creates a workspace or
-delivers the real stdin. Claude is similarly capability-probed from its
-installed CLI help contract after normal installation/authentication preflight.
+delivers the real stdin. Claude is similarly capability-probed with an exact
+empty-stdin flag-parse sentinel after normal installation/authentication
+preflight.
 
 ## Install and update
 

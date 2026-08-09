@@ -366,20 +366,31 @@ export function assertPrivateAutomationHostCapabilities({ binaryPath, profile },
     return true;
   }
 
-  const helpProbe = spawnSyncImpl(binaryPath, ['--help'], { encoding: 'utf8', timeout: 5000 });
-  const help = probeOutput(helpProbe);
-  const requiredHelp = [
-    '--disable-slash-commands',
-    '--input-format',
-    '--mcp-config',
-    '--no-chrome',
+  const configProbe = spawnSyncImpl(binaryPath, [
+    '--output-format', 'stream-json',
+    '--verbose',
+    '--print',
+    '--input-format', 'text',
+    '--model', profile.model,
     '--no-session-persistence',
     '--safe-mode',
-    '--setting-sources',
+    '--no-chrome',
+    '--disable-slash-commands',
+    '--tools', '',
     '--strict-mcp-config',
-    '--tools',
-  ];
-  if (!successfulProbe(helpProbe) || requiredHelp.some(flag => !help.includes(flag))) {
+    '--mcp-config', '{"mcpServers":{}}',
+    '--setting-sources', '',
+    '--permission-mode', 'plan',
+  ], {
+    encoding: 'utf8',
+    input: '',
+    timeout: 5000,
+  });
+  if (
+    configProbe?.error
+    || configProbe?.status === 0
+    || !probeOutput(configProbe).includes('Input must be provided either through stdin')
+  ) {
     throw new Error('Claude host does not satisfy private automation CLI capabilities');
   }
   return true;
