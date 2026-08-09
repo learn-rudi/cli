@@ -78,7 +78,7 @@
     sandboxed run had only the expected localhost `EPERM` smoke-test failure;
   - build: passing; two builds produced identical SHA-256 hashes
     (`dist/index.cjs` =
-    `735395bb2d2e9fe6deaa9a61c8f3714c80c0da0ce546c8ba61a7f67a60c586c7`);
+    `b48ce66b742dbe4990939447500e2e0d6a236435964d90acc823053e72615e97`);
   - package dry-run: six expected package entries only;
   - RUDI debt scan, `pr-review` profile: zero findings;
   - integrated synthetic privacy tests: prompt absent from provider argv,
@@ -92,8 +92,10 @@
   - Claude 2.1.226: authenticated through the RUDI secret-mediated wrapper. A
     benign live provider probe with tools empty, nonessential traffic disabled,
     no fallback, simple prompt mode, and post-response schema validation
-    reported no tools and only `claude-sonnet-5` model usage. The installed RUDI
-    profile must repeat that probe after this source is packaged.
+    reported no tools and only `claude-sonnet-5` model usage. Its stream also
+    emits numeric-only `thinking_tokens` progress metadata, now closed-shape
+    allowlisted without persistence. The installed RUDI profile must repeat that
+    probe after this source is packaged.
 
 ## Phase 6: Docs, Contracts, And Closure
 

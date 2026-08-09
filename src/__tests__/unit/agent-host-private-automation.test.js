@@ -371,6 +371,21 @@ describe('private Agent Host automation profile', () => {
       },
     }));
     assert.doesNotThrow(() => assertPrivateAutomationRawEvent('claude', {
+      estimated_tokens: 12,
+      estimated_tokens_delta: 3,
+      session_id: 'private-session-id',
+      subtype: 'thinking_tokens',
+      type: 'system',
+      uuid: 'private-event-id',
+    }));
+    assert.throws(() => assertPrivateAutomationRawEvent('claude', {
+      estimated_tokens: 12,
+      estimated_tokens_delta: 3,
+      message: privatePrompt,
+      subtype: 'thinking_tokens',
+      type: 'system',
+    }), /thinking-token metadata is invalid/u);
+    assert.doesNotThrow(() => assertPrivateAutomationRawEvent('claude', {
       type: 'result',
       modelUsage: { 'claude-sonnet-5': { inputTokens: 1, outputTokens: 1 } },
     }, 'claude-sonnet-5'));
