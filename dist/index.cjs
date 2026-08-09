@@ -30157,6 +30157,7 @@ var codex_default = {
   binary: {
     name: "codex",
     resolvePaths: [
+      "~/.rudi/agents/codex/bin/codex",
       "~/.rudi/agents/codex/node_modules/.bin/codex",
       "~/.rudi/runtimes/node/{arch}/bin/codex",
       "~/.rudi/runtimes/node/bin/codex"
@@ -30172,7 +30173,7 @@ var codex_default = {
     promptDelivery: "arg",
     stdinPrompt: "-",
     privateAutomation: {
-      minimumVersion: "0.146.0",
+      minimumVersion: "0.147.0",
       profile: "private-automation-v1",
       promptDelivery: "stdin",
       sessionPersistence: false,
@@ -30884,6 +30885,7 @@ var PRIVATE_RAW_EVENT_TYPES = Object.freeze({
   ])
 });
 var PRIVATE_CODEX_ITEM_TYPES = /* @__PURE__ */ new Set(["agent_message", "reasoning"]);
+var PRIVATE_CODEX_DISABLED_CAPABILITY_DIAGNOSTIC = "Code Mode is unavailable because code-mode host is disabled.";
 var PRIVATE_CLAUDE_ASSISTANT_BLOCK_TYPES = /* @__PURE__ */ new Set(["text", "thinking"]);
 var PRIVATE_CLAUDE_SYSTEM_SUBTYPES = /* @__PURE__ */ new Set(["init"]);
 var PRIVATE_CODEX_DISABLED_FEATURES = Object.freeze([
@@ -30904,7 +30906,8 @@ var PRIVATE_CODEX_DISABLED_FEATURES = Object.freeze([
   "skill_search",
   "tool_call_mcp_elicitation",
   "tool_suggest",
-  "unified_exec"
+  "unified_exec",
+  "view_image"
 ]);
 function getPrivateCodexDisabledFeatures() {
   return [...PRIVATE_CODEX_DISABLED_FEATURES];
@@ -31063,8 +31066,12 @@ function assertPrivateAutomationRawEvent(provider, event, expectedModel = null) 
   if (!PRIVATE_RAW_EVENT_TYPES[provider].has(event.type)) {
     throw new Error("private automation provider event type is not allowlisted");
   }
-  if (provider === "codex" && event.type.startsWith("item.") && !PRIVATE_CODEX_ITEM_TYPES.has(event.item?.type)) {
-    throw new Error("private automation Codex item type is not allowlisted");
+  if (provider === "codex" && event.type.startsWith("item.")) {
+    const itemType = event.item?.type;
+    const isBlockedCapabilityDiagnostic = event.type === "item.completed" && itemType === "error" && typeof event.item?.message === "string" && event.item.message.startsWith(PRIVATE_CODEX_DISABLED_CAPABILITY_DIAGNOSTIC);
+    if (!PRIVATE_CODEX_ITEM_TYPES.has(itemType) && !isBlockedCapabilityDiagnostic) {
+      throw new Error("private automation Codex item type is not allowlisted");
+    }
   }
   if (provider === "claude" && event.type === "system") {
     if (!PRIVATE_CLAUDE_SYSTEM_SUBTYPES.has(event.subtype)) {
@@ -31135,8 +31142,6 @@ function assertPrivateAutomationHostCapabilities({ binaryPath, profile }, depend
       "mcp_servers={}",
       "-c",
       'web_search="disabled"',
-      "-c",
-      "tools.view_image=false",
       "exec",
       "-",
       "--json",
@@ -31265,7 +31270,7 @@ function executeForegroundLaunch({
     let sinkFailure = null;
     let privateFailure = null;
     let privateFinalOutput = null;
-    let privateObservedModel = null;
+    let privateObservedModel = privateAutomation && plan.provider === "codex" ? plan.model : null;
     let privateRawOutputBytes = 0;
     let privateUsage = null;
     function terminateProvider(signal) {
@@ -32306,8 +32311,6 @@ function buildCodexPlan(options) {
       "mcp_servers={}",
       "-c",
       'web_search="disabled"',
-      "-c",
-      "tools.view_image=false",
       "exec",
       "-",
       "--json",

@@ -96,8 +96,12 @@ by default), a 2-MiB raw provider-stream ceiling, and a 64-KiB final structured
 result ceiling. Provider stderr is suppressed, native session IDs are not
 stored, and launch artifacts receive only event/usage/status metadata. The one
 structured result is returned transiently on stdout to the invoking process
-only after the provider stream reports the exact requested model. Missing or
-different provider-observed model identity fails closed.
+only after the provider-specific exact-model contract succeeds. Codex is
+command-pinned with `-m`, ignores user configuration, exposes no fallback-model
+input in this profile, and rejects any contradictory model field if one appears
+in its JSONL stream; Codex JSONL does not otherwise echo the selected model.
+Claude must report terminal model usage containing only the requested exact
+model. Missing or different Claude model identity fails closed.
 
 Claude structured output is enforced by RUDI after the provider returns plain
 JSON. The private profile deliberately does not pass Claude `--json-schema`,
@@ -113,11 +117,12 @@ schema while the empty workspace and metadata-only artifacts are inspected;
 flag/help discovery alone is not activation evidence. The profile never
 chooses a provider or model and never falls back to another one.
 
-Codex private automation currently requires Codex CLI `0.146.0` or newer. The
+Codex private automation currently requires Codex CLI `0.147.0` or newer. The
 launcher checks that version, executes an empty-stdin strict-config sentinel to
-prove the no-web/no-image fields are accepted, verifies all named feature
-controls, and checks the required `exec` flags before it creates a workspace or
-delivers the real stdin. Claude is similarly capability-probed with an exact
+prove the no-web configuration and `view_image` feature disable are accepted,
+verifies all named feature controls, and checks the required `exec` flags before
+it creates a workspace or delivers the real stdin. Claude is similarly
+capability-probed with an exact
 empty-stdin flag-parse sentinel after normal installation/authentication
 preflight.
 

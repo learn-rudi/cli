@@ -104,15 +104,21 @@ function privateCodexSpawn(calls, { malformed = false, tool = false } = {}) {
         } else {
           child.stdout.write(`${JSON.stringify({
             item: {
+              id: 'disabled-capability-1',
+              message: 'Code Mode is unavailable because code-mode host is disabled. Code mode will fail closed.',
+              type: 'error',
+            },
+            type: 'item.completed',
+          })}\n`);
+          child.stdout.write(`${JSON.stringify({
+            item: {
               id: 'message-1',
-              model: 'gpt-5.6-luna',
               text: JSON.stringify({ category: 'conversation', schemaVersion: 1 }),
               type: 'agent_message',
             },
             type: 'item.completed',
           })}\n`);
           child.stdout.write(`${JSON.stringify({
-            model: 'gpt-5.6-luna',
             type: 'turn.completed',
             usage: { input_tokens: 25, output_tokens: 8 },
           })}\n`);
@@ -199,7 +205,7 @@ describe('private Agent Host automation profile', () => {
     assert.equal(codex.args.includes('gpt-5.6-luna'), true);
     assert.equal(codex.args.includes('--search'), false);
     assert.equal(codex.args.includes('web_search="disabled"'), true);
-    assert.equal(codex.args.includes('tools.view_image=false'), true);
+    assert.equal(codex.args.includes('tools.view_image=false'), false);
     for (const feature of [
       'apps',
       'browser_use',
@@ -219,6 +225,7 @@ describe('private Agent Host automation profile', () => {
       'tool_call_mcp_elicitation',
       'tool_suggest',
       'unified_exec',
+      'view_image',
     ]) {
       assert.deepEqual(
         codex.args.some((arg, index) => (
@@ -344,7 +351,7 @@ describe('private Agent Host automation profile', () => {
     );
   });
 
-  test('rejects Claude permission, tool, and unknown assistant blocks', () => {
+  test('rejects unsafe raw events and accepts the exact Codex disabled-capability diagnostic', () => {
     for (const event of [
       { type: 'system', subtype: 'permission_request' },
       { type: 'assistant', message: { content: [{ type: 'server_tool_use' }] } },
@@ -374,6 +381,18 @@ describe('private Agent Host automation profile', () => {
         'claude-sonnet-5': { inputTokens: 1, outputTokens: 1 },
       },
     }, 'claude-sonnet-5'), /model usage does not match/u);
+    assert.doesNotThrow(() => assertPrivateAutomationRawEvent('codex', {
+      item: {
+        id: 'disabled-capability-1',
+        message: 'Code Mode is unavailable because code-mode host is disabled. Code mode will fail closed.',
+        type: 'error',
+      },
+      type: 'item.completed',
+    }, 'gpt-5.6-luna'));
+    assert.throws(() => assertPrivateAutomationRawEvent('codex', {
+      item: { id: 'provider-error-1', message: 'different provider error', type: 'error' },
+      type: 'item.completed',
+    }, 'gpt-5.6-luna'), /not allowlisted/u);
   });
 
   test('capability-gates exact provider controls before prompt delivery', () => {
@@ -410,6 +429,7 @@ describe('private Agent Host automation profile', () => {
       'tool_call_mcp_elicitation',
       'tool_suggest',
       'unified_exec',
+      'view_image',
     ].map(feature => `${feature} stable true`).join('\n');
     const calls = [];
     assert.equal(assertPrivateAutomationHostCapabilities({
@@ -418,7 +438,7 @@ describe('private Agent Host automation profile', () => {
     }, {
       spawnSyncImpl(command, args) {
         calls.push({ args, command });
-        if (calls.length === 1) return { status: 0, stdout: 'codex-cli 0.146.0' };
+        if (calls.length === 1) return { status: 0, stdout: 'codex-cli 0.147.0' };
         if (calls.length === 2) {
           return { status: 1, stderr: 'No prompt provided via stdin.' };
         }
@@ -426,7 +446,10 @@ describe('private Agent Host automation profile', () => {
         return { status: 0, stdout: featureList };
       },
     }), true);
-    assert.equal(calls[1].args.includes('tools.view_image=false'), true);
+    assert.equal(calls[1].args.includes('tools.view_image=false'), false);
+    assert.equal(calls[1].args.some((arg, index) => (
+      arg === '--disable' && calls[1].args[index + 1] === 'view_image'
+    )), true);
     assert.equal(calls[1].args.includes('web_search="disabled"'), true);
     assert.equal(calls[1].args.includes('--output-schema'), true);
 
@@ -435,7 +458,7 @@ describe('private Agent Host automation profile', () => {
         binaryPath: '/fake/codex',
         profile: codexProfile,
       }, {
-        spawnSyncImpl: () => ({ status: 0, stdout: 'codex-cli 0.145.0' }),
+        spawnSyncImpl: () => ({ status: 0, stdout: 'codex-cli 0.146.0' }),
       }),
       /version does not satisfy private automation config/u,
     );
@@ -447,11 +470,11 @@ describe('private Agent Host automation profile', () => {
       }, {
         spawnSyncImpl(command, args) {
           if (args.includes('--version')) {
-            return { status: 0, stdout: 'codex-cli 0.146.0-alpha.10.1' };
+            return { status: 0, stdout: 'codex-cli 0.147.0' };
           }
           return {
             status: 1,
-            stderr: 'unknown configuration field `tools.view_image`',
+            stderr: 'unknown feature: view_image',
           };
         },
       }),
@@ -484,6 +507,9 @@ describe('private Agent Host automation profile', () => {
   });
 
   test('prefers the RUDI Claude wrapper that mediates private authentication', () => {
+    const codexResolvePaths = getAgentProviderConfig('codex').binary.resolvePaths;
+    assert.equal(codexResolvePaths[0], '~/.rudi/agents/codex/bin/codex');
+
     const resolvePaths = getAgentProviderConfig('claude').binary.resolvePaths;
     assert.equal(resolvePaths[0], '~/.rudi/bins/claude');
     assert.equal(resolvePaths.includes('~/.local/bin/claude'), true);
@@ -636,20 +662,6 @@ describe('private Agent Host automation profile', () => {
   });
 
   for (const scenario of [
-    {
-      expected: 'private_model_unobserved',
-      label: 'missing provider-observed model identity',
-      write(child) {
-        child.stdout.write(`${JSON.stringify({
-          item: {
-            id: 'message-1',
-            text: JSON.stringify({ category: 'conversation', schemaVersion: 1 }),
-            type: 'agent_message',
-          },
-          type: 'item.completed',
-        })}\n`);
-      },
-    },
     {
       expected: 'private_model_mismatch',
       label: 'provider model mismatch',

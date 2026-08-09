@@ -44,7 +44,6 @@ export function buildCodexPlan(options) {
     args.push(
       '-c', 'mcp_servers={}',
       '-c', 'web_search="disabled"',
-      '-c', 'tools.view_image=false',
       'exec', '-',
       '--json',
       '--skip-git-repo-check',
