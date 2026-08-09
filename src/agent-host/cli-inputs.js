@@ -1,6 +1,10 @@
 import fs from 'node:fs';
 import path from 'node:path';
 
+import {
+  createPrivateAutomationProfile,
+  PRIVATE_AUTOMATION_MAX_PROMPT_BYTES,
+} from './private-automation-profile.js';
 import { resolveAgentProviderId } from './providers/index.js';
 
 export const MAX_PROMPT_BYTES = 10 * 1024 * 1024;
@@ -16,14 +20,14 @@ function requiredFlagString(value, name) {
   return value;
 }
 
-async function readPromptStream(stdin) {
+async function readPromptStream(stdin, maxBytes = MAX_PROMPT_BYTES) {
   let value = '';
   let size = 0;
   for await (const chunk of stdin) {
     const buffer = Buffer.isBuffer(chunk) ? chunk : Buffer.from(String(chunk));
     size += buffer.length;
-    if (size > MAX_PROMPT_BYTES) {
-      throw new Error(`stdin prompt exceeds ${MAX_PROMPT_BYTES} bytes`);
+    if (size > maxBytes) {
+      throw new Error(`stdin prompt exceeds ${maxBytes} bytes`);
     }
     value += buffer.toString('utf8');
   }
@@ -36,6 +40,10 @@ export async function resolveAgentPrompt(flags, {
 } = {}) {
   const inline = flags.prompt;
   const promptFile = flagValue(flags, 'prompt-file', 'promptFile');
+  const privateAutomation = flagValue(flags, 'private-automation', 'privateAutomation') === true;
+  if (privateAutomation && (inline != null || promptFile != null)) {
+    throw new Error('private automation prompt must be supplied through stdin');
+  }
   if (inline != null && promptFile != null) {
     throw new Error('Use exactly one of --prompt or --prompt-file');
   }
@@ -55,16 +63,20 @@ export async function resolveAgentPrompt(flags, {
     if (!stat.isFile()) throw new Error(`Prompt file is not a regular file: ${filePath}`);
     if (stat.size > MAX_PROMPT_BYTES) throw new Error(`Prompt file exceeds ${MAX_PROMPT_BYTES} bytes`);
     prompt = fs.readFileSync(filePath, 'utf8');
-  } else if (stdin && stdin.isTTY === false) {
-    prompt = await readPromptStream(stdin);
+  } else if (stdin && stdin.isTTY !== true) {
+    prompt = await readPromptStream(
+      stdin,
+      privateAutomation ? PRIVATE_AUTOMATION_MAX_PROMPT_BYTES : MAX_PROMPT_BYTES,
+    );
   } else {
     throw new Error('Prompt required via --prompt, --prompt-file, or stdin');
   }
 
   if (!prompt.trim()) throw new Error('Prompt must not be empty');
   if (prompt.includes('\0')) throw new Error('Prompt must not contain NUL bytes');
-  if (Buffer.byteLength(prompt, 'utf8') > MAX_PROMPT_BYTES) {
-    throw new Error(`Prompt exceeds ${MAX_PROMPT_BYTES} bytes`);
+  const maxPromptBytes = privateAutomation ? PRIVATE_AUTOMATION_MAX_PROMPT_BYTES : MAX_PROMPT_BYTES;
+  if (Buffer.byteLength(prompt, 'utf8') > maxPromptBytes) {
+    throw new Error(`Prompt exceeds ${maxPromptBytes} bytes`);
   }
   return prompt;
 }
@@ -111,6 +123,55 @@ export function parseTimeout(flags) {
 }
 
 export function buildLaunchOptions(provider, prompt, flags, passthrough, originDirectory) {
+  const privateAutomation = flagValue(flags, 'private-automation', 'privateAutomation') === true;
+  if (privateAutomation) {
+    const forbiddenFlags = [
+      ['approval-mode', 'approvalMode'],
+      ['image', 'images'],
+      ['mode'],
+      ['output-dir', 'outputDirectory'],
+      ['permission-mode', 'permissionMode'],
+      ['read-only', 'readOnly'],
+      ['workspace'],
+      ['workspace-mode', 'workspaceMode'],
+    ];
+    for (const names of forbiddenFlags) {
+      if (names.some(name => flags[name] != null)) {
+        throw new Error(`private automation forbids --${names[0]}`);
+      }
+    }
+    if (flags.detach === true) throw new Error('private automation forbids detached execution');
+    if (passthrough.length > 0) throw new Error('private automation forbids provider passthrough arguments');
+    const canonicalProvider = resolveAgentProviderId(provider);
+    const outputSchemaValue = requiredFlagString(
+      flagValue(flags, 'output-schema', 'outputSchema'),
+      '--output-schema',
+    );
+    const outputSchemaPath = path.resolve(originDirectory, outputSchemaValue);
+    const timeoutMs = parseTimeout(flags);
+    const privateAutomationProfile = createPrivateAutomationProfile({
+      model: flags.model,
+      outputSchemaPath,
+      provider: canonicalProvider,
+      timeoutMs,
+    });
+    return {
+      approvalMode: null,
+      extraArgs: [],
+      images: [],
+      json: flags.json === true,
+      model: privateAutomationProfile.model,
+      originDirectory,
+      outputDirectory: null,
+      permissionMode: canonicalProvider === 'codex' ? 'readonly' : 'plan',
+      privateAutomationProfile,
+      prompt,
+      provider: canonicalProvider,
+      timeoutMs: privateAutomationProfile.timeoutMs,
+      workspace: null,
+      workspaceMode: 'read-only',
+    };
+  }
   return {
     approvalMode: flagValue(flags, 'approval-mode', 'approvalMode'),
     extraArgs: passthrough,
