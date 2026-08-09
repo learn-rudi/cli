@@ -31,7 +31,15 @@ const PRIVATE_CODEX_DISABLED_CAPABILITY_DIAGNOSTIC = (
   'Code Mode is unavailable because code-mode host is disabled.'
 );
 const PRIVATE_CLAUDE_ASSISTANT_BLOCK_TYPES = new Set(['text', 'thinking']);
-const PRIVATE_CLAUDE_SYSTEM_SUBTYPES = new Set(['init']);
+const PRIVATE_CLAUDE_SYSTEM_SUBTYPES = new Set(['init', 'thinking_tokens']);
+const PRIVATE_CLAUDE_THINKING_TOKEN_KEYS = new Set([
+  'estimated_tokens',
+  'estimated_tokens_delta',
+  'session_id',
+  'subtype',
+  'type',
+  'uuid',
+]);
 const PRIVATE_CODEX_DISABLED_FEATURES = Object.freeze([
   'apps',
   'browser_use',
@@ -242,6 +250,15 @@ export function assertPrivateAutomationRawEvent(provider, event, expectedModel =
       || (Array.isArray(event.mcp_servers) && event.mcp_servers.length > 0)
     ) {
       throw new Error('private automation Claude init capabilities are not empty');
+    }
+    if (event.subtype === 'thinking_tokens' && (
+      Object.keys(event).some(key => !PRIVATE_CLAUDE_THINKING_TOKEN_KEYS.has(key))
+      || !Number.isFinite(event.estimated_tokens)
+      || event.estimated_tokens < 0
+      || !Number.isFinite(event.estimated_tokens_delta)
+      || event.estimated_tokens_delta < 0
+    )) {
+      throw new Error('private automation Claude thinking-token metadata is invalid');
     }
   }
   if (provider === 'claude' && event.type === 'assistant') {

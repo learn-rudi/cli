@@ -109,6 +109,8 @@ because that CLI surface materializes a provider `StructuredOutput` tool. The
 launcher disables all Claude tools and nonessential/auxiliary model traffic,
 pins classifier and subagent model variables to the requested model, and
 rejects terminal model-usage metadata unless it names only that exact model.
+Claude `thinking_tokens` progress events are accepted only as a closed numeric
+metadata shape; their session identifiers and token estimates are not persisted.
 
 Private use still requires an organization-approved provider/model egress
 contract and a synthetic no-tool launch for each exact installed provider and
