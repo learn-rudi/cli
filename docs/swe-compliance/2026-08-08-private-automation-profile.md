@@ -74,12 +74,12 @@
   check, changed-file debt scan, package dry-run, argv/artifact/log privacy
   smoke tests, and exact provider probes with synthetic data.
 - Completed evidence:
-  - full test: 635/635 passing on the combined CLI 1.10.15 lineage outside the
+  - full test: 633/633 passing on the clean CLI 1.10.15 lineage outside the
     network-bind sandbox; the initial
     sandboxed run had only the expected localhost `EPERM` smoke-test failure;
   - build: passing; two builds produced identical SHA-256 hashes
     (`dist/index.cjs` =
-    `e2b0986bb8f396ff829700bfa2b82bafdcdaa870bf7ca5d1f468ddf0bdac54c0`);
+    `1897563de9ed112628979edc49de9f2f8e3bb875a64262e40df8f2116773faeb`);
   - package dry-run: six expected package entries only;
   - RUDI debt scan, `pr-review` profile: zero findings;
   - integrated synthetic privacy tests: prompt absent from provider argv,

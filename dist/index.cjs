@@ -37285,7 +37285,7 @@ async function cmdAgent(args = [], flags = {}, passthrough = [], dependencies = 
 }
 
 // src/index.js
-var VERSION = true ? "1.10.12" : process.env.npm_package_version || "0.0.0";
+var VERSION = true ? "1.10.15" : process.env.npm_package_version || "0.0.0";
 var RETIRED_COMMANDS = /* @__PURE__ */ new Map([
   ["apply", "Provider transcripts remain authoritative; organization-plan execution was removed."],
   ["database", "Use Studio only if you still need the isolated compatibility database."],
