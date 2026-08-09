@@ -210,7 +210,7 @@ export function projectPrivateAutomationEventMetadata(event) {
   return Object.freeze(metadata);
 }
 
-export function assertPrivateAutomationRawEvent(provider, event) {
+export function assertPrivateAutomationRawEvent(provider, event, expectedModel = null) {
   if (!PRIVATE_PROVIDERS.has(provider) || !event || typeof event !== 'object' || Array.isArray(event)) {
     throw new Error('private automation provider event is invalid');
   }
@@ -250,6 +250,15 @@ export function assertPrivateAutomationRawEvent(provider, event) {
       || !PRIVATE_CLAUDE_ASSISTANT_BLOCK_TYPES.has(block.type)
     ))) {
       throw new Error('private automation Claude content block is not allowlisted');
+    }
+  }
+  if (provider === 'claude' && event.type === 'result' && expectedModel != null) {
+    const observedModels = event.modelUsage && typeof event.modelUsage === 'object'
+      && !Array.isArray(event.modelUsage)
+      ? Object.keys(event.modelUsage)
+      : [];
+    if (observedModels.length !== 1 || observedModels[0] !== expectedModel) {
+      throw new Error('private automation Claude model usage does not match the exact model');
     }
   }
   if (containsToolEvent(event)) {
@@ -295,13 +304,43 @@ export function assertPrivateAutomationHostCapabilities({ binaryPath, profile },
     if (!successfulProbe(versionProbe) || !versionSupported) {
       throw new Error('Codex host version does not satisfy private automation config controls');
     }
-    const configProbe = spawnSyncImpl(binaryPath, [
-      '--strict-config',
+    const disabledFeatures = getPrivateCodexDisabledFeatures();
+    const configArgs = ['--ask-for-approval', 'never'];
+    for (const feature of disabledFeatures) configArgs.push('--disable', feature);
+    configArgs.push(
+      '-c', 'mcp_servers={}',
       '-c', 'web_search="disabled"',
       '-c', 'tools.view_image=false',
-      'exec', '--help',
-    ], { encoding: 'utf8', timeout: 5000 });
-    const help = probeOutput(configProbe);
+      'exec', '-',
+      '--json',
+      '--skip-git-repo-check',
+      '--color', 'never',
+      '-C', path.dirname(profile.outputSchema.path),
+      '-m', profile.model,
+      '--output-schema', profile.outputSchema.path,
+      '--ephemeral',
+      '--strict-config',
+      '--ignore-user-config',
+      '--ignore-rules',
+      '-s', 'read-only',
+    );
+    const configProbe = spawnSyncImpl(binaryPath, configArgs, {
+      encoding: 'utf8',
+      input: '',
+      timeout: 5000,
+    });
+    if (
+      configProbe?.error
+      || configProbe?.status === 0
+      || !probeOutput(configProbe).includes('No prompt provided via stdin.')
+    ) {
+      throw new Error('Codex host does not satisfy private automation config controls');
+    }
+    const helpProbe = spawnSyncImpl(binaryPath, ['exec', '--help'], {
+      encoding: 'utf8',
+      timeout: 5000,
+    });
+    const help = probeOutput(helpProbe);
     const requiredHelp = [
       '--ephemeral',
       '--ignore-rules',
@@ -309,7 +348,7 @@ export function assertPrivateAutomationHostCapabilities({ binaryPath, profile },
       '--output-schema',
       '--sandbox',
     ];
-    if (!successfulProbe(configProbe) || requiredHelp.some(flag => !help.includes(flag))) {
+    if (!successfulProbe(helpProbe) || requiredHelp.some(flag => !help.includes(flag))) {
       throw new Error('Codex host does not satisfy private automation config and CLI capabilities');
     }
     const featureProbe = spawnSyncImpl(binaryPath, ['features', 'list'], {
@@ -332,7 +371,6 @@ export function assertPrivateAutomationHostCapabilities({ binaryPath, profile },
   const requiredHelp = [
     '--disable-slash-commands',
     '--input-format',
-    '--json-schema',
     '--mcp-config',
     '--no-chrome',
     '--no-session-persistence',

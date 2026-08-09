@@ -8,6 +8,7 @@
   "binary": {
     "name": "claude",
     "resolvePaths": [
+      "~/.rudi/bins/claude",
       "~/.local/bin/claude",
       "~/.rudi/runtimes/node/{arch}/bin/claude",
       "~/.rudi/runtimes/node/bin/claude",

@@ -29819,6 +29819,7 @@ var claude_default = {
   binary: {
     name: "claude",
     resolvePaths: [
+      "~/.rudi/bins/claude",
       "~/.local/bin/claude",
       "~/.rudi/runtimes/node/{arch}/bin/claude",
       "~/.rudi/runtimes/node/bin/claude",
@@ -31055,7 +31056,7 @@ function projectPrivateAutomationEventMetadata(event) {
   }
   return Object.freeze(metadata);
 }
-function assertPrivateAutomationRawEvent(provider, event) {
+function assertPrivateAutomationRawEvent(provider, event, expectedModel = null) {
   if (!PRIVATE_PROVIDERS.has(provider) || !event || typeof event !== "object" || Array.isArray(event)) {
     throw new Error("private automation provider event is invalid");
   }
@@ -31078,6 +31079,12 @@ function assertPrivateAutomationRawEvent(provider, event) {
     const content = Array.isArray(event.content) ? event.content : Array.isArray(message?.content) ? message.content : [];
     if (content.some((block) => !block || typeof block !== "object" || !PRIVATE_CLAUDE_ASSISTANT_BLOCK_TYPES.has(block.type))) {
       throw new Error("private automation Claude content block is not allowlisted");
+    }
+  }
+  if (provider === "claude" && event.type === "result" && expectedModel != null) {
+    const observedModels = event.modelUsage && typeof event.modelUsage === "object" && !Array.isArray(event.modelUsage) ? Object.keys(event.modelUsage) : [];
+    if (observedModels.length !== 1 || observedModels[0] !== expectedModel) {
+      throw new Error("private automation Claude model usage does not match the exact model");
     }
   }
   if (containsToolEvent(event)) {
@@ -31120,16 +31127,48 @@ function assertPrivateAutomationHostCapabilities({ binaryPath, profile }, depend
     if (!successfulProbe(versionProbe) || !versionSupported) {
       throw new Error("Codex host version does not satisfy private automation config controls");
     }
-    const configProbe = spawnSyncImpl(binaryPath, [
-      "--strict-config",
+    const disabledFeatures = getPrivateCodexDisabledFeatures();
+    const configArgs = ["--ask-for-approval", "never"];
+    for (const feature of disabledFeatures) configArgs.push("--disable", feature);
+    configArgs.push(
+      "-c",
+      "mcp_servers={}",
       "-c",
       'web_search="disabled"',
       "-c",
       "tools.view_image=false",
       "exec",
-      "--help"
-    ], { encoding: "utf8", timeout: 5e3 });
-    const help2 = probeOutput(configProbe);
+      "-",
+      "--json",
+      "--skip-git-repo-check",
+      "--color",
+      "never",
+      "-C",
+      import_node_path4.default.dirname(profile.outputSchema.path),
+      "-m",
+      profile.model,
+      "--output-schema",
+      profile.outputSchema.path,
+      "--ephemeral",
+      "--strict-config",
+      "--ignore-user-config",
+      "--ignore-rules",
+      "-s",
+      "read-only"
+    );
+    const configProbe = spawnSyncImpl(binaryPath, configArgs, {
+      encoding: "utf8",
+      input: "",
+      timeout: 5e3
+    });
+    if (configProbe?.error || configProbe?.status === 0 || !probeOutput(configProbe).includes("No prompt provided via stdin.")) {
+      throw new Error("Codex host does not satisfy private automation config controls");
+    }
+    const helpProbe2 = spawnSyncImpl(binaryPath, ["exec", "--help"], {
+      encoding: "utf8",
+      timeout: 5e3
+    });
+    const help2 = probeOutput(helpProbe2);
     const requiredHelp2 = [
       "--ephemeral",
       "--ignore-rules",
@@ -31137,7 +31176,7 @@ function assertPrivateAutomationHostCapabilities({ binaryPath, profile }, depend
       "--output-schema",
       "--sandbox"
     ];
-    if (!successfulProbe(configProbe) || requiredHelp2.some((flag) => !help2.includes(flag))) {
+    if (!successfulProbe(helpProbe2) || requiredHelp2.some((flag) => !help2.includes(flag))) {
       throw new Error("Codex host does not satisfy private automation config and CLI capabilities");
     }
     const featureProbe = spawnSyncImpl(binaryPath, ["features", "list"], {
@@ -31159,7 +31198,6 @@ function assertPrivateAutomationHostCapabilities({ binaryPath, profile }, depend
   const requiredHelp = [
     "--disable-slash-commands",
     "--input-format",
-    "--json-schema",
     "--mcp-config",
     "--no-chrome",
     "--no-session-persistence",
@@ -31281,10 +31319,10 @@ function executeForegroundLaunch({
       let persistedEvent = normalized;
       if (privateAutomation) {
         try {
-          assertPrivateAutomationRawEvent(plan.provider, rawEvent);
+          assertPrivateAutomationRawEvent(plan.provider, rawEvent, plan.model);
           persistedEvent = projectPrivateAutomationEventMetadata(normalized);
-        } catch {
-          privateFailure = "private_tool_event";
+        } catch (error) {
+          privateFailure = String(error?.message || "").includes("model usage") ? "private_model_mismatch" : "private_tool_event";
           terminateProvider("SIGTERM");
           return;
         }
@@ -32168,8 +32206,6 @@ function buildClaudePlan(options) {
       "text",
       "--model",
       context.model,
-      "--json-schema",
-      context.privateAutomationProfile.outputSchema.canonical,
       "--no-session-persistence",
       "--safe-mode",
       "--no-chrome",
@@ -32184,7 +32220,27 @@ function buildClaudePlan(options) {
       "--permission-mode",
       "plan"
     ];
-    return finishPlan(context, args2, "plan");
+    const environment = buildPrivateProviderEnvironment(
+      context.config,
+      context.binaryPath
+    );
+    return finishPlan(context, args2, "plan", {
+      ...environment,
+      CLAUDE_CODE_AUTO_MODE_MODEL: context.model,
+      CLAUDE_CODE_BG_CLASSIFIER_MODEL: context.model,
+      CLAUDE_CODE_DISABLE_AUTO_MEMORY: "1",
+      CLAUDE_CODE_DISABLE_BACKGROUND_TASKS: "1",
+      CLAUDE_CODE_DISABLE_BUNDLED_SKILLS: "1",
+      CLAUDE_CODE_DISABLE_CLAUDE_API_SKILL: "1",
+      CLAUDE_CODE_DISABLE_CLAUDE_CODE_SKILL: "1",
+      CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC: "1",
+      CLAUDE_CODE_DISABLE_WORKFLOWS: "1",
+      CLAUDE_CODE_ENABLE_PROMPT_SUGGESTION: "0",
+      CLAUDE_CODE_ENABLE_TELEMETRY: "0",
+      CLAUDE_CODE_NO_MODEL_FALLBACK: "1",
+      CLAUDE_CODE_SIMPLE_SYSTEM_PROMPT: "1",
+      CLAUDE_CODE_SUBAGENT_MODEL: context.model
+    });
   }
   const images = validateImages(options.images);
   if (images.length > 0) {

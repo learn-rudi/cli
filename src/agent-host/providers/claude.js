@@ -1,5 +1,6 @@
 import { buildArgs } from './catalog.js';
 import {
+  buildPrivateProviderEnvironment,
   finishPlan,
   permissionArgs,
   providerContext,
@@ -24,7 +25,6 @@ export function buildClaudePlan(options) {
       '--print',
       '--input-format', 'text',
       '--model', context.model,
-      '--json-schema', context.privateAutomationProfile.outputSchema.canonical,
       '--no-session-persistence',
       '--safe-mode',
       '--no-chrome',
@@ -35,7 +35,27 @@ export function buildClaudePlan(options) {
       '--setting-sources', '',
       '--permission-mode', 'plan',
     ];
-    return finishPlan(context, args, 'plan');
+    const environment = buildPrivateProviderEnvironment(
+      context.config,
+      context.binaryPath,
+    );
+    return finishPlan(context, args, 'plan', {
+      ...environment,
+      CLAUDE_CODE_AUTO_MODE_MODEL: context.model,
+      CLAUDE_CODE_BG_CLASSIFIER_MODEL: context.model,
+      CLAUDE_CODE_DISABLE_AUTO_MEMORY: '1',
+      CLAUDE_CODE_DISABLE_BACKGROUND_TASKS: '1',
+      CLAUDE_CODE_DISABLE_BUNDLED_SKILLS: '1',
+      CLAUDE_CODE_DISABLE_CLAUDE_API_SKILL: '1',
+      CLAUDE_CODE_DISABLE_CLAUDE_CODE_SKILL: '1',
+      CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC: '1',
+      CLAUDE_CODE_DISABLE_WORKFLOWS: '1',
+      CLAUDE_CODE_ENABLE_PROMPT_SUGGESTION: '0',
+      CLAUDE_CODE_ENABLE_TELEMETRY: '0',
+      CLAUDE_CODE_NO_MODEL_FALLBACK: '1',
+      CLAUDE_CODE_SIMPLE_SYSTEM_PROMPT: '1',
+      CLAUDE_CODE_SUBAGENT_MODEL: context.model,
+    });
   }
   const images = validateImages(options.images);
   if (images.length > 0) {
