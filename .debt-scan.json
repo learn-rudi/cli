@@ -9,6 +9,9 @@
     ".ignored"
   ],
   "publicAPI": [
+    "src/daemon/schemas/packages.js",
+    "src/daemon/schemas/secrets.js",
+    "src/daemon/schemas/tools.js",
     "packages/core/src/deps.js",
     "packages/core/src/index.js",
     "packages/core/src/installer.js",

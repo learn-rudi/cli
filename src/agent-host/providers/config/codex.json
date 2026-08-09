@@ -8,6 +8,7 @@
   "binary": {
     "name": "codex",
     "resolvePaths": [
+      "~/.rudi/agents/codex/bin/codex",
       "~/.rudi/agents/codex/node_modules/.bin/codex",
       "~/.rudi/runtimes/node/{arch}/bin/codex",
       "~/.rudi/runtimes/node/bin/codex"
@@ -23,6 +24,14 @@
     "subcommand": "exec",
     "promptDelivery": "arg",
     "stdinPrompt": "-",
+
+    "privateAutomation": {
+      "minimumVersion": "0.147.0",
+      "profile": "private-automation-v1",
+      "promptDelivery": "stdin",
+      "sessionPersistence": false,
+      "tools": false
+    },
 
     "args": {
       "prefixConditionals": [

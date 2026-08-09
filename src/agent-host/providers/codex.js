@@ -8,6 +8,7 @@ import {
   providerContext,
   validateImages,
 } from './common.js';
+import { getPrivateCodexDisabledFeatures } from '../private-automation-profile.js';
 
 const APPROVAL_ALIASES = Object.freeze({
   onRequest: 'on-request',
@@ -27,6 +28,37 @@ function approvalPolicy(value) {
 
 export function buildCodexPlan(options) {
   const context = providerContext(options, 'codex');
+  if (context.privateAutomationProfile) {
+    if ((options.extraArgs || []).length > 0 || (options.images || []).length > 0) {
+      throw new Error('private automation forbids Codex passthrough arguments and images');
+    }
+    if (options.approvalMode != null && options.approvalMode !== 'never') {
+      throw new Error('private automation requires Codex approval mode never');
+    }
+    if (options.permissionMode != null && !['readonly', 'read-only'].includes(options.permissionMode)) {
+      throw new Error('private automation requires Codex read-only sandbox');
+    }
+    const disabledFeatures = getPrivateCodexDisabledFeatures();
+    const args = ['--ask-for-approval', 'never'];
+    for (const feature of disabledFeatures) args.push('--disable', feature);
+    args.push(
+      '-c', 'mcp_servers={}',
+      '-c', 'web_search="disabled"',
+      'exec', '-',
+      '--json',
+      '--skip-git-repo-check',
+      '--color', 'never',
+      '-C', context.cwd,
+      '-m', context.model,
+      '--output-schema', context.privateAutomationProfile.outputSchema.path,
+      '--ephemeral',
+      '--strict-config',
+      '--ignore-user-config',
+      '--ignore-rules',
+      '-s', 'read-only',
+    );
+    return finishPlan(context, args, 'readonly');
+  }
   const images = validateImages(options.images);
   const permission = permissionArgs(context, options.permissionMode);
   const approval = approvalPolicy(options.approvalMode);

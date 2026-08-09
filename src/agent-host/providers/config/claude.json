@@ -8,6 +8,7 @@
   "binary": {
     "name": "claude",
     "resolvePaths": [
+      "~/.rudi/bins/claude",
       "~/.local/bin/claude",
       "~/.rudi/runtimes/node/{arch}/bin/claude",
       "~/.rudi/runtimes/node/bin/claude",
@@ -22,6 +23,13 @@
   "headless": {
     "command": "claude",
     "promptDelivery": "arg-or-stdin",
+
+    "privateAutomation": {
+      "profile": "private-automation-v1",
+      "promptDelivery": "stdin",
+      "sessionPersistence": false,
+      "tools": false
+    },
 
     "args": {
       "base": [
@@ -104,6 +112,7 @@
       "TERM": "xterm-256color",
       "CI": "true",
       "CLAUDE_NO_UPDATE_CHECK": "true",
+      "CLAUDE_CODE_SKIP_PROMPT_HISTORY": "1",
       "DISABLE_AUTOUPDATE": "1",
       "NO_COLOR": "1"
     },

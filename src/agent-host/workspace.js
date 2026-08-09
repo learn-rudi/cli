@@ -143,6 +143,7 @@ export function resolveAgentWorkspace(options, dependencies = {}) {
     mode = WORKSPACE_MODES.AUTO,
     originDirectory = process.cwd(),
     outputDirectory = null,
+    privateAutomation = false,
     workspace = null,
   } = options || {};
   const { execFileSyncImpl = execFileSync } = dependencies;
@@ -150,6 +151,9 @@ export function resolveAgentWorkspace(options, dependencies = {}) {
   assertLaunchId(launchId);
   if (!VALID_MODES.has(mode)) {
     throw new Error(`Unknown workspace mode: ${mode}. Available: ${[...VALID_MODES].join(', ')}`);
+  }
+  if (privateAutomation === true && mode !== WORKSPACE_MODES.READ_ONLY) {
+    throw new Error('private automation requires read-only workspace mode');
   }
   if (typeof artifactsRoot !== 'string' || artifactsRoot.trim() === '') {
     throw new Error('artifactsRoot is required');
@@ -190,7 +194,11 @@ export function resolveAgentWorkspace(options, dependencies = {}) {
   let baseRef = null;
 
   try {
-    if (resolvedMode === WORKSPACE_MODES.WORKTREE) {
+    if (privateAutomation === true) {
+      executionWorkspace = path.join(launchDirectory, 'private-workspace');
+      fs.mkdirSync(executionWorkspace, { mode: 0o500 });
+      fs.chmodSync(executionWorkspace, 0o500);
+    } else if (resolvedMode === WORKSPACE_MODES.WORKTREE) {
       executionWorkspace = path.join(launchDirectory, 'workspace');
       const created = createGitWorktree({
         destination: executionWorkspace,
@@ -218,6 +226,7 @@ export function resolveAgentWorkspace(options, dependencies = {}) {
     originDirectory: resolvedOrigin,
     outputDestination: launchDirectory,
     projectRoot,
+    privateAutomation: privateAutomation === true,
     worktreeBranch,
   });
 }

@@ -2266,17 +2266,17 @@ var require_visit = __commonJS({
     visit.BREAK = BREAK;
     visit.SKIP = SKIP;
     visit.REMOVE = REMOVE;
-    function visit_(key, node, visitor, path51) {
-      const ctrl = callVisitor(key, node, visitor, path51);
+    function visit_(key, node, visitor, path52) {
+      const ctrl = callVisitor(key, node, visitor, path52);
       if (identity.isNode(ctrl) || identity.isPair(ctrl)) {
-        replaceNode(key, path51, ctrl);
-        return visit_(key, ctrl, visitor, path51);
+        replaceNode(key, path52, ctrl);
+        return visit_(key, ctrl, visitor, path52);
       }
       if (typeof ctrl !== "symbol") {
         if (identity.isCollection(node)) {
-          path51 = Object.freeze(path51.concat(node));
+          path52 = Object.freeze(path52.concat(node));
           for (let i = 0; i < node.items.length; ++i) {
-            const ci = visit_(i, node.items[i], visitor, path51);
+            const ci = visit_(i, node.items[i], visitor, path52);
             if (typeof ci === "number")
               i = ci - 1;
             else if (ci === BREAK)
@@ -2287,13 +2287,13 @@ var require_visit = __commonJS({
             }
           }
         } else if (identity.isPair(node)) {
-          path51 = Object.freeze(path51.concat(node));
-          const ck = visit_("key", node.key, visitor, path51);
+          path52 = Object.freeze(path52.concat(node));
+          const ck = visit_("key", node.key, visitor, path52);
           if (ck === BREAK)
             return BREAK;
           else if (ck === REMOVE)
             node.key = null;
-          const cv = visit_("value", node.value, visitor, path51);
+          const cv = visit_("value", node.value, visitor, path52);
           if (cv === BREAK)
             return BREAK;
           else if (cv === REMOVE)
@@ -2314,17 +2314,17 @@ var require_visit = __commonJS({
     visitAsync.BREAK = BREAK;
     visitAsync.SKIP = SKIP;
     visitAsync.REMOVE = REMOVE;
-    async function visitAsync_(key, node, visitor, path51) {
-      const ctrl = await callVisitor(key, node, visitor, path51);
+    async function visitAsync_(key, node, visitor, path52) {
+      const ctrl = await callVisitor(key, node, visitor, path52);
       if (identity.isNode(ctrl) || identity.isPair(ctrl)) {
-        replaceNode(key, path51, ctrl);
-        return visitAsync_(key, ctrl, visitor, path51);
+        replaceNode(key, path52, ctrl);
+        return visitAsync_(key, ctrl, visitor, path52);
       }
       if (typeof ctrl !== "symbol") {
         if (identity.isCollection(node)) {
-          path51 = Object.freeze(path51.concat(node));
+          path52 = Object.freeze(path52.concat(node));
           for (let i = 0; i < node.items.length; ++i) {
-            const ci = await visitAsync_(i, node.items[i], visitor, path51);
+            const ci = await visitAsync_(i, node.items[i], visitor, path52);
             if (typeof ci === "number")
               i = ci - 1;
             else if (ci === BREAK)
@@ -2335,13 +2335,13 @@ var require_visit = __commonJS({
             }
           }
         } else if (identity.isPair(node)) {
-          path51 = Object.freeze(path51.concat(node));
-          const ck = await visitAsync_("key", node.key, visitor, path51);
+          path52 = Object.freeze(path52.concat(node));
+          const ck = await visitAsync_("key", node.key, visitor, path52);
           if (ck === BREAK)
             return BREAK;
           else if (ck === REMOVE)
             node.key = null;
-          const cv = await visitAsync_("value", node.value, visitor, path51);
+          const cv = await visitAsync_("value", node.value, visitor, path52);
           if (cv === BREAK)
             return BREAK;
           else if (cv === REMOVE)
@@ -2368,23 +2368,23 @@ var require_visit = __commonJS({
       }
       return visitor;
     }
-    function callVisitor(key, node, visitor, path51) {
+    function callVisitor(key, node, visitor, path52) {
       if (typeof visitor === "function")
-        return visitor(key, node, path51);
+        return visitor(key, node, path52);
       if (identity.isMap(node))
-        return visitor.Map?.(key, node, path51);
+        return visitor.Map?.(key, node, path52);
       if (identity.isSeq(node))
-        return visitor.Seq?.(key, node, path51);
+        return visitor.Seq?.(key, node, path52);
       if (identity.isPair(node))
-        return visitor.Pair?.(key, node, path51);
+        return visitor.Pair?.(key, node, path52);
       if (identity.isScalar(node))
-        return visitor.Scalar?.(key, node, path51);
+        return visitor.Scalar?.(key, node, path52);
       if (identity.isAlias(node))
-        return visitor.Alias?.(key, node, path51);
+        return visitor.Alias?.(key, node, path52);
       return void 0;
     }
-    function replaceNode(key, path51, node) {
-      const parent = path51[path51.length - 1];
+    function replaceNode(key, path52, node) {
+      const parent = path52[path52.length - 1];
       if (identity.isCollection(parent)) {
         parent.items[key] = node;
       } else if (identity.isPair(parent)) {
@@ -2992,10 +2992,10 @@ var require_Collection = __commonJS({
     var createNode = require_createNode();
     var identity = require_identity();
     var Node = require_Node();
-    function collectionFromPath(schema, path51, value) {
+    function collectionFromPath(schema, path52, value) {
       let v = value;
-      for (let i = path51.length - 1; i >= 0; --i) {
-        const k = path51[i];
+      for (let i = path52.length - 1; i >= 0; --i) {
+        const k = path52[i];
         if (typeof k === "number" && Number.isInteger(k) && k >= 0) {
           const a = [];
           a[k] = v;
@@ -3014,7 +3014,7 @@ var require_Collection = __commonJS({
         sourceObjects: /* @__PURE__ */ new Map()
       });
     }
-    var isEmptyPath = (path51) => path51 == null || typeof path51 === "object" && !!path51[Symbol.iterator]().next().done;
+    var isEmptyPath = (path52) => path52 == null || typeof path52 === "object" && !!path52[Symbol.iterator]().next().done;
     var Collection = class extends Node.NodeBase {
       constructor(type, schema) {
         super(type);
@@ -3044,11 +3044,11 @@ var require_Collection = __commonJS({
        * be a Pair instance or a `{ key, value }` object, which may not have a key
        * that already exists in the map.
        */
-      addIn(path51, value) {
-        if (isEmptyPath(path51))
+      addIn(path52, value) {
+        if (isEmptyPath(path52))
           this.add(value);
         else {
-          const [key, ...rest] = path51;
+          const [key, ...rest] = path52;
           const node = this.get(key, true);
           if (identity.isCollection(node))
             node.addIn(rest, value);
@@ -3062,8 +3062,8 @@ var require_Collection = __commonJS({
        * Removes a value from the collection.
        * @returns `true` if the item was found and removed.
        */
-      deleteIn(path51) {
-        const [key, ...rest] = path51;
+      deleteIn(path52) {
+        const [key, ...rest] = path52;
         if (rest.length === 0)
           return this.delete(key);
         const node = this.get(key, true);
@@ -3077,8 +3077,8 @@ var require_Collection = __commonJS({
        * scalar values from their surrounding node; to disable set `keepScalar` to
        * `true` (collections are always returned intact).
        */
-      getIn(path51, keepScalar) {
-        const [key, ...rest] = path51;
+      getIn(path52, keepScalar) {
+        const [key, ...rest] = path52;
         const node = this.get(key, true);
         if (rest.length === 0)
           return !keepScalar && identity.isScalar(node) ? node.value : node;
@@ -3096,8 +3096,8 @@ var require_Collection = __commonJS({
       /**
        * Checks if the collection includes a value with the key `key`.
        */
-      hasIn(path51) {
-        const [key, ...rest] = path51;
+      hasIn(path52) {
+        const [key, ...rest] = path52;
         if (rest.length === 0)
           return this.has(key);
         const node = this.get(key, true);
@@ -3107,8 +3107,8 @@ var require_Collection = __commonJS({
        * Sets a value in this collection. For `!!set`, `value` needs to be a
        * boolean to add/remove the item from the set.
        */
-      setIn(path51, value) {
-        const [key, ...rest] = path51;
+      setIn(path52, value) {
+        const [key, ...rest] = path52;
         if (rest.length === 0) {
           this.set(key, value);
         } else {
@@ -5612,9 +5612,9 @@ var require_Document = __commonJS({
           this.contents.add(value);
       }
       /** Adds a value to the document. */
-      addIn(path51, value) {
+      addIn(path52, value) {
         if (assertCollection(this.contents))
-          this.contents.addIn(path51, value);
+          this.contents.addIn(path52, value);
       }
       /**
        * Create a new `Alias` node, ensuring that the target `node` has the required anchor.
@@ -5689,14 +5689,14 @@ var require_Document = __commonJS({
        * Removes a value from the document.
        * @returns `true` if the item was found and removed.
        */
-      deleteIn(path51) {
-        if (Collection.isEmptyPath(path51)) {
+      deleteIn(path52) {
+        if (Collection.isEmptyPath(path52)) {
           if (this.contents == null)
             return false;
           this.contents = null;
           return true;
         }
-        return assertCollection(this.contents) ? this.contents.deleteIn(path51) : false;
+        return assertCollection(this.contents) ? this.contents.deleteIn(path52) : false;
       }
       /**
        * Returns item at `key`, or `undefined` if not found. By default unwraps
@@ -5711,10 +5711,10 @@ var require_Document = __commonJS({
        * scalar values from their surrounding node; to disable set `keepScalar` to
        * `true` (collections are always returned intact).
        */
-      getIn(path51, keepScalar) {
-        if (Collection.isEmptyPath(path51))
+      getIn(path52, keepScalar) {
+        if (Collection.isEmptyPath(path52))
           return !keepScalar && identity.isScalar(this.contents) ? this.contents.value : this.contents;
-        return identity.isCollection(this.contents) ? this.contents.getIn(path51, keepScalar) : void 0;
+        return identity.isCollection(this.contents) ? this.contents.getIn(path52, keepScalar) : void 0;
       }
       /**
        * Checks if the document includes a value with the key `key`.
@@ -5725,10 +5725,10 @@ var require_Document = __commonJS({
       /**
        * Checks if the document includes a value at `path`.
        */
-      hasIn(path51) {
-        if (Collection.isEmptyPath(path51))
+      hasIn(path52) {
+        if (Collection.isEmptyPath(path52))
           return this.contents !== void 0;
-        return identity.isCollection(this.contents) ? this.contents.hasIn(path51) : false;
+        return identity.isCollection(this.contents) ? this.contents.hasIn(path52) : false;
       }
       /**
        * Sets a value in this document. For `!!set`, `value` needs to be a
@@ -5745,13 +5745,13 @@ var require_Document = __commonJS({
        * Sets a value in this document. For `!!set`, `value` needs to be a
        * boolean to add/remove the item from the set.
        */
-      setIn(path51, value) {
-        if (Collection.isEmptyPath(path51)) {
+      setIn(path52, value) {
+        if (Collection.isEmptyPath(path52)) {
           this.contents = value;
         } else if (this.contents == null) {
-          this.contents = Collection.collectionFromPath(this.schema, Array.from(path51), value);
+          this.contents = Collection.collectionFromPath(this.schema, Array.from(path52), value);
         } else if (assertCollection(this.contents)) {
-          this.contents.setIn(path51, value);
+          this.contents.setIn(path52, value);
         }
       }
       /**
@@ -7703,9 +7703,9 @@ var require_cst_visit = __commonJS({
     visit.BREAK = BREAK;
     visit.SKIP = SKIP;
     visit.REMOVE = REMOVE;
-    visit.itemAtPath = (cst, path51) => {
+    visit.itemAtPath = (cst, path52) => {
       let item = cst;
-      for (const [field, index] of path51) {
+      for (const [field, index] of path52) {
         const tok = item?.[field];
         if (tok && "items" in tok) {
           item = tok.items[index];
@@ -7714,23 +7714,23 @@ var require_cst_visit = __commonJS({
       }
       return item;
     };
-    visit.parentCollection = (cst, path51) => {
-      const parent = visit.itemAtPath(cst, path51.slice(0, -1));
-      const field = path51[path51.length - 1][0];
+    visit.parentCollection = (cst, path52) => {
+      const parent = visit.itemAtPath(cst, path52.slice(0, -1));
+      const field = path52[path52.length - 1][0];
       const coll = parent?.[field];
       if (coll && "items" in coll)
         return coll;
       throw new Error("Parent collection not found");
     };
-    function _visit(path51, item, visitor) {
-      let ctrl = visitor(item, path51);
+    function _visit(path52, item, visitor) {
+      let ctrl = visitor(item, path52);
       if (typeof ctrl === "symbol")
         return ctrl;
       for (const field of ["key", "value"]) {
         const token = item[field];
         if (token && "items" in token) {
           for (let i = 0; i < token.items.length; ++i) {
-            const ci = _visit(Object.freeze(path51.concat([[field, i]])), token.items[i], visitor);
+            const ci = _visit(Object.freeze(path52.concat([[field, i]])), token.items[i], visitor);
             if (typeof ci === "number")
               i = ci - 1;
             else if (ci === BREAK)
@@ -7741,10 +7741,10 @@ var require_cst_visit = __commonJS({
             }
           }
           if (typeof ctrl === "function" && field === "key")
-            ctrl = ctrl(item, path51);
+            ctrl = ctrl(item, path52);
         }
       }
-      return typeof ctrl === "function" ? ctrl(item, path51) : ctrl;
+      return typeof ctrl === "function" ? ctrl(item, path52) : ctrl;
     }
     exports2.visit = visit;
   }
@@ -9029,14 +9029,14 @@ var require_parser = __commonJS({
             case "scalar":
             case "single-quoted-scalar":
             case "double-quoted-scalar": {
-              const fs50 = this.flowScalar(this.type);
+              const fs51 = this.flowScalar(this.type);
               if (atNextItem || it.value) {
-                map.items.push({ start, key: fs50, sep: [] });
+                map.items.push({ start, key: fs51, sep: [] });
                 this.onKeyLine = true;
               } else if (it.sep) {
-                this.stack.push(fs50);
+                this.stack.push(fs51);
               } else {
-                Object.assign(it, { key: fs50, sep: [] });
+                Object.assign(it, { key: fs51, sep: [] });
                 this.onKeyLine = true;
               }
               return;
@@ -9164,13 +9164,13 @@ var require_parser = __commonJS({
             case "scalar":
             case "single-quoted-scalar":
             case "double-quoted-scalar": {
-              const fs50 = this.flowScalar(this.type);
+              const fs51 = this.flowScalar(this.type);
               if (!it || it.value)
-                fc.items.push({ start: [], key: fs50, sep: [] });
+                fc.items.push({ start: [], key: fs51, sep: [] });
               else if (it.sep)
-                this.stack.push(fs50);
+                this.stack.push(fs51);
               else
-                Object.assign(it, { key: fs50, sep: [] });
+                Object.assign(it, { key: fs51, sep: [] });
               return;
             }
             case "flow-map-end":
@@ -15992,8 +15992,8 @@ var require_utils = __commonJS({
       }
       return ind;
     }
-    function removeDotSegments(path51) {
-      let input = path51;
+    function removeDotSegments(path52) {
+      let input = path52;
       const output = [];
       let nextSlash = -1;
       let len = 0;
@@ -16192,8 +16192,8 @@ var require_schemes = __commonJS({
         wsComponent.secure = void 0;
       }
       if (wsComponent.resourceName) {
-        const [path51, query] = wsComponent.resourceName.split("?");
-        wsComponent.path = path51 && path51 !== "/" ? path51 : void 0;
+        const [path52, query] = wsComponent.resourceName.split("?");
+        wsComponent.path = path52 && path52 !== "/" ? path52 : void 0;
         wsComponent.query = query;
         wsComponent.resourceName = void 0;
       }
@@ -16710,7 +16710,7 @@ var require_core = __commonJS({
         uriResolver
       };
     }
-    var Ajv2 = class {
+    var Ajv3 = class {
       constructor(opts = {}) {
         this.schemas = {};
         this.refs = {};
@@ -17080,9 +17080,9 @@ var require_core = __commonJS({
         }
       }
     };
-    Ajv2.ValidationError = validation_error_1.default;
-    Ajv2.MissingRefError = ref_error_1.default;
-    exports2.default = Ajv2;
+    Ajv3.ValidationError = validation_error_1.default;
+    Ajv3.MissingRefError = ref_error_1.default;
+    exports2.default = Ajv3;
     function checkOptions(checkOpts, options, msg, log = "error") {
       for (const key in checkOpts) {
         const opt = key;
@@ -19184,7 +19184,7 @@ var require_ajv = __commonJS({
     var draft7MetaSchema = require_json_schema_draft_07();
     var META_SUPPORT_DATA = ["/properties"];
     var META_SCHEMA_ID = "http://json-schema.org/draft-07/schema";
-    var Ajv2 = class extends core_1.default {
+    var Ajv3 = class extends core_1.default {
       _addVocabularies() {
         super._addVocabularies();
         draft7_1.default.forEach((v) => this.addVocabulary(v));
@@ -19203,11 +19203,11 @@ var require_ajv = __commonJS({
         return this.opts.defaultMeta = super.defaultMeta() || (this.getSchema(META_SCHEMA_ID) ? META_SCHEMA_ID : void 0);
       }
     };
-    exports2.Ajv = Ajv2;
-    module2.exports = exports2 = Ajv2;
-    module2.exports.Ajv = Ajv2;
+    exports2.Ajv = Ajv3;
+    module2.exports = exports2 = Ajv3;
+    module2.exports.Ajv = Ajv3;
     Object.defineProperty(exports2, "__esModule", { value: true });
-    exports2.default = Ajv2;
+    exports2.default = Ajv3;
     var validate_1 = require_validate();
     Object.defineProperty(exports2, "KeywordCxt", { enumerable: true, get: function() {
       return validate_1.KeywordCxt;
@@ -19546,12 +19546,12 @@ var require_dist2 = __commonJS({
         throw new Error(`Unknown format "${name}"`);
       return f;
     };
-    function addFormats2(ajv2, list, fs50, exportName) {
+    function addFormats2(ajv2, list, fs51, exportName) {
       var _a;
       var _b;
       (_a = (_b = ajv2.opts.code).formats) !== null && _a !== void 0 ? _a : _b.formats = (0, codegen_1._)`require("ajv-formats/dist/formats").${exportName}`;
       for (const f of list)
-        ajv2.addFormat(f, fs50[f]);
+        ajv2.addFormat(f, fs51[f]);
     }
     module2.exports = exports2 = formatsPlugin;
     Object.defineProperty(exports2, "__esModule", { value: true });
@@ -22295,11 +22295,11 @@ async function runStack(id, options = {}) {
   const startTime = Date.now();
   const packagePath = getPackagePath(id);
   const manifestPath = import_path11.default.join(packagePath, "manifest.json");
-  const { default: fs50 } = await import("fs");
-  if (!fs50.existsSync(manifestPath)) {
+  const { default: fs51 } = await import("fs");
+  if (!fs51.existsSync(manifestPath)) {
     throw new Error(`Stack manifest not found: ${id}`);
   }
-  const manifest = JSON.parse(fs50.readFileSync(manifestPath, "utf-8"));
+  const manifest = JSON.parse(fs51.readFileSync(manifestPath, "utf-8"));
   const { command, args } = resolveCommandFromManifest(manifest, packagePath);
   const secrets = await getSecrets(manifest.requires?.secrets || []);
   const runEnv = buildStackRunEnv({
@@ -29074,14 +29074,14 @@ function readLaunchEvents({ eventFile, limitBytes = 1024 * 1024, offset = 0 }) {
 }
 
 // src/agent-host/detached.js
-var import_node_fs12 = __toESM(require("node:fs"), 1);
-var import_node_child_process5 = require("node:child_process");
+var import_node_fs13 = __toESM(require("node:fs"), 1);
+var import_node_child_process6 = require("node:child_process");
 
 // src/agent-host/launch.js
 var import_node_crypto3 = __toESM(require("node:crypto"), 1);
 
 // src/agent-host/events/stream.js
-var import_node_child_process2 = require("node:child_process");
+var import_node_child_process3 = require("node:child_process");
 
 // src/agent-host/events/providers/claude.js
 var claude_exports = {};
@@ -29800,659 +29800,14 @@ function renderAgentEvent(event) {
   return [];
 }
 
-// src/agent-host/events/stream.js
-function boundedAppend(current, value, maxLength = 4096) {
-  const combined = `${current}${value}`;
-  return combined.length <= maxLength ? combined : combined.slice(-maxLength);
-}
-function writeLine(stream, value) {
-  stream.write(value.endsWith("\n") ? value : `${value}
-`);
-}
-function executeForegroundLaunch({
-  eventSink = null,
-  jsonOutput = false,
-  launchId,
-  onSpawn = null,
-  plan,
-  spawnImpl = import_node_child_process2.spawn,
-  stderr = process.stderr,
-  stdout = process.stdout,
-  store,
-  timeoutMs = plan.timeouts.runtimeMs,
-  signalEmitter = process
-}) {
-  if (!Number.isSafeInteger(timeoutMs) || timeoutMs < 1 || timeoutMs > 24 * 60 * 60 * 1e3) {
-    throw new Error("timeoutMs must be an integer between 1 and 86400000");
-  }
-  return new Promise((resolve, reject) => {
-    const normalizer = createAgentEventNormalizer(plan.provider);
-    let child;
-    let finalized = false;
-    let stdoutBuffer = "";
-    let stderrTail = "";
-    let sawAssistantText = false;
-    let timedOut = false;
-    let forceTimer = null;
-    let requestedSignal = null;
-    let sinkFailure = null;
-    function recordSinkFailure(kind, error) {
-      if (sinkFailure) return;
-      sinkFailure = `${kind} persistence failed: ${error.message}`;
-      try {
-        writeLine(stderr, sinkFailure);
-      } catch {
-      }
-      try {
-        child?.kill("SIGTERM");
-      } catch {
-      }
-    }
-    function publishEvent(payload, persistedPayload = payload) {
-      try {
-        eventSink?.(persistedPayload);
-      } catch (error) {
-        recordSinkFailure("Agent event", error);
-      }
-      return payload;
-    }
-    const onSigint = () => {
-      requestedSignal = "SIGINT";
-      child?.kill("SIGINT");
-    };
-    const onSigterm = () => {
-      requestedSignal = "SIGTERM";
-      child?.kill("SIGTERM");
-    };
-    function persistNativeSession(rawEvent, normalized) {
-      const nativeSessionId = extractNativeSessionId(rawEvent) || normalized?.providerSessionId || null;
-      if (!nativeSessionId) return;
-      const current = store.get(launchId);
-      if (current?.nativeSessionId !== nativeSessionId) {
-        store.setNativeSessionId(launchId, nativeSessionId);
-      }
-    }
-    function emitEvent(normalized, rawEvent) {
-      persistNativeSession(rawEvent, normalized);
-      const isDelta = rawEvent?.type === "message" && rawEvent.delta === true || rawEvent?.event === "step_update" && rawEvent.step_update?.step_type === "agent_response";
-      const persistedPayload = {
-        delta: isDelta,
-        event: normalized,
-        launchId,
-        provider: plan.provider,
-        type: "agent.event"
-      };
-      const payload = publishEvent({
-        event: normalized,
-        launchId,
-        provider: plan.provider,
-        rawEvent,
-        type: "agent.event"
-      }, persistedPayload);
-      if (jsonOutput) {
-        writeLine(stdout, JSON.stringify(payload));
-        return;
-      }
-      const rendered = renderAgentEvent(normalized);
-      if (normalized?.type === "assistant" && rendered.length > 0) sawAssistantText = true;
-      if (normalized?.type === "result" && sawAssistantText) return;
-      for (const text of rendered) {
-        if (isDelta) stdout.write(text);
-        else writeLine(stdout, text);
-      }
-      if (normalized?.type === "error" && normalized.message) writeLine(stderr, normalized.message);
-    }
-    function consumeLine(line) {
-      if (!line.trim()) return;
-      try {
-        const rawEvent = JSON.parse(line);
-        for (const result of normalizer.normalize(rawEvent)) {
-          if (result?.normalized) emitEvent(result.normalized, result.raw || rawEvent);
-        }
-      } catch {
-        const payload = publishEvent({
-          event: { message: line, subtype: "provider_stdout", type: "system" },
-          launchId,
-          provider: plan.provider,
-          type: "agent.event"
-        });
-        if (jsonOutput) {
-          writeLine(stdout, JSON.stringify(payload));
-        } else {
-          writeLine(stdout, line);
-        }
-      }
-    }
-    function flushStdout() {
-      if (stdoutBuffer.trim()) consumeLine(stdoutBuffer);
-      stdoutBuffer = "";
-      for (const result of normalizer.flush()) {
-        if (result?.normalized) emitEvent(result.normalized, result.raw || {});
-      }
-    }
-    function complete(status, exitCode, lastError = null) {
-      if (finalized) return;
-      finalized = true;
-      clearTimeout(runtimeTimer);
-      if (forceTimer) clearTimeout(forceTimer);
-      signalEmitter.removeListener("SIGINT", onSigint);
-      signalEmitter.removeListener("SIGTERM", onSigterm);
-      flushStdout();
-      if (sinkFailure) {
-        status = "failed";
-        lastError = sinkFailure;
-      }
-      const current = store.get(launchId);
-      if (current?.status === "starting" && status !== "failed") {
-        store.transition(launchId, "running", { pid: child?.pid || 0 });
-      }
-      const updated = store.transition(launchId, status, {
-        exitCode,
-        lastError
-      });
-      const terminalEvent = publishEvent({ launch: updated, type: `launch.${status}` });
-      if (jsonOutput) {
-        writeLine(stdout, JSON.stringify(terminalEvent));
-      }
-      resolve(updated);
-    }
-    const runtimeTimer = setTimeout(() => {
-      timedOut = true;
-      child?.kill("SIGTERM");
-      forceTimer = setTimeout(() => child?.kill("SIGKILL"), plan.timeouts.shutdownGraceMs || 5e3);
-    }, timeoutMs);
-    try {
-      child = spawnImpl(plan.spawn.command, plan.args, {
-        cwd: plan.spawn.cwd,
-        env: { ...process.env, ...plan.environment },
-        stdio: ["ignore", "pipe", "pipe"]
-      });
-    } catch (error) {
-      clearTimeout(runtimeTimer);
-      reject(error);
-      return;
-    }
-    child.once("spawn", () => {
-      const current = store.get(launchId);
-      if (current?.status === "starting") {
-        const running = store.transition(launchId, "running", { pid: child.pid || 0 });
-        onSpawn?.(running);
-      } else if (current) {
-        onSpawn?.(current);
-      }
-    });
-    signalEmitter.once("SIGINT", onSigint);
-    signalEmitter.once("SIGTERM", onSigterm);
-    child.stdout.on("data", (chunk) => {
-      stdoutBuffer += chunk.toString();
-      const lines = stdoutBuffer.split("\n");
-      stdoutBuffer = lines.pop() || "";
-      for (const line of lines) consumeLine(line);
-    });
-    child.stderr.on("data", (chunk) => {
-      const text = chunk.toString();
-      stderrTail = boundedAppend(stderrTail, text);
-      try {
-        stderr.write(text);
-      } catch (error) {
-        recordSinkFailure("Provider stderr", error);
-      }
-    });
-    child.once("error", (error) => {
-      complete("failed", null, `Provider process error: ${error.message}`);
-    });
-    child.once("close", (exitCode, signal) => {
-      if (sinkFailure) {
-        complete("failed", exitCode, sinkFailure);
-        return;
-      }
-      if (timedOut) {
-        complete("failed", exitCode, `Provider process timed out after ${timeoutMs}ms`);
-        return;
-      }
-      if (requestedSignal) {
-        complete("stopped", exitCode, `Provider process stopped by ${requestedSignal}`);
-        return;
-      }
-      if (exitCode === 0) {
-        complete("completed", 0);
-        return;
-      }
-      const detail = stderrTail.trim() || `Provider process exited with code ${exitCode}${signal ? ` (${signal})` : ""}`;
-      complete("failed", exitCode, detail);
-    });
-  });
-}
-
-// src/agent-host/launch-store.js
-var import_node_fs4 = __toESM(require("node:fs"), 1);
+// src/agent-host/private-automation-profile.js
+var import_node_fs5 = __toESM(require("node:fs"), 1);
 var import_node_path4 = __toESM(require("node:path"), 1);
-var import_better_sqlite3 = __toESM(require("better-sqlite3"), 1);
-var LAUNCH_STATUSES = Object.freeze([
-  "starting",
-  "running",
-  "completed",
-  "failed",
-  "stopped"
-]);
-var LAUNCH_DISPOSITIONS = Object.freeze(["retained", "promoted", "discarded"]);
-var LAUNCH_EXECUTION_KINDS = Object.freeze(["foreground", "detached"]);
-var GROUP_ID_PATTERN = /^group_[A-Za-z0-9][A-Za-z0-9_-]{0,127}$/;
-var TERMINAL_STATUSES = /* @__PURE__ */ new Set(["completed", "failed", "stopped"]);
-var TRANSITIONS = Object.freeze({
-  starting: /* @__PURE__ */ new Set(["running", "failed", "stopped"]),
-  running: /* @__PURE__ */ new Set(["completed", "failed", "stopped"]),
-  completed: /* @__PURE__ */ new Set(),
-  failed: /* @__PURE__ */ new Set(),
-  stopped: /* @__PURE__ */ new Set()
-});
-function requiredString(value, field, maxLength = 4096) {
-  if (typeof value !== "string" || value.trim() === "" || value.includes("\0")) {
-    throw new Error(`${field} must be a non-empty string without NUL bytes`);
-  }
-  if (value.length > maxLength) {
-    throw new Error(`${field} exceeds ${maxLength} characters`);
-  }
-  return value;
-}
-function optionalString(value, field, maxLength = 4096) {
-  if (value == null) return null;
-  return requiredString(value, field, maxLength);
-}
-function mapLaunch(row) {
-  if (!row) return null;
-  return {
-    baseRef: row.base_ref,
-    disposition: row.disposition,
-    executionKind: row.execution_kind,
-    executionWorkspace: row.execution_workspace,
-    exitCode: row.exit_code,
-    finishedAt: row.finished_at,
-    lastError: row.last_error,
-    launchId: row.launch_id,
-    model: row.model,
-    nativeSessionId: row.native_session_id,
-    originDirectory: row.origin_directory,
-    ownerPid: row.owner_pid,
-    outputDestination: row.output_destination,
-    parentLaunchId: row.parent_launch_id,
-    pid: row.pid,
-    projectRoot: row.project_root,
-    provider: row.provider,
-    startedAt: row.started_at,
-    status: row.status,
-    updatedAt: row.updated_at,
-    workspaceMode: row.workspace_mode,
-    worktreeBranch: row.worktree_branch
-  };
-}
-function validateStatus(status) {
-  if (!LAUNCH_STATUSES.includes(status)) {
-    throw new Error(`Unknown launch status: ${status}`);
-  }
-  return status;
-}
-function validateEnum(value, field, allowed) {
-  if (!allowed.includes(value)) {
-    throw new Error(`Unknown ${field}: ${value}`);
-  }
-  return value;
-}
-function optionalPid(value, field) {
-  if (value == null) return null;
-  const parsed = Number(value);
-  if (!Number.isSafeInteger(parsed) || parsed < 1) {
-    throw new Error(`${field} must be a positive integer`);
-  }
-  return parsed;
-}
-function assertAgentGroupId(groupId) {
-  if (typeof groupId !== "string" || !GROUP_ID_PATTERN.test(groupId)) {
-    throw new Error("Invalid Agent Host group ID");
-  }
-  return groupId;
-}
-function deriveGroupStatus(launches) {
-  const statuses = launches.map((launch) => launch.status);
-  if (statuses.includes("running")) return "running";
-  if (statuses.includes("starting")) return "starting";
-  if (statuses.every((status) => status === "completed")) return "completed";
-  if (statuses.some((status) => status === "completed")) return "partial";
-  if (statuses.every((status) => status === "stopped")) return "stopped";
-  return "failed";
-}
-function ensureColumn(database, name, definition) {
-  const columns = new Set(database.prepare("PRAGMA table_info(agent_launches)").all().map((row) => row.name));
-  if (!columns.has(name)) database.exec(`ALTER TABLE agent_launches ADD COLUMN ${name} ${definition}`);
-}
-function initialize(database) {
-  database.pragma("journal_mode = WAL");
-  database.pragma("foreign_keys = ON");
-  database.exec(`
-    CREATE TABLE IF NOT EXISTS agent_launches (
-      launch_id TEXT PRIMARY KEY,
-      parent_launch_id TEXT REFERENCES agent_launches(launch_id),
-      provider TEXT NOT NULL,
-      native_session_id TEXT,
-      origin_directory TEXT NOT NULL,
-      project_root TEXT NOT NULL,
-      execution_workspace TEXT NOT NULL,
-      output_destination TEXT NOT NULL,
-      workspace_mode TEXT NOT NULL CHECK (workspace_mode IN ('read-only', 'worktree', 'isolated-copy')),
-      worktree_branch TEXT,
-      base_ref TEXT,
-      model TEXT NOT NULL,
-      execution_kind TEXT NOT NULL DEFAULT 'foreground' CHECK (execution_kind IN ('foreground', 'detached')),
-      owner_pid INTEGER,
-      disposition TEXT NOT NULL DEFAULT 'retained' CHECK (disposition IN ('retained', 'promoted', 'discarded')),
-      status TEXT NOT NULL CHECK (status IN ('starting', 'running', 'completed', 'failed', 'stopped')),
-      pid INTEGER,
-      exit_code INTEGER,
-      started_at TEXT NOT NULL,
-      finished_at TEXT,
-      updated_at TEXT NOT NULL,
-      last_error TEXT
-    );
-
-    CREATE INDEX IF NOT EXISTS idx_agent_launches_status_started
-      ON agent_launches(status, started_at DESC);
-    CREATE INDEX IF NOT EXISTS idx_agent_launches_native_session
-      ON agent_launches(provider, native_session_id);
-
-    CREATE TABLE IF NOT EXISTS agent_groups (
-      group_id TEXT PRIMARY KEY,
-      origin_directory TEXT NOT NULL,
-      workspace TEXT NOT NULL,
-      workspace_mode TEXT NOT NULL CHECK (workspace_mode IN ('auto', 'read-only', 'worktree', 'isolated-copy')),
-      started_at TEXT NOT NULL,
-      updated_at TEXT NOT NULL
-    );
-
-    CREATE TABLE IF NOT EXISTS agent_group_launches (
-      group_id TEXT NOT NULL REFERENCES agent_groups(group_id) ON DELETE CASCADE,
-      ordinal INTEGER NOT NULL,
-      launch_id TEXT NOT NULL UNIQUE,
-      provider TEXT NOT NULL,
-      last_error TEXT,
-      PRIMARY KEY (group_id, ordinal)
-    );
-
-    CREATE INDEX IF NOT EXISTS idx_agent_group_launches_group
-      ON agent_group_launches(group_id, ordinal);
-  `);
-  ensureColumn(database, "execution_kind", "TEXT NOT NULL DEFAULT 'foreground' CHECK (execution_kind IN ('foreground', 'detached'))");
-  ensureColumn(database, "owner_pid", "INTEGER");
-  ensureColumn(database, "disposition", "TEXT NOT NULL DEFAULT 'retained' CHECK (disposition IN ('retained', 'promoted', 'discarded'))");
-}
-function createLaunchStore({
-  databasePath = getAgentHostPaths().stateDatabase,
-  now = () => (/* @__PURE__ */ new Date()).toISOString()
-} = {}) {
-  const resolvedPath = import_node_path4.default.resolve(databasePath);
-  import_node_fs4.default.mkdirSync(import_node_path4.default.dirname(resolvedPath), { recursive: true, mode: 448 });
-  const database = new import_better_sqlite3.default(resolvedPath);
-  import_node_fs4.default.chmodSync(resolvedPath, 384);
-  initialize(database);
-  const getStatement = database.prepare("SELECT * FROM agent_launches WHERE launch_id = ?");
-  function get(launchId) {
-    assertLaunchId(launchId);
-    return mapLaunch(getStatement.get(launchId));
-  }
-  function create(projection) {
-    const launchId = assertLaunchId(projection?.launchId);
-    const status = validateStatus(projection?.status || "starting");
-    if (status !== "starting") {
-      throw new Error("New launches must start in the starting state");
-    }
-    const timestamp = now();
-    const record = {
-      baseRef: optionalString(projection.baseRef, "baseRef", 512),
-      disposition: validateEnum(projection.disposition || "retained", "launch disposition", LAUNCH_DISPOSITIONS),
-      executionKind: validateEnum(projection.executionKind || "foreground", "execution kind", LAUNCH_EXECUTION_KINDS),
-      executionWorkspace: requiredString(projection.executionWorkspace, "executionWorkspace"),
-      launchId,
-      model: requiredString(projection.model, "model", 512),
-      nativeSessionId: optionalString(projection.nativeSessionId, "nativeSessionId", 1024),
-      originDirectory: requiredString(projection.originDirectory, "originDirectory"),
-      ownerPid: optionalPid(projection.ownerPid, "ownerPid"),
-      outputDestination: requiredString(projection.outputDestination, "outputDestination"),
-      parentLaunchId: projection.parentLaunchId == null ? null : assertLaunchId(projection.parentLaunchId),
-      projectRoot: requiredString(projection.projectRoot, "projectRoot"),
-      provider: requiredString(projection.provider, "provider", 64),
-      status,
-      workspaceMode: requiredString(projection.workspaceMode, "workspaceMode", 32),
-      worktreeBranch: optionalString(projection.worktreeBranch, "worktreeBranch", 512)
-    };
-    database.prepare(`
-      INSERT INTO agent_launches (
-        launch_id, parent_launch_id, provider, native_session_id,
-        origin_directory, project_root, execution_workspace, output_destination,
-        workspace_mode, worktree_branch, base_ref, model, status,
-        execution_kind, owner_pid, disposition, started_at, updated_at
-      ) VALUES (
-        @launchId, @parentLaunchId, @provider, @nativeSessionId,
-        @originDirectory, @projectRoot, @executionWorkspace, @outputDestination,
-        @workspaceMode, @worktreeBranch, @baseRef, @model, @status,
-        @executionKind, @ownerPid, @disposition, @startedAt, @updatedAt
-      )
-    `).run({ ...record, startedAt: timestamp, updatedAt: timestamp });
-    return get(launchId);
-  }
-  function transition(launchId, nextStatus, patch = {}) {
-    assertLaunchId(launchId);
-    validateStatus(nextStatus);
-    const current = get(launchId);
-    if (!current) throw new Error(`Launch not found: ${launchId}`);
-    if (!TRANSITIONS[current.status].has(nextStatus)) {
-      throw new Error(`Invalid launch transition: ${current.status} -> ${nextStatus}`);
-    }
-    const timestamp = now();
-    const pid = patch.pid == null ? current.pid : Number(patch.pid);
-    const exitCode = patch.exitCode == null ? current.exitCode : Number(patch.exitCode);
-    if (pid != null && (!Number.isSafeInteger(pid) || pid < 0)) {
-      throw new Error("pid must be a non-negative integer");
-    }
-    if (exitCode != null && !Number.isSafeInteger(exitCode)) {
-      throw new Error("exitCode must be an integer");
-    }
-    database.prepare(`
-      UPDATE agent_launches
-      SET status = @status,
-          pid = @pid,
-          owner_pid = @ownerPid,
-          exit_code = @exitCode,
-          native_session_id = COALESCE(@nativeSessionId, native_session_id),
-          last_error = @lastError,
-          finished_at = @finishedAt,
-          updated_at = @updatedAt
-      WHERE launch_id = @launchId
-    `).run({
-      exitCode,
-      finishedAt: TERMINAL_STATUSES.has(nextStatus) ? timestamp : null,
-      lastError: optionalString(patch.lastError, "lastError", 4096),
-      launchId,
-      nativeSessionId: optionalString(patch.nativeSessionId, "nativeSessionId", 1024),
-      ownerPid: TERMINAL_STATUSES.has(nextStatus) ? null : optionalPid(patch.ownerPid == null ? current.ownerPid : patch.ownerPid, "ownerPid"),
-      pid,
-      status: nextStatus,
-      updatedAt: timestamp
-    });
-    return get(launchId);
-  }
-  function setDisposition(launchId, disposition) {
-    assertLaunchId(launchId);
-    const next = validateEnum(disposition, "launch disposition", LAUNCH_DISPOSITIONS);
-    const current = get(launchId);
-    if (!current) throw new Error(`Launch not found: ${launchId}`);
-    if (current.disposition === next) return current;
-    if (current.disposition !== "retained") {
-      throw new Error(`Launch is already ${current.disposition}: ${launchId}`);
-    }
-    if (next === "retained") return current;
-    database.prepare(`
-      UPDATE agent_launches
-      SET disposition = ?, updated_at = ?
-      WHERE launch_id = ?
-    `).run(next, now(), launchId);
-    return get(launchId);
-  }
-  function setNativeSessionId(launchId, nativeSessionId) {
-    assertLaunchId(launchId);
-    const validNativeId = requiredString(nativeSessionId, "nativeSessionId", 1024);
-    const result = database.prepare(`
-      UPDATE agent_launches
-      SET native_session_id = ?, updated_at = ?
-      WHERE launch_id = ?
-    `).run(validNativeId, now(), launchId);
-    if (result.changes === 0) throw new Error(`Launch not found: ${launchId}`);
-    return get(launchId);
-  }
-  function list({ limit = 50, status = null } = {}) {
-    const numericLimit = Number(limit);
-    if (!Number.isSafeInteger(numericLimit) || numericLimit < 1 || numericLimit > 1e3) {
-      throw new Error("limit must be an integer between 1 and 1000");
-    }
-    if (status != null) validateStatus(status);
-    const rows = status == null ? database.prepare(`
-          SELECT * FROM agent_launches
-          ORDER BY started_at DESC, rowid DESC
-          LIMIT ?
-        `).all(numericLimit) : database.prepare(`
-          SELECT * FROM agent_launches
-          WHERE status = ?
-          ORDER BY started_at DESC, rowid DESC
-          LIMIT ?
-        `).all(status, numericLimit);
-    return rows.map(mapLaunch);
-  }
-  function getGroup(groupId) {
-    assertAgentGroupId(groupId);
-    const row = database.prepare("SELECT * FROM agent_groups WHERE group_id = ?").get(groupId);
-    if (!row) return null;
-    const taskRows = database.prepare(`
-      SELECT launch_id, provider, last_error
-      FROM agent_group_launches
-      WHERE group_id = ?
-      ORDER BY ordinal ASC
-    `).all(groupId);
-    const launches = taskRows.map((task) => {
-      const launch = get(task.launch_id);
-      if (launch) return launch;
-      return {
-        lastError: task.last_error,
-        launchId: task.launch_id,
-        provider: task.provider,
-        status: task.last_error ? "failed" : "starting"
-      };
-    });
-    const status = deriveGroupStatus(launches);
-    const finishedAt = ["completed", "partial", "failed", "stopped"].includes(status) ? launches.map((launch) => launch.finishedAt).filter(Boolean).sort().at(-1) || row.updated_at : null;
-    return {
-      finishedAt,
-      groupId: row.group_id,
-      launches,
-      originDirectory: row.origin_directory,
-      startedAt: row.started_at,
-      status,
-      updatedAt: row.updated_at,
-      workspace: row.workspace,
-      workspaceMode: row.workspace_mode
-    };
-  }
-  function createGroup(projection) {
-    const groupId = assertAgentGroupId(projection?.groupId);
-    const tasks = projection?.tasks;
-    if (!Array.isArray(tasks) || tasks.length < 2 || tasks.length > 10) {
-      throw new Error("Agent Host group requires between 2 and 10 tasks");
-    }
-    const validatedTasks = tasks.map((task, ordinal) => ({
-      launchId: assertLaunchId(task?.launchId),
-      ordinal,
-      provider: requiredString(task?.provider, `tasks[${ordinal}].provider`, 64)
-    }));
-    if (new Set(validatedTasks.map((task) => task.launchId)).size !== validatedTasks.length) {
-      throw new Error("Agent Host group launch IDs must be unique");
-    }
-    const timestamp = now();
-    const record = {
-      groupId,
-      originDirectory: requiredString(projection.originDirectory, "originDirectory"),
-      startedAt: timestamp,
-      updatedAt: timestamp,
-      workspace: requiredString(projection.workspace, "workspace"),
-      workspaceMode: validateEnum(
-        projection.workspaceMode || "auto",
-        "group workspace mode",
-        ["auto", "read-only", "worktree", "isolated-copy"]
-      )
-    };
-    database.transaction(() => {
-      database.prepare(`
-        INSERT INTO agent_groups (
-          group_id, origin_directory, workspace, workspace_mode, started_at, updated_at
-        ) VALUES (
-          @groupId, @originDirectory, @workspace, @workspaceMode, @startedAt, @updatedAt
-        )
-      `).run(record);
-      const insertTask = database.prepare(`
-        INSERT INTO agent_group_launches (group_id, ordinal, launch_id, provider)
-        VALUES (?, ?, ?, ?)
-      `);
-      for (const task of validatedTasks) {
-        insertTask.run(groupId, task.ordinal, task.launchId, task.provider);
-      }
-    })();
-    return getGroup(groupId);
-  }
-  function setGroupLaunchError(groupId, launchId, lastError) {
-    assertAgentGroupId(groupId);
-    assertLaunchId(launchId);
-    const result = database.prepare(`
-      UPDATE agent_group_launches
-      SET last_error = ?
-      WHERE group_id = ? AND launch_id = ?
-    `).run(requiredString(lastError, "lastError", 4096), groupId, launchId);
-    if (result.changes === 0) throw new Error(`Group launch not found: ${groupId}/${launchId}`);
-    database.prepare("UPDATE agent_groups SET updated_at = ? WHERE group_id = ?").run(now(), groupId);
-    return getGroup(groupId);
-  }
-  function listGroups({ limit = 50 } = {}) {
-    const numericLimit = Number(limit);
-    if (!Number.isSafeInteger(numericLimit) || numericLimit < 1 || numericLimit > 1e3) {
-      throw new Error("limit must be an integer between 1 and 1000");
-    }
-    return database.prepare(`
-      SELECT group_id FROM agent_groups
-      ORDER BY started_at DESC, rowid DESC
-      LIMIT ?
-    `).all(numericLimit).map((row) => getGroup(row.group_id));
-  }
-  return {
-    close() {
-      if (database.open) database.close();
-    },
-    create,
-    createGroup,
-    database,
-    get,
-    getGroup,
-    list,
-    listGroups,
-    setDisposition,
-    setGroupLaunchError,
-    setNativeSessionId,
-    transition
-  };
-}
-
-// src/agent-host/preflight.js
-var import_node_fs8 = __toESM(require("node:fs"), 1);
-var import_node_os5 = __toESM(require("node:os"), 1);
-var import_node_path7 = __toESM(require("node:path"), 1);
-var import_node_child_process3 = require("node:child_process");
+var import_node_child_process2 = require("node:child_process");
+var import_ajv2 = __toESM(require_ajv(), 1);
 
 // src/agent-host/providers/catalog.js
-var import_node_fs5 = require("node:fs");
+var import_node_fs4 = require("node:fs");
 var import_node_os3 = require("node:os");
 
 // src/agent-host/providers/config/claude.json
@@ -30465,6 +29820,7 @@ var claude_default = {
   binary: {
     name: "claude",
     resolvePaths: [
+      "~/.rudi/bins/claude",
       "~/.local/bin/claude",
       "~/.rudi/runtimes/node/{arch}/bin/claude",
       "~/.rudi/runtimes/node/bin/claude",
@@ -30478,6 +29834,12 @@ var claude_default = {
   headless: {
     command: "claude",
     promptDelivery: "arg-or-stdin",
+    privateAutomation: {
+      profile: "private-automation-v1",
+      promptDelivery: "stdin",
+      sessionPersistence: false,
+      tools: false
+    },
     args: {
       base: [
         "--output-format",
@@ -30558,6 +29920,7 @@ var claude_default = {
       TERM: "xterm-256color",
       CI: "true",
       CLAUDE_NO_UPDATE_CHECK: "true",
+      CLAUDE_CODE_SKIP_PROMPT_HISTORY: "1",
       DISABLE_AUTOUPDATE: "1",
       NO_COLOR: "1"
     },
@@ -30795,6 +30158,7 @@ var codex_default = {
   binary: {
     name: "codex",
     resolvePaths: [
+      "~/.rudi/agents/codex/bin/codex",
       "~/.rudi/agents/codex/node_modules/.bin/codex",
       "~/.rudi/runtimes/node/{arch}/bin/codex",
       "~/.rudi/runtimes/node/bin/codex"
@@ -30809,6 +30173,13 @@ var codex_default = {
     subcommand: "exec",
     promptDelivery: "arg",
     stdinPrompt: "-",
+    privateAutomation: {
+      minimumVersion: "0.147.0",
+      profile: "private-automation-v1",
+      promptDelivery: "stdin",
+      sessionPersistence: false,
+      tools: false
+    },
     args: {
       prefixConditionals: [
         { if: "approvalPolicy", args: ["--ask-for-approval", "{{approvalPolicy}}"] },
@@ -31390,7 +30761,7 @@ function resolveProviderBinary(config) {
   const arch = process.arch;
   for (const rawPath of config.binary.resolvePaths) {
     const resolved = rawPath.replace(/^~/, home).replace(/\{arch\}/g, arch);
-    if ((0, import_node_fs5.existsSync)(resolved)) {
+    if ((0, import_node_fs4.existsSync)(resolved)) {
       return resolved;
     }
   }
@@ -31492,10 +30863,1213 @@ function expandTemplate(str, options) {
   });
 }
 
-// src/agent-host/providers/common.js
+// src/agent-host/private-automation-profile.js
+var PRIVATE_AUTOMATION_PROFILE_ID = "private-automation-v1";
+var PRIVATE_AUTOMATION_MAX_PROMPT_BYTES = 2e5;
+var PRIVATE_AUTOMATION_MAX_FINAL_OUTPUT_BYTES = 64 * 1024;
+var PRIVATE_AUTOMATION_MAX_RAW_OUTPUT_BYTES = 2 * 1024 * 1024;
+var PRIVATE_AUTOMATION_MAX_SCHEMA_BYTES = 64 * 1024;
+var PRIVATE_AUTOMATION_MAX_TIMEOUT_MS = 165e3;
+var PRIVATE_AUTOMATION_DEFAULT_TIMEOUT_MS = 16e4;
+var PRIVATE_PROVIDERS = /* @__PURE__ */ new Set(["claude", "codex"]);
+var PRIVATE_RAW_EVENT_TYPES = Object.freeze({
+  claude: /* @__PURE__ */ new Set(["assistant", "error", "rate_limit_event", "result", "system", "user"]),
+  codex: /* @__PURE__ */ new Set([
+    "error",
+    "item.completed",
+    "item.started",
+    "item.updated",
+    "thread.started",
+    "turn.completed",
+    "turn.failed",
+    "turn.started"
+  ])
+});
+var PRIVATE_CODEX_ITEM_TYPES = /* @__PURE__ */ new Set(["agent_message", "reasoning"]);
+var PRIVATE_CODEX_DISABLED_CAPABILITY_DIAGNOSTIC = "Code Mode is unavailable because code-mode host is disabled.";
+var PRIVATE_CLAUDE_ASSISTANT_BLOCK_TYPES = /* @__PURE__ */ new Set(["text", "thinking"]);
+var PRIVATE_CLAUDE_SYSTEM_SUBTYPES = /* @__PURE__ */ new Set(["init", "thinking_tokens"]);
+var PRIVATE_CLAUDE_THINKING_TOKEN_KEYS = /* @__PURE__ */ new Set([
+  "estimated_tokens",
+  "estimated_tokens_delta",
+  "session_id",
+  "subtype",
+  "type",
+  "uuid"
+]);
+var PRIVATE_CLAUDE_SYNTHETIC_USER_KEYS = /* @__PURE__ */ new Set([
+  "isSynthetic",
+  "message",
+  "parent_tool_use_id",
+  "session_id",
+  "timestamp",
+  "type",
+  "uuid"
+]);
+var PRIVATE_OUTPUT_SCHEMA_COMPILER = new import_ajv2.default({ allErrors: true, strict: false });
+var PRIVATE_CODEX_DISABLED_FEATURES = Object.freeze([
+  "apps",
+  "browser_use",
+  "browser_use_external",
+  "browser_use_full_cdp_access",
+  "code_mode_host",
+  "computer_use",
+  "enable_mcp_apps",
+  "image_generation",
+  "in_app_browser",
+  "multi_agent",
+  "plugins",
+  "remote_plugin",
+  "shell_snapshot",
+  "shell_tool",
+  "skill_search",
+  "tool_call_mcp_elicitation",
+  "tool_suggest",
+  "unified_exec",
+  "view_image"
+]);
+function getPrivateCodexDisabledFeatures() {
+  return [...PRIVATE_CODEX_DISABLED_FEATURES];
+}
+function requiredText(value, field, maxBytes = 4096) {
+  if (typeof value !== "string" || value.trim() === "" || value.includes("\0")) {
+    throw new Error(`${field} must be a non-empty string without NUL bytes`);
+  }
+  if (Buffer.byteLength(value, "utf8") > maxBytes) {
+    throw new Error(`${field} exceeds ${maxBytes} bytes`);
+  }
+  return value;
+}
+function containsSchemaReference(value) {
+  if (Array.isArray(value)) return value.some(containsSchemaReference);
+  if (!value || typeof value !== "object") return false;
+  if (Object.hasOwn(value, "$ref")) return true;
+  return Object.values(value).some(containsSchemaReference);
+}
+function readOutputSchema(outputSchemaPath) {
+  const requested = import_node_path4.default.resolve(requiredText(outputSchemaPath, "output schema path"));
+  let stat;
+  try {
+    stat = import_node_fs5.default.lstatSync(requested);
+  } catch {
+    throw new Error(`private automation output schema does not exist: ${requested}`);
+  }
+  if (stat.isSymbolicLink() || !stat.isFile()) {
+    throw new Error("private automation output schema must be a regular non-symlink file");
+  }
+  if (stat.size < 2 || stat.size > PRIVATE_AUTOMATION_MAX_SCHEMA_BYTES) {
+    throw new Error(`private automation output schema must be between 2 and ${PRIVATE_AUTOMATION_MAX_SCHEMA_BYTES} bytes`);
+  }
+  let schema;
+  try {
+    schema = JSON.parse(import_node_fs5.default.readFileSync(requested, "utf8"));
+  } catch {
+    throw new Error("private automation output schema must contain valid JSON");
+  }
+  if (!schema || Array.isArray(schema) || schema.type !== "object") {
+    throw new Error("private automation output schema must describe an object");
+  }
+  if (schema.additionalProperties !== false) {
+    throw new Error("private automation output schema must set additionalProperties to false");
+  }
+  if (!schema.properties || typeof schema.properties !== "object" || Array.isArray(schema.properties)) {
+    throw new Error("private automation output schema must declare object properties");
+  }
+  if (!Array.isArray(schema.required)) {
+    throw new Error("private automation output schema must declare required properties");
+  }
+  if (containsSchemaReference(schema)) {
+    throw new Error("external schema references are forbidden in private automation");
+  }
+  let validate;
+  try {
+    validate = PRIVATE_OUTPUT_SCHEMA_COMPILER.compile(schema);
+  } catch {
+    throw new Error("private automation output schema cannot be compiled");
+  }
+  return Object.freeze({
+    canonical: JSON.stringify(schema),
+    path: import_node_fs5.default.realpathSync(requested),
+    schema: Object.freeze(schema),
+    validate
+  });
+}
+function exactConfiguredModel(provider, model) {
+  if (typeof model !== "string" || model.trim() === "") {
+    throw new Error("private automation exact model is required");
+  }
+  const exactModel = requiredText(model, "private automation exact model", 512);
+  const config = loadProviderConfig(provider);
+  const definition = getModelDef(config, exactModel);
+  if (!definition || definition.id !== exactModel) {
+    throw new Error(`private automation requires a canonical configured model ID for ${provider}`);
+  }
+  return exactModel;
+}
+function validateTimeout(timeoutMs) {
+  const value = timeoutMs == null ? PRIVATE_AUTOMATION_DEFAULT_TIMEOUT_MS : Number(timeoutMs);
+  if (!Number.isSafeInteger(value) || value < 1 || value > PRIVATE_AUTOMATION_MAX_TIMEOUT_MS) {
+    throw new Error(`private automation timeoutMs must be an integer between 1 and ${PRIVATE_AUTOMATION_MAX_TIMEOUT_MS}`);
+  }
+  return value;
+}
+function createPrivateAutomationProfile({
+  fallbackModel = null,
+  model,
+  outputSchemaPath,
+  provider,
+  timeoutMs
+} = {}) {
+  if (!PRIVATE_PROVIDERS.has(provider)) {
+    throw new Error("private automation provider must be codex or claude");
+  }
+  if (fallbackModel != null) {
+    throw new Error("private automation fallback model is forbidden");
+  }
+  const exactModel = exactConfiguredModel(provider, model);
+  const outputSchema = readOutputSchema(outputSchemaPath);
+  return Object.freeze({
+    id: PRIVATE_AUTOMATION_PROFILE_ID,
+    maxFinalOutputBytes: PRIVATE_AUTOMATION_MAX_FINAL_OUTPUT_BYTES,
+    maxPromptBytes: PRIVATE_AUTOMATION_MAX_PROMPT_BYTES,
+    maxRawOutputBytes: PRIVATE_AUTOMATION_MAX_RAW_OUTPUT_BYTES,
+    model: exactModel,
+    outputSchema,
+    provider,
+    timeoutMs: validateTimeout(timeoutMs)
+  });
+}
+function containsToolEvent(value) {
+  if (Array.isArray(value)) return value.some(containsToolEvent);
+  if (!value || typeof value !== "object") return false;
+  if ([
+    "command_execution",
+    "file_change",
+    "mcp_tool_call",
+    "permission",
+    "permission_request",
+    "server_tool_use",
+    "tool_result",
+    "tool_use"
+  ].includes(value.type)) return true;
+  return Object.values(value).some(containsToolEvent);
+}
+function boundedUsage(usage2) {
+  if (!usage2 || typeof usage2 !== "object" || Array.isArray(usage2)) return void 0;
+  const projected = {};
+  for (const [key, raw] of Object.entries(usage2)) {
+    const value = Number(raw);
+    if (Number.isSafeInteger(value) && value >= 0 && value <= Number.MAX_SAFE_INTEGER) {
+      projected[key] = value;
+    }
+  }
+  return Object.keys(projected).length > 0 ? projected : void 0;
+}
+function projectPrivateAutomationEventMetadata(event) {
+  if (!event || typeof event !== "object" || Array.isArray(event)) {
+    throw new Error("private automation event must be an object");
+  }
+  if (containsToolEvent(event)) {
+    throw new Error("private automation tool event is forbidden");
+  }
+  const metadata = { type: requiredText(event.type, "private automation event type", 128) };
+  if (typeof event.model === "string" && event.model.length > 0) metadata.model = event.model;
+  if (Array.isArray(event.content)) metadata.contentBlockCount = event.content.length;
+  const usage2 = boundedUsage(event.usage);
+  if (usage2) metadata.usage = usage2;
+  if (typeof event.durationMs === "number" && Number.isFinite(event.durationMs) && event.durationMs >= 0) {
+    metadata.durationMs = Math.floor(event.durationMs);
+  }
+  if (typeof event.numTurns === "number" && Number.isSafeInteger(event.numTurns) && event.numTurns >= 0) {
+    metadata.numTurns = event.numTurns;
+  }
+  return Object.freeze(metadata);
+}
+function assertPrivateAutomationRawEvent(provider, event, expectedModel = null) {
+  if (!PRIVATE_PROVIDERS.has(provider) || !event || typeof event !== "object" || Array.isArray(event)) {
+    throw new Error("private automation provider event is invalid");
+  }
+  if (!PRIVATE_RAW_EVENT_TYPES[provider].has(event.type)) {
+    throw new Error("private automation provider event type is not allowlisted");
+  }
+  if (provider === "codex" && event.type.startsWith("item.")) {
+    const itemType = event.item?.type;
+    const isBlockedCapabilityDiagnostic = event.type === "item.completed" && itemType === "error" && typeof event.item?.message === "string" && event.item.message.startsWith(PRIVATE_CODEX_DISABLED_CAPABILITY_DIAGNOSTIC);
+    if (!PRIVATE_CODEX_ITEM_TYPES.has(itemType) && !isBlockedCapabilityDiagnostic) {
+      throw new Error("private automation Codex item type is not allowlisted");
+    }
+  }
+  if (provider === "claude" && event.type === "system") {
+    if (!PRIVATE_CLAUDE_SYSTEM_SUBTYPES.has(event.subtype)) {
+      throw new Error("private automation Claude system subtype is not allowlisted");
+    }
+    if (Array.isArray(event.tools) && event.tools.length > 0 || Array.isArray(event.mcp_servers) && event.mcp_servers.length > 0) {
+      throw new Error("private automation Claude init capabilities are not empty");
+    }
+    if (event.subtype === "thinking_tokens" && (Object.keys(event).some((key) => !PRIVATE_CLAUDE_THINKING_TOKEN_KEYS.has(key)) || !Number.isFinite(event.estimated_tokens) || event.estimated_tokens < 0 || !Number.isFinite(event.estimated_tokens_delta) || event.estimated_tokens_delta < 0)) {
+      throw new Error("private automation Claude thinking-token metadata is invalid");
+    }
+  }
+  if (provider === "claude" && event.type === "assistant") {
+    const message = event.message && typeof event.message === "object" ? event.message : null;
+    const content = Array.isArray(event.content) ? event.content : Array.isArray(message?.content) ? message.content : [];
+    if (content.some((block) => !block || typeof block !== "object" || !PRIVATE_CLAUDE_ASSISTANT_BLOCK_TYPES.has(block.type))) {
+      throw new Error("private automation Claude content block is not allowlisted");
+    }
+  }
+  if (provider === "claude" && event.type === "user") {
+    const content = Array.isArray(event.message?.content) ? event.message.content : [];
+    const textBytes = content.reduce((total, block) => total + (typeof block?.text === "string" ? Buffer.byteLength(block.text, "utf8") : 0), 0);
+    if (event.isSynthetic !== true || event.parent_tool_use_id != null || Object.keys(event).some((key) => !PRIVATE_CLAUDE_SYNTHETIC_USER_KEYS.has(key)) || event.message?.role !== "user" || content.length < 1 || content.length > 4 || content.some((block) => block?.type !== "text" || typeof block.text !== "string") || textBytes > 4096) {
+      throw new Error("private automation Claude synthetic user metadata is invalid");
+    }
+  }
+  if (provider === "claude" && event.type === "result" && expectedModel != null) {
+    const observedModels = event.modelUsage && typeof event.modelUsage === "object" && !Array.isArray(event.modelUsage) ? Object.keys(event.modelUsage) : [];
+    if (observedModels.length !== 1 || observedModels[0] !== expectedModel) {
+      throw new Error("private automation Claude model usage does not match the exact model");
+    }
+  }
+  if (containsToolEvent(event)) {
+    throw new Error("private automation tool event is forbidden");
+  }
+  return event;
+}
+function successfulProbe(result) {
+  return result && !result.error && result.status === 0;
+}
+function probeOutput(result) {
+  return `${String(result?.stdout || "")}
+${String(result?.stderr || "")}`;
+}
+function semverAtLeast(actual, minimum) {
+  const actualParts = actual.split(".").map(Number);
+  const minimumParts = minimum.split(".").map(Number);
+  for (let index = 0; index < 3; index += 1) {
+    if (actualParts[index] > minimumParts[index]) return true;
+    if (actualParts[index] < minimumParts[index]) return false;
+  }
+  return true;
+}
+function assertPrivateAutomationHostCapabilities({ binaryPath, profile }, dependencies = {}) {
+  const spawnSyncImpl = dependencies.spawnSyncImpl || import_node_child_process2.spawnSync;
+  if (!profile || profile.id !== PRIVATE_AUTOMATION_PROFILE_ID) {
+    throw new Error("private automation profile is required for capability preflight");
+  }
+  if (profile.provider === "codex") {
+    const versionProbe = spawnSyncImpl(binaryPath, ["--version"], {
+      encoding: "utf8",
+      timeout: 5e3
+    });
+    const versionMatch = probeOutput(versionProbe).match(/codex-cli\s+(\d+)\.(\d+)\.(\d+)/u);
+    const minimumVersion = loadProviderConfig("codex").headless.privateAutomation.minimumVersion;
+    const versionSupported = versionMatch && semverAtLeast(
+      `${versionMatch[1]}.${versionMatch[2]}.${versionMatch[3]}`,
+      minimumVersion
+    );
+    if (!successfulProbe(versionProbe) || !versionSupported) {
+      throw new Error("Codex host version does not satisfy private automation config controls");
+    }
+    const disabledFeatures = getPrivateCodexDisabledFeatures();
+    const configArgs = ["--ask-for-approval", "never"];
+    for (const feature of disabledFeatures) configArgs.push("--disable", feature);
+    configArgs.push(
+      "-c",
+      "mcp_servers={}",
+      "-c",
+      'web_search="disabled"',
+      "exec",
+      "-",
+      "--json",
+      "--skip-git-repo-check",
+      "--color",
+      "never",
+      "-C",
+      import_node_path4.default.dirname(profile.outputSchema.path),
+      "-m",
+      profile.model,
+      "--output-schema",
+      profile.outputSchema.path,
+      "--ephemeral",
+      "--strict-config",
+      "--ignore-user-config",
+      "--ignore-rules",
+      "-s",
+      "read-only"
+    );
+    const configProbe2 = spawnSyncImpl(binaryPath, configArgs, {
+      encoding: "utf8",
+      input: "",
+      timeout: 5e3
+    });
+    if (configProbe2?.error || configProbe2?.status === 0 || !probeOutput(configProbe2).includes("No prompt provided via stdin.")) {
+      throw new Error("Codex host does not satisfy private automation config controls");
+    }
+    const helpProbe = spawnSyncImpl(binaryPath, ["exec", "--help"], {
+      encoding: "utf8",
+      timeout: 5e3
+    });
+    const help = probeOutput(helpProbe);
+    const requiredHelp = [
+      "--ephemeral",
+      "--ignore-rules",
+      "--ignore-user-config",
+      "--output-schema",
+      "--sandbox"
+    ];
+    if (!successfulProbe(helpProbe) || requiredHelp.some((flag) => !help.includes(flag))) {
+      throw new Error("Codex host does not satisfy private automation config and CLI capabilities");
+    }
+    const featureProbe = spawnSyncImpl(binaryPath, ["features", "list"], {
+      encoding: "utf8",
+      timeout: 5e3
+    });
+    const features = probeOutput(featureProbe);
+    const missingFeature = PRIVATE_CODEX_DISABLED_FEATURES.some((feature) => {
+      const line = features.split("\n").find((candidate) => candidate.trim().startsWith(`${feature} `));
+      return !line || /\bremoved\b/u.test(line);
+    });
+    if (!successfulProbe(featureProbe) || missingFeature) {
+      throw new Error("Codex host does not satisfy private automation feature controls");
+    }
+    return true;
+  }
+  const configProbe = spawnSyncImpl(binaryPath, [
+    "--output-format",
+    "stream-json",
+    "--verbose",
+    "--print",
+    "--input-format",
+    "text",
+    "--model",
+    profile.model,
+    "--no-session-persistence",
+    "--safe-mode",
+    "--no-chrome",
+    "--disable-slash-commands",
+    "--tools",
+    "",
+    "--strict-mcp-config",
+    "--mcp-config",
+    '{"mcpServers":{}}',
+    "--setting-sources",
+    "",
+    "--permission-mode",
+    "plan"
+  ], {
+    encoding: "utf8",
+    input: "",
+    timeout: 5e3
+  });
+  if (configProbe?.error || configProbe?.status === 0 || !probeOutput(configProbe).includes("Input must be provided either through stdin")) {
+    throw new Error("Claude host does not satisfy private automation CLI capabilities");
+  }
+  return true;
+}
+
+// src/agent-host/events/stream.js
+function boundedAppend(current, value, maxLength = 4096) {
+  const combined = `${current}${value}`;
+  return combined.length <= maxLength ? combined : combined.slice(-maxLength);
+}
+function writeLine(stream, value) {
+  stream.write(value.endsWith("\n") ? value : `${value}
+`);
+}
+function parsePrivateFinalOutput(value) {
+  if (typeof value !== "string") return value;
+  const trimmed = value.trim();
+  try {
+    return JSON.parse(trimmed);
+  } catch {
+    const fenced = trimmed.match(/^```(?:json)?[ \t]*\r?\n([\s\S]*?)\r?\n```$/u);
+    if (!fenced) throw new Error("invalid");
+    try {
+      return JSON.parse(fenced[1]);
+    } catch {
+      throw new Error("invalid");
+    }
+  }
+}
+function executeForegroundLaunch({
+  eventSink = null,
+  jsonOutput = false,
+  launchId,
+  onSpawn = null,
+  plan,
+  spawnImpl = import_node_child_process3.spawn,
+  stderr = process.stderr,
+  stdout = process.stdout,
+  store,
+  timeoutMs = plan.timeouts.runtimeMs,
+  signalEmitter = process
+}) {
+  if (!Number.isSafeInteger(timeoutMs) || timeoutMs < 1 || timeoutMs > 24 * 60 * 60 * 1e3) {
+    throw new Error("timeoutMs must be an integer between 1 and 86400000");
+  }
+  return new Promise((resolve, reject) => {
+    const privateAutomation = plan.privateAutomationProfile != null;
+    const normalizer = createAgentEventNormalizer(plan.provider);
+    let child;
+    let finalized = false;
+    let stdoutBuffer = "";
+    let stderrTail = "";
+    let sawAssistantText = false;
+    let timedOut = false;
+    let forceTimer = null;
+    let requestedSignal = null;
+    let sinkFailure = null;
+    let privateFailure = null;
+    let privateFinalOutput = null;
+    let privateObservedModel = privateAutomation && plan.provider === "codex" ? plan.model : null;
+    let privateRawOutputBytes = 0;
+    let privateUsage = null;
+    function terminateProvider(signal) {
+      if (privateAutomation && Number.isSafeInteger(child?.pid) && child.pid > 0) {
+        try {
+          process.kill(-child.pid, signal);
+          return true;
+        } catch {
+        }
+      }
+      try {
+        return child?.kill(signal) === true;
+      } catch {
+        return false;
+      }
+    }
+    function privateProviderGroupAlive() {
+      if (!privateAutomation || !Number.isSafeInteger(child?.pid) || child.pid < 1) {
+        return false;
+      }
+      try {
+        process.kill(-child.pid, 0);
+        return true;
+      } catch {
+        return false;
+      }
+    }
+    function recordSinkFailure(kind, error) {
+      if (sinkFailure) return;
+      sinkFailure = `${kind} persistence failed: ${error.message}`;
+      try {
+        writeLine(stderr, sinkFailure);
+      } catch {
+      }
+      terminateProvider("SIGTERM");
+    }
+    function publishEvent(payload, persistedPayload = payload) {
+      try {
+        eventSink?.(persistedPayload);
+      } catch (error) {
+        recordSinkFailure("Agent event", error);
+      }
+      return payload;
+    }
+    const onSigint = () => {
+      requestedSignal = "SIGINT";
+      terminateProvider("SIGINT");
+    };
+    const onSigterm = () => {
+      requestedSignal = "SIGTERM";
+      terminateProvider("SIGTERM");
+    };
+    function persistNativeSession(rawEvent, normalized) {
+      if (privateAutomation) return;
+      const nativeSessionId = extractNativeSessionId(rawEvent) || normalized?.providerSessionId || null;
+      if (!nativeSessionId) return;
+      const current = store.get(launchId);
+      if (current?.nativeSessionId !== nativeSessionId) {
+        store.setNativeSessionId(launchId, nativeSessionId);
+      }
+    }
+    function emitEvent(normalized, rawEvent) {
+      persistNativeSession(rawEvent, normalized);
+      const isDelta = rawEvent?.type === "message" && rawEvent.delta === true || rawEvent?.event === "step_update" && rawEvent.step_update?.step_type === "agent_response";
+      let persistedEvent = normalized;
+      if (privateAutomation) {
+        try {
+          assertPrivateAutomationRawEvent(plan.provider, rawEvent, plan.model);
+          persistedEvent = projectPrivateAutomationEventMetadata(normalized);
+        } catch (error) {
+          privateFailure = String(error?.message || "").includes("model usage") ? "private_model_mismatch" : "private_tool_event";
+          terminateProvider("SIGTERM");
+          return;
+        }
+        if (normalized.model) {
+          if (normalized.model !== plan.model) {
+            privateFailure = "private_model_mismatch";
+            terminateProvider("SIGTERM");
+            return;
+          }
+          privateObservedModel = normalized.model;
+        }
+        if (normalized.usage) privateUsage = persistedEvent.usage || privateUsage;
+        const structuredOutput = rawEvent?.structured_output ?? rawEvent?.structuredOutput;
+        if (structuredOutput && typeof structuredOutput === "object" && !Array.isArray(structuredOutput)) {
+          privateFinalOutput = structuredOutput;
+        } else if (normalized.type === "assistant" && Array.isArray(normalized.content)) {
+          const text = normalized.content.filter((block) => block?.type === "text" && typeof block.text === "string").map((block) => block.text).join("");
+          if (text) privateFinalOutput = text;
+        } else if (normalized.type === "result" && typeof normalized.result === "string") {
+          privateFinalOutput = normalized.result;
+        }
+      }
+      const persistedPayload = {
+        delta: isDelta,
+        event: persistedEvent,
+        launchId,
+        provider: plan.provider,
+        type: "agent.event"
+      };
+      const payload = privateAutomation ? publishEvent(persistedPayload) : publishEvent({
+        event: normalized,
+        launchId,
+        provider: plan.provider,
+        rawEvent,
+        type: "agent.event"
+      }, persistedPayload);
+      if (privateAutomation) return;
+      if (jsonOutput) {
+        writeLine(stdout, JSON.stringify(payload));
+        return;
+      }
+      const rendered = renderAgentEvent(normalized);
+      if (normalized?.type === "assistant" && rendered.length > 0) sawAssistantText = true;
+      if (normalized?.type === "result" && sawAssistantText) return;
+      for (const text of rendered) {
+        if (isDelta) stdout.write(text);
+        else writeLine(stdout, text);
+      }
+      if (normalized?.type === "error" && normalized.message) writeLine(stderr, normalized.message);
+    }
+    function consumeLine(line) {
+      if (!line.trim()) return;
+      try {
+        const rawEvent = JSON.parse(line);
+        for (const result of normalizer.normalize(rawEvent)) {
+          if (result?.normalized) emitEvent(result.normalized, result.raw || rawEvent);
+        }
+      } catch {
+        if (privateAutomation) {
+          privateFailure = "private_output_malformed";
+          terminateProvider("SIGTERM");
+          return;
+        }
+        const payload = publishEvent({
+          event: { message: line, subtype: "provider_stdout", type: "system" },
+          launchId,
+          provider: plan.provider,
+          type: "agent.event"
+        });
+        if (jsonOutput) {
+          writeLine(stdout, JSON.stringify(payload));
+        } else {
+          writeLine(stdout, line);
+        }
+      }
+    }
+    function flushStdout() {
+      if (stdoutBuffer.trim()) consumeLine(stdoutBuffer);
+      stdoutBuffer = "";
+      for (const result of normalizer.flush()) {
+        if (result?.normalized) emitEvent(result.normalized, result.raw || {});
+      }
+    }
+    function complete(status, exitCode, lastError = null) {
+      if (finalized) return;
+      clearTimeout(runtimeTimer);
+      if (forceTimer) clearTimeout(forceTimer);
+      signalEmitter.removeListener("SIGINT", onSigint);
+      signalEmitter.removeListener("SIGTERM", onSigterm);
+      flushStdout();
+      finalized = true;
+      if (sinkFailure) {
+        status = "failed";
+        lastError = sinkFailure;
+      }
+      if (privateAutomation) {
+        if (privateFailure) {
+          status = "failed";
+          lastError = `Private automation failed: ${privateFailure}`;
+        } else if (status === "completed" && privateObservedModel === null) {
+          status = "failed";
+          lastError = "Private automation failed: private_model_unobserved";
+        } else if (status === "completed") {
+          try {
+            const parsed = parsePrivateFinalOutput(privateFinalOutput);
+            if (!parsed || typeof parsed !== "object" || Array.isArray(parsed)) {
+              throw new Error("not_object");
+            }
+            const serialized = JSON.stringify(parsed);
+            if (Buffer.byteLength(serialized, "utf8") > plan.maxFinalOutputBytes) {
+              throw new Error("too_large");
+            }
+            if (!plan.privateAutomationProfile.outputSchema.validate(parsed)) {
+              throw new Error("schema");
+            }
+            privateFinalOutput = parsed;
+          } catch (error) {
+            status = "failed";
+            const reason = error.message === "too_large" ? "private_final_output_overflow" : error.message === "schema" ? "private_final_output_schema_invalid" : "private_final_output_invalid";
+            lastError = `Private automation failed: ${reason}`;
+          }
+        } else {
+          lastError = timedOut ? "Private automation failed: private_timeout" : requestedSignal ? "Private automation failed: private_stopped" : "Private automation failed: private_provider_error";
+        }
+      }
+      const current = store.get(launchId);
+      if (current?.status === "starting" && status !== "failed") {
+        store.transition(launchId, "running", { pid: child?.pid || 0 });
+      }
+      const updated = store.transition(launchId, status, {
+        exitCode,
+        lastError
+      });
+      const terminalEvent = publishEvent({ launch: updated, type: `launch.${status}` });
+      if (privateAutomation && status === "completed") {
+        const privateResult = {
+          model: privateObservedModel,
+          output: privateFinalOutput,
+          provider: plan.provider,
+          type: "private-automation.result",
+          ...privateUsage ? { usage: privateUsage } : {}
+        };
+        writeLine(stdout, jsonOutput ? JSON.stringify(privateResult) : JSON.stringify(privateFinalOutput));
+      }
+      if (jsonOutput) {
+        if (!privateAutomation) writeLine(stdout, JSON.stringify(terminalEvent));
+      }
+      resolve(updated);
+    }
+    const runtimeTimer = setTimeout(() => {
+      timedOut = true;
+      terminateProvider("SIGTERM");
+      forceTimer = setTimeout(
+        () => terminateProvider("SIGKILL"),
+        plan.timeouts.shutdownGraceMs || 5e3
+      );
+    }, timeoutMs);
+    try {
+      child = spawnImpl(plan.spawn.command, plan.args, {
+        cwd: plan.spawn.cwd,
+        detached: privateAutomation,
+        env: privateAutomation ? plan.environment : { ...process.env, ...plan.environment },
+        stdio: [privateAutomation ? "pipe" : "ignore", "pipe", "pipe"]
+      });
+    } catch (error) {
+      clearTimeout(runtimeTimer);
+      reject(error);
+      return;
+    }
+    if (privateAutomation) {
+      child.stdin.on("error", () => {
+        privateFailure = "private_stdin_error";
+        terminateProvider("SIGTERM");
+      });
+      child.stdin.end(plan.stdin);
+    }
+    child.once("spawn", () => {
+      const current = store.get(launchId);
+      if (current?.status === "starting") {
+        const running = store.transition(launchId, "running", { pid: child.pid || 0 });
+        onSpawn?.(running);
+      } else if (current) {
+        onSpawn?.(current);
+      }
+    });
+    signalEmitter.once("SIGINT", onSigint);
+    signalEmitter.once("SIGTERM", onSigterm);
+    child.stdout.on("data", (chunk) => {
+      if (privateAutomation) {
+        privateRawOutputBytes += Buffer.byteLength(chunk);
+        if (privateRawOutputBytes > plan.maxRawOutputBytes) {
+          privateFailure = "private_raw_output_overflow";
+          stdoutBuffer = "";
+          terminateProvider("SIGTERM");
+          return;
+        }
+      }
+      stdoutBuffer += chunk.toString();
+      const lines = stdoutBuffer.split("\n");
+      stdoutBuffer = lines.pop() || "";
+      for (const line of lines) consumeLine(line);
+    });
+    child.stderr.on("data", (chunk) => {
+      if (privateAutomation) return;
+      const text = chunk.toString();
+      stderrTail = boundedAppend(stderrTail, text);
+      try {
+        stderr.write(text);
+      } catch (error) {
+        recordSinkFailure("Provider stderr", error);
+      }
+    });
+    child.once("error", (error) => {
+      complete(
+        "failed",
+        null,
+        privateAutomation ? "Private automation failed: private_spawn_error" : `Provider process error: ${error.message}`
+      );
+    });
+    child.once("close", (exitCode, signal) => {
+      if (privateProviderGroupAlive()) {
+        terminateProvider("SIGKILL");
+        privateFailure = "private_termination_unconfirmed";
+      }
+      if (sinkFailure) {
+        complete("failed", exitCode, sinkFailure);
+        return;
+      }
+      if (timedOut) {
+        complete("failed", exitCode, `Provider process timed out after ${timeoutMs}ms`);
+        return;
+      }
+      if (requestedSignal) {
+        complete("stopped", exitCode, `Provider process stopped by ${requestedSignal}`);
+        return;
+      }
+      if (exitCode === 0) {
+        complete("completed", 0);
+        return;
+      }
+      const detail = stderrTail.trim() || `Provider process exited with code ${exitCode}${signal ? ` (${signal})` : ""}`;
+      complete("failed", exitCode, detail);
+    });
+  });
+}
+
+// src/agent-host/launch-store.js
 var import_node_fs6 = __toESM(require("node:fs"), 1);
-var import_node_os4 = __toESM(require("node:os"), 1);
 var import_node_path5 = __toESM(require("node:path"), 1);
+var import_better_sqlite3 = __toESM(require("better-sqlite3"), 1);
+var LAUNCH_STATUSES = Object.freeze([
+  "starting",
+  "running",
+  "completed",
+  "failed",
+  "stopped"
+]);
+var LAUNCH_DISPOSITIONS = Object.freeze(["retained", "promoted", "discarded"]);
+var LAUNCH_EXECUTION_KINDS = Object.freeze(["foreground", "detached"]);
+var GROUP_ID_PATTERN = /^group_[A-Za-z0-9][A-Za-z0-9_-]{0,127}$/;
+var TERMINAL_STATUSES = /* @__PURE__ */ new Set(["completed", "failed", "stopped"]);
+var TRANSITIONS = Object.freeze({
+  starting: /* @__PURE__ */ new Set(["running", "failed", "stopped"]),
+  running: /* @__PURE__ */ new Set(["completed", "failed", "stopped"]),
+  completed: /* @__PURE__ */ new Set(),
+  failed: /* @__PURE__ */ new Set(),
+  stopped: /* @__PURE__ */ new Set()
+});
+function requiredString(value, field, maxLength = 4096) {
+  if (typeof value !== "string" || value.trim() === "" || value.includes("\0")) {
+    throw new Error(`${field} must be a non-empty string without NUL bytes`);
+  }
+  if (value.length > maxLength) {
+    throw new Error(`${field} exceeds ${maxLength} characters`);
+  }
+  return value;
+}
+function optionalString(value, field, maxLength = 4096) {
+  if (value == null) return null;
+  return requiredString(value, field, maxLength);
+}
+function mapLaunch(row) {
+  if (!row) return null;
+  return {
+    baseRef: row.base_ref,
+    disposition: row.disposition,
+    executionKind: row.execution_kind,
+    executionWorkspace: row.execution_workspace,
+    exitCode: row.exit_code,
+    finishedAt: row.finished_at,
+    lastError: row.last_error,
+    launchId: row.launch_id,
+    model: row.model,
+    nativeSessionId: row.native_session_id,
+    originDirectory: row.origin_directory,
+    ownerPid: row.owner_pid,
+    outputDestination: row.output_destination,
+    parentLaunchId: row.parent_launch_id,
+    pid: row.pid,
+    projectRoot: row.project_root,
+    provider: row.provider,
+    startedAt: row.started_at,
+    status: row.status,
+    updatedAt: row.updated_at,
+    workspaceMode: row.workspace_mode,
+    worktreeBranch: row.worktree_branch
+  };
+}
+function validateStatus(status) {
+  if (!LAUNCH_STATUSES.includes(status)) {
+    throw new Error(`Unknown launch status: ${status}`);
+  }
+  return status;
+}
+function validateEnum(value, field, allowed) {
+  if (!allowed.includes(value)) {
+    throw new Error(`Unknown ${field}: ${value}`);
+  }
+  return value;
+}
+function optionalPid(value, field) {
+  if (value == null) return null;
+  const parsed = Number(value);
+  if (!Number.isSafeInteger(parsed) || parsed < 1) {
+    throw new Error(`${field} must be a positive integer`);
+  }
+  return parsed;
+}
+function assertAgentGroupId(groupId) {
+  if (typeof groupId !== "string" || !GROUP_ID_PATTERN.test(groupId)) {
+    throw new Error("Invalid Agent Host group ID");
+  }
+  return groupId;
+}
+function deriveGroupStatus(launches) {
+  const statuses = launches.map((launch) => launch.status);
+  if (statuses.includes("running")) return "running";
+  if (statuses.includes("starting")) return "starting";
+  if (statuses.every((status) => status === "completed")) return "completed";
+  if (statuses.some((status) => status === "completed")) return "partial";
+  if (statuses.every((status) => status === "stopped")) return "stopped";
+  return "failed";
+}
+function ensureColumn(database, name, definition) {
+  const columns = new Set(database.prepare("PRAGMA table_info(agent_launches)").all().map((row) => row.name));
+  if (!columns.has(name)) database.exec(`ALTER TABLE agent_launches ADD COLUMN ${name} ${definition}`);
+}
+function initialize(database) {
+  database.pragma("journal_mode = WAL");
+  database.pragma("foreign_keys = ON");
+  database.exec(`
+    CREATE TABLE IF NOT EXISTS agent_launches (
+      launch_id TEXT PRIMARY KEY,
+      parent_launch_id TEXT REFERENCES agent_launches(launch_id),
+      provider TEXT NOT NULL,
+      native_session_id TEXT,
+      origin_directory TEXT NOT NULL,
+      project_root TEXT NOT NULL,
+      execution_workspace TEXT NOT NULL,
+      output_destination TEXT NOT NULL,
+      workspace_mode TEXT NOT NULL CHECK (workspace_mode IN ('read-only', 'worktree', 'isolated-copy')),
+      worktree_branch TEXT,
+      base_ref TEXT,
+      model TEXT NOT NULL,
+      execution_kind TEXT NOT NULL DEFAULT 'foreground' CHECK (execution_kind IN ('foreground', 'detached')),
+      owner_pid INTEGER,
+      disposition TEXT NOT NULL DEFAULT 'retained' CHECK (disposition IN ('retained', 'promoted', 'discarded')),
+      status TEXT NOT NULL CHECK (status IN ('starting', 'running', 'completed', 'failed', 'stopped')),
+      pid INTEGER,
+      exit_code INTEGER,
+      started_at TEXT NOT NULL,
+      finished_at TEXT,
+      updated_at TEXT NOT NULL,
+      last_error TEXT
+    );
+
+    CREATE INDEX IF NOT EXISTS idx_agent_launches_status_started
+      ON agent_launches(status, started_at DESC);
+    CREATE INDEX IF NOT EXISTS idx_agent_launches_native_session
+      ON agent_launches(provider, native_session_id);
+
+    CREATE TABLE IF NOT EXISTS agent_groups (
+      group_id TEXT PRIMARY KEY,
+      origin_directory TEXT NOT NULL,
+      workspace TEXT NOT NULL,
+      workspace_mode TEXT NOT NULL CHECK (workspace_mode IN ('auto', 'read-only', 'worktree', 'isolated-copy')),
+      started_at TEXT NOT NULL,
+      updated_at TEXT NOT NULL
+    );
+
+    CREATE TABLE IF NOT EXISTS agent_group_launches (
+      group_id TEXT NOT NULL REFERENCES agent_groups(group_id) ON DELETE CASCADE,
+      ordinal INTEGER NOT NULL,
+      launch_id TEXT NOT NULL UNIQUE,
+      provider TEXT NOT NULL,
+      last_error TEXT,
+      PRIMARY KEY (group_id, ordinal)
+    );
+
+    CREATE INDEX IF NOT EXISTS idx_agent_group_launches_group
+      ON agent_group_launches(group_id, ordinal);
+  `);
+  ensureColumn(database, "execution_kind", "TEXT NOT NULL DEFAULT 'foreground' CHECK (execution_kind IN ('foreground', 'detached'))");
+  ensureColumn(database, "owner_pid", "INTEGER");
+  ensureColumn(database, "disposition", "TEXT NOT NULL DEFAULT 'retained' CHECK (disposition IN ('retained', 'promoted', 'discarded'))");
+}
+function createLaunchStore({
+  databasePath = getAgentHostPaths().stateDatabase,
+  now = () => (/* @__PURE__ */ new Date()).toISOString()
+} = {}) {
+  const resolvedPath = import_node_path5.default.resolve(databasePath);
+  import_node_fs6.default.mkdirSync(import_node_path5.default.dirname(resolvedPath), { recursive: true, mode: 448 });
+  const database = new import_better_sqlite3.default(resolvedPath);
+  import_node_fs6.default.chmodSync(resolvedPath, 384);
+  initialize(database);
+  const getStatement = database.prepare("SELECT * FROM agent_launches WHERE launch_id = ?");
+  function get(launchId) {
+    assertLaunchId(launchId);
+    return mapLaunch(getStatement.get(launchId));
+  }
+  function create(projection) {
+    const launchId = assertLaunchId(projection?.launchId);
+    const status = validateStatus(projection?.status || "starting");
+    if (status !== "starting") {
+      throw new Error("New launches must start in the starting state");
+    }
+    const timestamp = now();
+    const record = {
+      baseRef: optionalString(projection.baseRef, "baseRef", 512),
+      disposition: validateEnum(projection.disposition || "retained", "launch disposition", LAUNCH_DISPOSITIONS),
+      executionKind: validateEnum(projection.executionKind || "foreground", "execution kind", LAUNCH_EXECUTION_KINDS),
+      executionWorkspace: requiredString(projection.executionWorkspace, "executionWorkspace"),
+      launchId,
+      model: requiredString(projection.model, "model", 512),
+      nativeSessionId: optionalString(projection.nativeSessionId, "nativeSessionId", 1024),
+      originDirectory: requiredString(projection.originDirectory, "originDirectory"),
+      ownerPid: optionalPid(projection.ownerPid, "ownerPid"),
+      outputDestination: requiredString(projection.outputDestination, "outputDestination"),
+      parentLaunchId: projection.parentLaunchId == null ? null : assertLaunchId(projection.parentLaunchId),
+      projectRoot: requiredString(projection.projectRoot, "projectRoot"),
+      provider: requiredString(projection.provider, "provider", 64),
+      status,
+      workspaceMode: requiredString(projection.workspaceMode, "workspaceMode", 32),
+      worktreeBranch: optionalString(projection.worktreeBranch, "worktreeBranch", 512)
+    };
+    database.prepare(`
+      INSERT INTO agent_launches (
+        launch_id, parent_launch_id, provider, native_session_id,
+        origin_directory, project_root, execution_workspace, output_destination,
+        workspace_mode, worktree_branch, base_ref, model, status,
+        execution_kind, owner_pid, disposition, started_at, updated_at
+      ) VALUES (
+        @launchId, @parentLaunchId, @provider, @nativeSessionId,
+        @originDirectory, @projectRoot, @executionWorkspace, @outputDestination,
+        @workspaceMode, @worktreeBranch, @baseRef, @model, @status,
+        @executionKind, @ownerPid, @disposition, @startedAt, @updatedAt
+      )
+    `).run({ ...record, startedAt: timestamp, updatedAt: timestamp });
+    return get(launchId);
+  }
+  function transition(launchId, nextStatus, patch = {}) {
+    assertLaunchId(launchId);
+    validateStatus(nextStatus);
+    const current = get(launchId);
+    if (!current) throw new Error(`Launch not found: ${launchId}`);
+    if (!TRANSITIONS[current.status].has(nextStatus)) {
+      throw new Error(`Invalid launch transition: ${current.status} -> ${nextStatus}`);
+    }
+    const timestamp = now();
+    const pid = patch.pid == null ? current.pid : Number(patch.pid);
+    const exitCode = patch.exitCode == null ? current.exitCode : Number(patch.exitCode);
+    if (pid != null && (!Number.isSafeInteger(pid) || pid < 0)) {
+      throw new Error("pid must be a non-negative integer");
+    }
+    if (exitCode != null && !Number.isSafeInteger(exitCode)) {
+      throw new Error("exitCode must be an integer");
+    }
+    database.prepare(`
+      UPDATE agent_launches
+      SET status = @status,
+          pid = @pid,
+          owner_pid = @ownerPid,
+          exit_code = @exitCode,
+          native_session_id = COALESCE(@nativeSessionId, native_session_id),
+          last_error = @lastError,
+          finished_at = @finishedAt,
+          updated_at = @updatedAt
+      WHERE launch_id = @launchId
+    `).run({
+      exitCode,
+      finishedAt: TERMINAL_STATUSES.has(nextStatus) ? timestamp : null,
+      lastError: optionalString(patch.lastError, "lastError", 4096),
+      launchId,
+      nativeSessionId: optionalString(patch.nativeSessionId, "nativeSessionId", 1024),
+      ownerPid: TERMINAL_STATUSES.has(nextStatus) ? null : optionalPid(patch.ownerPid == null ? current.ownerPid : patch.ownerPid, "ownerPid"),
+      pid,
+      status: nextStatus,
+      updatedAt: timestamp
+    });
+    return get(launchId);
+  }
+  function setDisposition(launchId, disposition) {
+    assertLaunchId(launchId);
+    const next = validateEnum(disposition, "launch disposition", LAUNCH_DISPOSITIONS);
+    const current = get(launchId);
+    if (!current) throw new Error(`Launch not found: ${launchId}`);
+    if (current.disposition === next) return current;
+    if (current.disposition !== "retained") {
+      throw new Error(`Launch is already ${current.disposition}: ${launchId}`);
+    }
+    if (next === "retained") return current;
+    database.prepare(`
+      UPDATE agent_launches
+      SET disposition = ?, updated_at = ?
+      WHERE launch_id = ?
+    `).run(next, now(), launchId);
+    return get(launchId);
+  }
+  function setNativeSessionId(launchId, nativeSessionId) {
+    assertLaunchId(launchId);
+    const validNativeId = requiredString(nativeSessionId, "nativeSessionId", 1024);
+    const result = database.prepare(`
+      UPDATE agent_launches
+      SET native_session_id = ?, updated_at = ?
+      WHERE launch_id = ?
+    `).run(validNativeId, now(), launchId);
+    if (result.changes === 0) throw new Error(`Launch not found: ${launchId}`);
+    return get(launchId);
+  }
+  function list({ limit = 50, status = null } = {}) {
+    const numericLimit = Number(limit);
+    if (!Number.isSafeInteger(numericLimit) || numericLimit < 1 || numericLimit > 1e3) {
+      throw new Error("limit must be an integer between 1 and 1000");
+    }
+    if (status != null) validateStatus(status);
+    const rows = status == null ? database.prepare(`
+          SELECT * FROM agent_launches
+          ORDER BY started_at DESC, rowid DESC
+          LIMIT ?
+        `).all(numericLimit) : database.prepare(`
+          SELECT * FROM agent_launches
+          WHERE status = ?
+          ORDER BY started_at DESC, rowid DESC
+          LIMIT ?
+        `).all(status, numericLimit);
+    return rows.map(mapLaunch);
+  }
+  function getGroup(groupId) {
+    assertAgentGroupId(groupId);
+    const row = database.prepare("SELECT * FROM agent_groups WHERE group_id = ?").get(groupId);
+    if (!row) return null;
+    const taskRows = database.prepare(`
+      SELECT launch_id, provider, last_error
+      FROM agent_group_launches
+      WHERE group_id = ?
+      ORDER BY ordinal ASC
+    `).all(groupId);
+    const launches = taskRows.map((task) => {
+      const launch = get(task.launch_id);
+      if (launch) return launch;
+      return {
+        lastError: task.last_error,
+        launchId: task.launch_id,
+        provider: task.provider,
+        status: task.last_error ? "failed" : "starting"
+      };
+    });
+    const status = deriveGroupStatus(launches);
+    const finishedAt = ["completed", "partial", "failed", "stopped"].includes(status) ? launches.map((launch) => launch.finishedAt).filter(Boolean).sort().at(-1) || row.updated_at : null;
+    return {
+      finishedAt,
+      groupId: row.group_id,
+      launches,
+      originDirectory: row.origin_directory,
+      startedAt: row.started_at,
+      status,
+      updatedAt: row.updated_at,
+      workspace: row.workspace,
+      workspaceMode: row.workspace_mode
+    };
+  }
+  function createGroup(projection) {
+    const groupId = assertAgentGroupId(projection?.groupId);
+    const tasks = projection?.tasks;
+    if (!Array.isArray(tasks) || tasks.length < 2 || tasks.length > 10) {
+      throw new Error("Agent Host group requires between 2 and 10 tasks");
+    }
+    const validatedTasks = tasks.map((task, ordinal) => ({
+      launchId: assertLaunchId(task?.launchId),
+      ordinal,
+      provider: requiredString(task?.provider, `tasks[${ordinal}].provider`, 64)
+    }));
+    if (new Set(validatedTasks.map((task) => task.launchId)).size !== validatedTasks.length) {
+      throw new Error("Agent Host group launch IDs must be unique");
+    }
+    const timestamp = now();
+    const record = {
+      groupId,
+      originDirectory: requiredString(projection.originDirectory, "originDirectory"),
+      startedAt: timestamp,
+      updatedAt: timestamp,
+      workspace: requiredString(projection.workspace, "workspace"),
+      workspaceMode: validateEnum(
+        projection.workspaceMode || "auto",
+        "group workspace mode",
+        ["auto", "read-only", "worktree", "isolated-copy"]
+      )
+    };
+    database.transaction(() => {
+      database.prepare(`
+        INSERT INTO agent_groups (
+          group_id, origin_directory, workspace, workspace_mode, started_at, updated_at
+        ) VALUES (
+          @groupId, @originDirectory, @workspace, @workspaceMode, @startedAt, @updatedAt
+        )
+      `).run(record);
+      const insertTask = database.prepare(`
+        INSERT INTO agent_group_launches (group_id, ordinal, launch_id, provider)
+        VALUES (?, ?, ?, ?)
+      `);
+      for (const task of validatedTasks) {
+        insertTask.run(groupId, task.ordinal, task.launchId, task.provider);
+      }
+    })();
+    return getGroup(groupId);
+  }
+  function setGroupLaunchError(groupId, launchId, lastError) {
+    assertAgentGroupId(groupId);
+    assertLaunchId(launchId);
+    const result = database.prepare(`
+      UPDATE agent_group_launches
+      SET last_error = ?
+      WHERE group_id = ? AND launch_id = ?
+    `).run(requiredString(lastError, "lastError", 4096), groupId, launchId);
+    if (result.changes === 0) throw new Error(`Group launch not found: ${groupId}/${launchId}`);
+    database.prepare("UPDATE agent_groups SET updated_at = ? WHERE group_id = ?").run(now(), groupId);
+    return getGroup(groupId);
+  }
+  function listGroups({ limit = 50 } = {}) {
+    const numericLimit = Number(limit);
+    if (!Number.isSafeInteger(numericLimit) || numericLimit < 1 || numericLimit > 1e3) {
+      throw new Error("limit must be an integer between 1 and 1000");
+    }
+    return database.prepare(`
+      SELECT group_id FROM agent_groups
+      ORDER BY started_at DESC, rowid DESC
+      LIMIT ?
+    `).all(numericLimit).map((row) => getGroup(row.group_id));
+  }
+  return {
+    close() {
+      if (database.open) database.close();
+    },
+    create,
+    createGroup,
+    database,
+    get,
+    getGroup,
+    list,
+    listGroups,
+    setDisposition,
+    setGroupLaunchError,
+    setNativeSessionId,
+    transition
+  };
+}
+
+// src/agent-host/preflight.js
+var import_node_fs9 = __toESM(require("node:fs"), 1);
+var import_node_os5 = __toESM(require("node:os"), 1);
+var import_node_path8 = __toESM(require("node:path"), 1);
+var import_node_child_process4 = require("node:child_process");
+
+// src/agent-host/providers/common.js
+var import_node_fs7 = __toESM(require("node:fs"), 1);
+var import_node_os4 = __toESM(require("node:os"), 1);
+var import_node_path6 = __toESM(require("node:path"), 1);
 var MAX_PROMPT_BYTES = 10 * 1024 * 1024;
 var PERMISSION_ALIASES = Object.freeze({
   "accept-edits": "acceptEdits",
@@ -31516,7 +32090,7 @@ var WRITABLE_PERMISSION = Object.freeze({
   codex: "approve",
   gemini: "acceptEdits"
 });
-function requiredText(value, field, maxBytes = MAX_PROMPT_BYTES) {
+function requiredText2(value, field, maxBytes = MAX_PROMPT_BYTES) {
   if (typeof value !== "string" || value.trim() === "" || value.includes("\0")) {
     throw new Error(`${field} must be a non-empty string without NUL bytes`);
   }
@@ -31528,13 +32102,32 @@ function requiredText(value, field, maxBytes = MAX_PROMPT_BYTES) {
 function validateExtraArgs(value) {
   if (value == null) return [];
   if (!Array.isArray(value)) throw new Error("extraArgs must be an array of strings");
-  return value.map((arg, index) => requiredText(arg, `extraArgs[${index}]`, 64 * 1024));
+  return value.map((arg, index) => requiredText2(arg, `extraArgs[${index}]`, 64 * 1024));
 }
 function providerContext(options, provider) {
   const config = loadProviderConfig(provider);
-  const prompt = requiredText(options.prompt, "prompt");
-  const cwd = requiredText(options.cwd, "cwd", 4096);
-  const binaryPath = requiredText(options.binaryPath, "binaryPath", 4096);
+  const privateAutomationProfile = options.privateAutomationProfile || null;
+  if (privateAutomationProfile != null) {
+    if (privateAutomationProfile.id !== PRIVATE_AUTOMATION_PROFILE_ID) {
+      throw new Error("invalid private automation profile");
+    }
+    if (privateAutomationProfile.provider !== provider) {
+      throw new Error("private automation provider does not match process plan");
+    }
+    if (privateAutomationProfile.model !== options.model) {
+      throw new Error("private automation model does not match process plan");
+    }
+    if (options.nativeSessionId != null) {
+      throw new Error("private automation session resume is forbidden");
+    }
+  }
+  const prompt = requiredText2(
+    options.prompt,
+    "prompt",
+    privateAutomationProfile?.maxPromptBytes || MAX_PROMPT_BYTES
+  );
+  const cwd = requiredText2(options.cwd, "cwd", 4096);
+  const binaryPath = requiredText2(options.binaryPath, "binaryPath", 4096);
   const requestedModel = options.model || config.models.default;
   const modelDefinition = getModelDef(config, requestedModel);
   if (!modelDefinition) {
@@ -31550,10 +32143,11 @@ function providerContext(options, provider) {
     cwd,
     extraArgs: validateExtraArgs(options.extraArgs),
     model: resolveModel(config, requestedModel),
-    nativeSessionId: options.nativeSessionId == null ? null : requiredText(options.nativeSessionId, "nativeSessionId", 1024),
+    nativeSessionId: options.nativeSessionId == null ? null : requiredText2(options.nativeSessionId, "nativeSessionId", 1024),
     prompt,
+    privateAutomationProfile,
     provider,
-    runtimeDirectory: options.runtimeDirectory == null ? null : requiredText(options.runtimeDirectory, "runtimeDirectory", 4096),
+    runtimeDirectory: options.runtimeDirectory == null ? null : requiredText2(options.runtimeDirectory, "runtimeDirectory", 4096),
     workspaceMode
   };
 }
@@ -31574,24 +32168,47 @@ function permissionArgs(context, requestedMode) {
 function validateImages(images) {
   if (images == null) return [];
   if (!Array.isArray(images)) throw new Error("images must be an array of paths");
-  return images.map((image, index) => requiredText(image, `images[${index}]`, 4096));
+  return images.map((image, index) => requiredText2(image, `images[${index}]`, 4096));
 }
 function buildAgentExecutableEnvironment(binaryPath, overrides = {}, baseEnvironment = process.env) {
   const merged = { ...baseEnvironment, ...overrides };
   const entries = [
-    import_node_path5.default.dirname(binaryPath),
-    import_node_path5.default.dirname(process.execPath),
-    ...String(merged.PATH || "").split(import_node_path5.default.delimiter)
+    import_node_path6.default.dirname(binaryPath),
+    import_node_path6.default.dirname(process.execPath),
+    ...String(merged.PATH || "").split(import_node_path6.default.delimiter)
   ].filter(Boolean);
-  merged.PATH = [...new Set(entries)].join(import_node_path5.default.delimiter);
+  merged.PATH = [...new Set(entries)].join(import_node_path6.default.delimiter);
   return merged;
+}
+var PRIVATE_OPERATIONAL_ENVIRONMENT_KEYS = Object.freeze([
+  "HOME",
+  "LANG",
+  "LC_ALL",
+  "LOGNAME",
+  "PATH",
+  "SSL_CERT_DIR",
+  "SSL_CERT_FILE",
+  "TMPDIR",
+  "USER"
+]);
+function buildPrivateProviderEnvironment(config, binaryPath, options = {}) {
+  const baseEnvironment = options.baseEnvironment || process.env;
+  const operational = Object.fromEntries(
+    PRIVATE_OPERATIONAL_ENVIRONMENT_KEYS.filter((key) => typeof baseEnvironment[key] === "string" && baseEnvironment[key].length > 0).map((key) => [key, baseEnvironment[key]])
+  );
+  const providerEnvironment = buildProviderEnvironment(config, options);
+  return buildAgentExecutableEnvironment(
+    binaryPath,
+    { ...operational, ...providerEnvironment },
+    {}
+  );
 }
 function buildProviderEnvironment(config, options = {}) {
   const baseEnvironment = options.baseEnvironment || process.env;
-  const rudiHome = options.rudiHome || process.env.RUDI_HOME || import_node_path5.default.join(import_node_os4.default.homedir(), ".rudi");
+  const rudiHome = options.rudiHome || process.env.RUDI_HOME || import_node_path6.default.join(import_node_os4.default.homedir(), ".rudi");
   let storedSecrets = {};
   try {
-    const parsed = JSON.parse(import_node_fs6.default.readFileSync(import_node_path5.default.join(rudiHome, "secrets.json"), "utf8"));
+    const parsed = JSON.parse(import_node_fs7.default.readFileSync(import_node_path6.default.join(rudiHome, "secrets.json"), "utf8"));
     if (parsed && typeof parsed === "object" && !Array.isArray(parsed)) {
       storedSecrets = Object.fromEntries(
         Object.entries(parsed).filter(([, value]) => typeof value === "string" && value.length > 0)
@@ -31602,10 +32219,17 @@ function buildProviderEnvironment(config, options = {}) {
   return buildEnv2(config, { ...storedSecrets, ...baseEnvironment });
 }
 function finishPlan(context, args, permissionMode, providerEnvironment = null) {
-  const resolvedProviderEnvironment = providerEnvironment || buildProviderEnvironment(context.config);
+  const resolvedProviderEnvironment = providerEnvironment || (context.privateAutomationProfile ? buildPrivateProviderEnvironment(context.config, context.binaryPath) : buildProviderEnvironment(context.config));
+  const environment = context.privateAutomationProfile ? resolvedProviderEnvironment : buildAgentExecutableEnvironment(context.binaryPath, resolvedProviderEnvironment);
   return Object.freeze({
     args,
-    environment: buildAgentExecutableEnvironment(context.binaryPath, resolvedProviderEnvironment),
+    environment,
+    ...context.privateAutomationProfile ? {
+      maxFinalOutputBytes: context.privateAutomationProfile.maxFinalOutputBytes,
+      maxRawOutputBytes: context.privateAutomationProfile.maxRawOutputBytes,
+      privateAutomationProfile: context.privateAutomationProfile,
+      stdin: context.prompt
+    } : {},
     model: context.model,
     permissionMode,
     provider: context.provider,
@@ -31637,6 +32261,61 @@ function buildAntigravityPlan(options) {
 // src/agent-host/providers/claude.js
 function buildClaudePlan(options) {
   const context = providerContext(options, "claude");
+  if (context.privateAutomationProfile) {
+    if ((options.extraArgs || []).length > 0 || (options.images || []).length > 0) {
+      throw new Error("private automation forbids Claude passthrough arguments and images");
+    }
+    if (options.approvalMode != null) {
+      throw new Error("private automation forbids Claude approval overrides");
+    }
+    if (options.permissionMode != null && options.permissionMode !== "plan") {
+      throw new Error("private automation requires Claude plan permission mode");
+    }
+    const args2 = [
+      "--output-format",
+      "stream-json",
+      "--verbose",
+      "--print",
+      "--input-format",
+      "text",
+      "--model",
+      context.model,
+      "--no-session-persistence",
+      "--safe-mode",
+      "--no-chrome",
+      "--disable-slash-commands",
+      "--tools",
+      "",
+      "--strict-mcp-config",
+      "--mcp-config",
+      '{"mcpServers":{}}',
+      "--setting-sources",
+      "",
+      "--permission-mode",
+      "plan"
+    ];
+    const environment = buildPrivateProviderEnvironment(
+      context.config,
+      context.binaryPath
+    );
+    return finishPlan(context, args2, "plan", {
+      ...environment,
+      CLAUDE_CODE_AUTO_MODE_MODEL: context.model,
+      CLAUDE_CODE_BG_CLASSIFIER_MODEL: context.model,
+      CLAUDE_CODE_DISABLE_AUTO_MEMORY: "1",
+      CLAUDE_CODE_DISABLE_BACKGROUND_TASKS: "1",
+      CLAUDE_CODE_DISABLE_BUNDLED_SKILLS: "1",
+      CLAUDE_CODE_DISABLE_CLAUDE_API_SKILL: "1",
+      CLAUDE_CODE_DISABLE_CLAUDE_CODE_SKILL: "1",
+      CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC: "1",
+      CLAUDE_CODE_DISABLE_WORKFLOWS: "1",
+      CLAUDE_CODE_ENABLE_PROMPT_SUGGESTION: "0",
+      CLAUDE_CODE_ENABLE_TELEMETRY: "0",
+      CLAUDE_CODE_NO_MODEL_FALLBACK: "1",
+      CLAUDE_CODE_SIMPLE_SYSTEM_PROMPT: "1",
+      CLAUDE_CODE_SUBAGENT_MODEL: context.model
+    });
+  }
   const images = validateImages(options.images);
   if (images.length > 0) {
     throw new Error("Claude local image attachments are not exposed as a headless CLI flag; reference a readable workspace file in the prompt");
@@ -31669,6 +32348,45 @@ function approvalPolicy(value) {
 }
 function buildCodexPlan(options) {
   const context = providerContext(options, "codex");
+  if (context.privateAutomationProfile) {
+    if ((options.extraArgs || []).length > 0 || (options.images || []).length > 0) {
+      throw new Error("private automation forbids Codex passthrough arguments and images");
+    }
+    if (options.approvalMode != null && options.approvalMode !== "never") {
+      throw new Error("private automation requires Codex approval mode never");
+    }
+    if (options.permissionMode != null && !["readonly", "read-only"].includes(options.permissionMode)) {
+      throw new Error("private automation requires Codex read-only sandbox");
+    }
+    const disabledFeatures = getPrivateCodexDisabledFeatures();
+    const args2 = ["--ask-for-approval", "never"];
+    for (const feature of disabledFeatures) args2.push("--disable", feature);
+    args2.push(
+      "-c",
+      "mcp_servers={}",
+      "-c",
+      'web_search="disabled"',
+      "exec",
+      "-",
+      "--json",
+      "--skip-git-repo-check",
+      "--color",
+      "never",
+      "-C",
+      context.cwd,
+      "-m",
+      context.model,
+      "--output-schema",
+      context.privateAutomationProfile.outputSchema.path,
+      "--ephemeral",
+      "--strict-config",
+      "--ignore-user-config",
+      "--ignore-rules",
+      "-s",
+      "read-only"
+    );
+    return finishPlan(context, args2, "readonly");
+  }
   const images = validateImages(options.images);
   const permission = permissionArgs(context, options.permissionMode);
   const approval = approvalPolicy(options.approvalMode);
@@ -31698,8 +32416,8 @@ function buildCodexPlan(options) {
 }
 
 // src/agent-host/providers/gemini.js
-var import_node_fs7 = __toESM(require("node:fs"), 1);
-var import_node_path6 = __toESM(require("node:path"), 1);
+var import_node_fs8 = __toESM(require("node:fs"), 1);
+var import_node_path7 = __toESM(require("node:path"), 1);
 function defaultSystemSettingsPath(platform = process.platform) {
   if (platform === "darwin") return "/Library/Application Support/GeminiCli/settings.json";
   if (platform === "win32") return "C:\\ProgramData\\gemini-cli\\settings.json";
@@ -31711,9 +32429,9 @@ function buildGeminiProviderEnvironment(config, options = {}) {
   if (!environment.GEMINI_API_KEY || !options.runtimeDirectory) return environment;
   if (baseEnvironment.GEMINI_CLI_SYSTEM_SETTINGS_PATH) return environment;
   const systemSettingsPath = options.systemSettingsPath || defaultSystemSettingsPath(options.platform);
-  if (import_node_fs7.default.existsSync(systemSettingsPath)) return environment;
-  const settingsPath = import_node_path6.default.join(options.runtimeDirectory, "gemini-system-settings.json");
-  import_node_fs7.default.writeFileSync(settingsPath, JSON.stringify({
+  if (import_node_fs8.default.existsSync(systemSettingsPath)) return environment;
+  const settingsPath = import_node_path7.default.join(options.runtimeDirectory, "gemini-system-settings.json");
+  import_node_fs8.default.writeFileSync(settingsPath, JSON.stringify({
     security: { auth: { selectedType: "gemini-api-key" } }
   }, null, 2), { encoding: "utf8", mode: 384 });
   return {
@@ -31795,15 +32513,15 @@ function runCheck(binaryPath, args, spawnSyncImpl, timeout = 5e3) {
   };
 }
 function skillsRoot(provider) {
-  if (provider === "claude") return import_node_path7.default.join(process.env.CLAUDE_HOME || import_node_path7.default.join(import_node_os5.default.homedir(), ".claude"), "skills");
-  if (provider === "codex") return import_node_path7.default.join(process.env.CODEX_HOME || import_node_path7.default.join(import_node_os5.default.homedir(), ".codex"), "skills");
-  if (provider === "gemini") return import_node_path7.default.join(process.env.GEMINI_HOME || import_node_path7.default.join(import_node_os5.default.homedir(), ".gemini"), "skills");
-  return import_node_path7.default.join(process.env.ANTIGRAVITY_HOME || import_node_path7.default.join(import_node_os5.default.homedir(), ".gemini", "antigravity-cli"), "skills");
+  if (provider === "claude") return import_node_path8.default.join(process.env.CLAUDE_HOME || import_node_path8.default.join(import_node_os5.default.homedir(), ".claude"), "skills");
+  if (provider === "codex") return import_node_path8.default.join(process.env.CODEX_HOME || import_node_path8.default.join(import_node_os5.default.homedir(), ".codex"), "skills");
+  if (provider === "gemini") return import_node_path8.default.join(process.env.GEMINI_HOME || import_node_path8.default.join(import_node_os5.default.homedir(), ".gemini"), "skills");
+  return import_node_path8.default.join(process.env.ANTIGRAVITY_HOME || import_node_path8.default.join(import_node_os5.default.homedir(), ".gemini", "antigravity-cli"), "skills");
 }
 function hasSyncedSkills(provider) {
   const root = skillsRoot(provider);
   try {
-    return import_node_fs8.default.readdirSync(root, { withFileTypes: true }).some((entry) => entry.isDirectory());
+    return import_node_fs9.default.readdirSync(root, { withFileTypes: true }).some((entry) => entry.isDirectory());
   } catch {
     return false;
   }
@@ -31812,10 +32530,10 @@ function hasRudiRouter(provider) {
   const agentId = MCP_AGENT_IDS[provider] || provider;
   const config = AGENT_CONFIGS.find((item) => item.id === agentId);
   if (!config) return false;
-  return readAgentMcpServers(config).some((server) => server.name === "rudi" || import_node_path7.default.basename(String(server.command)) === "rudi-router");
+  return readAgentMcpServers(config).some((server) => server.name === "rudi" || import_node_path8.default.basename(String(server.command)) === "rudi-router");
 }
 async function inspectAgentHost(provider, dependencies = {}) {
-  const { spawnSyncImpl = import_node_child_process3.spawnSync } = dependencies;
+  const { spawnSyncImpl = import_node_child_process4.spawnSync } = dependencies;
   const canonicalProvider = resolveAgentProviderId(provider);
   const config = getAgentProviderConfig(canonicalProvider);
   const binaryPath = dependencies.binaryPath || resolveAgentProviderBinary(canonicalProvider);
@@ -31858,35 +32576,35 @@ async function assertAgentHostReady({ binaryPath, provider }, dependencies = {})
 }
 
 // src/agent-host/workspace.js
-var import_node_fs10 = __toESM(require("node:fs"), 1);
-var import_node_path9 = __toESM(require("node:path"), 1);
-var import_node_child_process4 = require("node:child_process");
+var import_node_fs11 = __toESM(require("node:fs"), 1);
+var import_node_path10 = __toESM(require("node:path"), 1);
+var import_node_child_process5 = require("node:child_process");
 
 // src/agent-host/workspace-manifest.js
 var import_node_crypto2 = __toESM(require("node:crypto"), 1);
-var import_node_fs9 = __toESM(require("node:fs"), 1);
-var import_node_path8 = __toESM(require("node:path"), 1);
+var import_node_fs10 = __toESM(require("node:fs"), 1);
+var import_node_path9 = __toESM(require("node:path"), 1);
 var WORKSPACE_BASELINE_FILE = "workspace-base.json";
 function shouldSkip(relativePath) {
-  const first = relativePath.split(import_node_path8.default.sep)[0];
+  const first = relativePath.split(import_node_path9.default.sep)[0];
   return first === ".git" || first === ".rudi";
 }
 function portablePath(relativePath) {
-  return relativePath.split(import_node_path8.default.sep).join("/");
+  return relativePath.split(import_node_path9.default.sep).join("/");
 }
 function hashFile(file) {
-  return import_node_crypto2.default.createHash("sha256").update(import_node_fs9.default.readFileSync(file)).digest("hex");
+  return import_node_crypto2.default.createHash("sha256").update(import_node_fs10.default.readFileSync(file)).digest("hex");
 }
 function createWorkspaceManifest(rootDirectory) {
-  const root = import_node_fs9.default.realpathSync(import_node_path8.default.resolve(rootDirectory));
+  const root = import_node_fs10.default.realpathSync(import_node_path9.default.resolve(rootDirectory));
   const entries = {};
   function visit(directory, prefix = "") {
-    const children = import_node_fs9.default.readdirSync(directory, { withFileTypes: true }).sort((left, right) => left.name.localeCompare(right.name));
+    const children = import_node_fs10.default.readdirSync(directory, { withFileTypes: true }).sort((left, right) => left.name.localeCompare(right.name));
     for (const child of children) {
-      const relative = prefix ? import_node_path8.default.join(prefix, child.name) : child.name;
+      const relative = prefix ? import_node_path9.default.join(prefix, child.name) : child.name;
       if (shouldSkip(relative)) continue;
-      const absolute = import_node_path8.default.join(directory, child.name);
-      const stat = import_node_fs9.default.lstatSync(absolute);
+      const absolute = import_node_path9.default.join(directory, child.name);
+      const stat = import_node_fs10.default.lstatSync(absolute);
       const key = portablePath(relative);
       if (stat.isDirectory()) {
         entries[key] = { mode: stat.mode & 511, type: "directory" };
@@ -31901,7 +32619,7 @@ function createWorkspaceManifest(rootDirectory) {
       } else if (stat.isSymbolicLink()) {
         entries[key] = {
           mode: stat.mode & 511,
-          target: import_node_fs9.default.readlinkSync(absolute),
+          target: import_node_fs10.default.readlinkSync(absolute),
           type: "symlink"
         };
       } else {
@@ -31913,24 +32631,24 @@ function createWorkspaceManifest(rootDirectory) {
   return { entries, schemaVersion: 1 };
 }
 function writeWorkspaceBaseline({ launchDirectory, workspace }) {
-  const destination = import_node_path8.default.join(import_node_path8.default.resolve(launchDirectory), WORKSPACE_BASELINE_FILE);
+  const destination = import_node_path9.default.join(import_node_path9.default.resolve(launchDirectory), WORKSPACE_BASELINE_FILE);
   const manifest = createWorkspaceManifest(workspace);
-  const handle = import_node_fs9.default.openSync(destination, "wx", 384);
+  const handle = import_node_fs10.default.openSync(destination, "wx", 384);
   try {
-    import_node_fs9.default.writeFileSync(handle, `${JSON.stringify(manifest)}
+    import_node_fs10.default.writeFileSync(handle, `${JSON.stringify(manifest)}
 `, "utf8");
   } finally {
-    import_node_fs9.default.closeSync(handle);
+    import_node_fs10.default.closeSync(handle);
   }
   return destination;
 }
 function readWorkspaceBaseline(launchDirectory) {
-  const file = import_node_path8.default.join(import_node_path8.default.resolve(launchDirectory), WORKSPACE_BASELINE_FILE);
+  const file = import_node_path9.default.join(import_node_path9.default.resolve(launchDirectory), WORKSPACE_BASELINE_FILE);
   let parsed;
   try {
-    const stat = import_node_fs9.default.lstatSync(file);
+    const stat = import_node_fs10.default.lstatSync(file);
     if (!stat.isFile() || stat.isSymbolicLink()) throw new Error("baseline is not a regular file");
-    parsed = JSON.parse(import_node_fs9.default.readFileSync(file, "utf8"));
+    parsed = JSON.parse(import_node_fs10.default.readFileSync(file, "utf8"));
   } catch (error) {
     throw new Error(`Isolated workspace baseline is unavailable: ${error.message}`);
   }
@@ -31974,21 +32692,21 @@ var WORKSPACE_MODES = Object.freeze({
 });
 var VALID_MODES = new Set(Object.values(WORKSPACE_MODES));
 function existingDirectory3(candidate, label) {
-  const resolved = import_node_path9.default.resolve(candidate);
+  const resolved = import_node_path10.default.resolve(candidate);
   let stat;
   try {
-    stat = import_node_fs10.default.statSync(resolved);
+    stat = import_node_fs11.default.statSync(resolved);
   } catch {
     throw new Error(`${label} does not exist: ${resolved}`);
   }
   if (!stat.isDirectory()) {
     throw new Error(`${label} is not a directory: ${resolved}`);
   }
-  return import_node_fs10.default.realpathSync(resolved);
+  return import_node_fs11.default.realpathSync(resolved);
 }
 function isInside(candidate, parent) {
-  const relative = import_node_path9.default.relative(parent, candidate);
-  return relative === "" || !relative.startsWith(`..${import_node_path9.default.sep}`) && relative !== ".." && !import_node_path9.default.isAbsolute(relative);
+  const relative = import_node_path10.default.relative(parent, candidate);
+  return relative === "" || !relative.startsWith(`..${import_node_path10.default.sep}`) && relative !== ".." && !import_node_path10.default.isAbsolute(relative);
 }
 function findGitProjectRoot(workspace, execFileSyncImpl) {
   try {
@@ -32031,7 +32749,7 @@ function createGitWorktree({
   } catch (error) {
     if (error?.message?.startsWith("Worktree branch already exists:")) throw error;
   }
-  import_node_fs10.default.mkdirSync(import_node_path9.default.dirname(destination), { recursive: true, mode: 448 });
+  import_node_fs11.default.mkdirSync(import_node_path10.default.dirname(destination), { recursive: true, mode: 448 });
   try {
     execFileSyncImpl("git", ["worktree", "add", "-b", branch, destination, baseRef], {
       cwd: projectRoot,
@@ -32045,7 +32763,7 @@ function createGitWorktree({
       });
     } catch {
     }
-    import_node_fs10.default.rmSync(destination, { recursive: true, force: true });
+    import_node_fs11.default.rmSync(destination, { recursive: true, force: true });
     try {
       execFileSyncImpl("git", ["branch", "-D", "--", branch], {
         cwd: projectRoot,
@@ -32062,15 +32780,15 @@ function copyIsolatedWorkspace({ destination, projectRoot }) {
     throw new Error("Isolated workspace destination cannot be inside the source project");
   }
   try {
-    import_node_fs10.default.cpSync(projectRoot, destination, {
+    import_node_fs11.default.cpSync(projectRoot, destination, {
       errorOnExist: true,
       filter(candidate) {
-        const relative = import_node_path9.default.relative(projectRoot, candidate);
-        const firstPart = relative.split(import_node_path9.default.sep)[0];
+        const relative = import_node_path10.default.relative(projectRoot, candidate);
+        const firstPart = relative.split(import_node_path10.default.sep)[0];
         if (firstPart === ".git" || firstPart === ".rudi") return false;
-        const stat = import_node_fs10.default.lstatSync(candidate);
+        const stat = import_node_fs11.default.lstatSync(candidate);
         if (stat.isSymbolicLink()) {
-          const target = import_node_fs10.default.realpathSync(candidate);
+          const target = import_node_fs11.default.realpathSync(candidate);
           if (!isInside(target, projectRoot)) {
             throw new Error(`Workspace contains a symlink outside the project: ${candidate}`);
           }
@@ -32081,7 +32799,7 @@ function copyIsolatedWorkspace({ destination, projectRoot }) {
       recursive: true
     });
   } catch (error) {
-    import_node_fs10.default.rmSync(destination, { recursive: true, force: true });
+    import_node_fs11.default.rmSync(destination, { recursive: true, force: true });
     throw new Error(`Unable to create isolated workspace copy: ${error.message}`);
   }
 }
@@ -32092,23 +32810,27 @@ function resolveAgentWorkspace(options, dependencies = {}) {
     mode = WORKSPACE_MODES.AUTO,
     originDirectory = process.cwd(),
     outputDirectory = null,
+    privateAutomation = false,
     workspace = null
   } = options || {};
-  const { execFileSyncImpl = import_node_child_process4.execFileSync } = dependencies;
+  const { execFileSyncImpl = import_node_child_process5.execFileSync } = dependencies;
   assertLaunchId(launchId);
   if (!VALID_MODES.has(mode)) {
     throw new Error(`Unknown workspace mode: ${mode}. Available: ${[...VALID_MODES].join(", ")}`);
+  }
+  if (privateAutomation === true && mode !== WORKSPACE_MODES.READ_ONLY) {
+    throw new Error("private automation requires read-only workspace mode");
   }
   if (typeof artifactsRoot !== "string" || artifactsRoot.trim() === "") {
     throw new Error("artifactsRoot is required");
   }
   const resolvedOrigin = existingDirectory3(originDirectory, "Origin directory");
-  const requestedWorkspace = workspace == null ? resolvedOrigin : import_node_path9.default.resolve(resolvedOrigin, workspace);
+  const requestedWorkspace = workspace == null ? resolvedOrigin : import_node_path10.default.resolve(resolvedOrigin, workspace);
   const validWorkspace = existingDirectory3(requestedWorkspace, "Workspace");
   const gitProjectRoot = findGitProjectRoot(validWorkspace, execFileSyncImpl);
   const projectRoot = gitProjectRoot || validWorkspace;
   const isGitRepository = Boolean(gitProjectRoot);
-  const launchDirectory = outputDirectory == null ? import_node_path9.default.resolve(artifactsRoot, launchId) : import_node_path9.default.resolve(resolvedOrigin, outputDirectory);
+  const launchDirectory = outputDirectory == null ? import_node_path10.default.resolve(artifactsRoot, launchId) : import_node_path10.default.resolve(resolvedOrigin, outputDirectory);
   let resolvedMode = mode;
   if (resolvedMode === WORKSPACE_MODES.AUTO) {
     resolvedMode = isGitRepository ? WORKSPACE_MODES.WORKTREE : WORKSPACE_MODES.ISOLATED_COPY;
@@ -32117,17 +32839,21 @@ function resolveAgentWorkspace(options, dependencies = {}) {
     throw new Error("Workspace mode worktree requires a Git repository");
   }
   assertOutputOutsideProject(launchDirectory, projectRoot);
-  if (import_node_fs10.default.existsSync(launchDirectory)) {
+  if (import_node_fs11.default.existsSync(launchDirectory)) {
     throw new Error(`Output destination already exists: ${launchDirectory}`);
   }
-  import_node_fs10.default.mkdirSync(launchDirectory, { recursive: true, mode: 448 });
+  import_node_fs11.default.mkdirSync(launchDirectory, { recursive: true, mode: 448 });
   createLaunchOwnershipMarker({ launchDirectory, launchId });
   let executionWorkspace = projectRoot;
   let worktreeBranch = null;
   let baseRef = null;
   try {
-    if (resolvedMode === WORKSPACE_MODES.WORKTREE) {
-      executionWorkspace = import_node_path9.default.join(launchDirectory, "workspace");
+    if (privateAutomation === true) {
+      executionWorkspace = import_node_path10.default.join(launchDirectory, "private-workspace");
+      import_node_fs11.default.mkdirSync(executionWorkspace, { mode: 320 });
+      import_node_fs11.default.chmodSync(executionWorkspace, 320);
+    } else if (resolvedMode === WORKSPACE_MODES.WORKTREE) {
+      executionWorkspace = import_node_path10.default.join(launchDirectory, "workspace");
       const created = createGitWorktree({
         destination: executionWorkspace,
         execFileSyncImpl,
@@ -32137,12 +32863,12 @@ function resolveAgentWorkspace(options, dependencies = {}) {
       worktreeBranch = created.branch;
       baseRef = created.baseRef;
     } else if (resolvedMode === WORKSPACE_MODES.ISOLATED_COPY) {
-      executionWorkspace = import_node_path9.default.join(launchDirectory, "workspace");
+      executionWorkspace = import_node_path10.default.join(launchDirectory, "workspace");
       copyIsolatedWorkspace({ destination: executionWorkspace, projectRoot });
       writeWorkspaceBaseline({ launchDirectory, workspace: executionWorkspace });
     }
   } catch (error) {
-    import_node_fs10.default.rmSync(launchDirectory, { recursive: true, force: true });
+    import_node_fs11.default.rmSync(launchDirectory, { recursive: true, force: true });
     throw error;
   }
   return Object.freeze({
@@ -32153,14 +32879,15 @@ function resolveAgentWorkspace(options, dependencies = {}) {
     originDirectory: resolvedOrigin,
     outputDestination: launchDirectory,
     projectRoot,
+    privateAutomation: privateAutomation === true,
     worktreeBranch
   });
 }
 function cleanupUnstartedWorkspace(workspace, dependencies = {}) {
   if (!workspace || typeof workspace !== "object") return;
-  const { execFileSyncImpl = import_node_child_process4.execFileSync } = dependencies;
-  const outputDestination = import_node_path9.default.resolve(workspace.outputDestination);
-  const executionWorkspace = import_node_path9.default.resolve(workspace.executionWorkspace);
+  const { execFileSyncImpl = import_node_child_process5.execFileSync } = dependencies;
+  const outputDestination = import_node_path10.default.resolve(workspace.outputDestination);
+  const executionWorkspace = import_node_path10.default.resolve(workspace.executionWorkspace);
   if (!isInside(executionWorkspace, outputDestination) && workspace.mode !== WORKSPACE_MODES.READ_ONLY) {
     throw new Error("Refusing to clean an execution workspace outside its launch output destination");
   }
@@ -32183,7 +32910,7 @@ function cleanupUnstartedWorkspace(workspace, dependencies = {}) {
     } catch {
     }
   }
-  import_node_fs10.default.rmSync(outputDestination, { recursive: true, force: true });
+  import_node_fs11.default.rmSync(outputDestination, { recursive: true, force: true });
 }
 
 // src/agent-host/launch.js
@@ -32198,6 +32925,7 @@ async function launchAgent(options, dependencies = {}) {
     ownerPid = null,
     onSpawn = null,
     preflightImpl = assertAgentHostReady,
+    privatePreflightImpl = assertPrivateAutomationHostCapabilities,
     resolveBinaryImpl = resolveAgentProviderBinary,
     spawnImpl,
     stderr = process.stderr,
@@ -32206,18 +32934,26 @@ async function launchAgent(options, dependencies = {}) {
     workspaceResolver = resolveAgentWorkspace
   } = dependencies;
   const launchId = idFactory();
+  const privateAutomationProfile = options?.privateAutomationProfile || null;
+  if (privateAutomationProfile && options?.executionKind && options.executionKind !== "foreground") {
+    throw new Error("private automation supports foreground execution only");
+  }
   const provider = resolveAgentProviderId(options?.provider);
   const binaryPath = resolveBinaryImpl(provider);
   if (!binaryPath) {
     throw new Error(`${provider} host is not installed. Run: rudi install agent:${provider}`);
   }
   await preflightImpl({ binaryPath, provider });
+  if (privateAutomationProfile) {
+    await privatePreflightImpl({ binaryPath, profile: privateAutomationProfile });
+  }
   const workspace = workspaceResolver({
     artifactsRoot,
     launchId,
     mode: options.workspaceMode || "auto",
     originDirectory: options.originDirectory || process.cwd(),
     outputDirectory: options.outputDirectory || null,
+    privateAutomation: privateAutomationProfile != null,
     workspace: options.workspace || null
   });
   const resolvedEventSink = eventSink || ((event) => appendLaunchEvent(
@@ -32234,6 +32970,7 @@ async function launchAgent(options, dependencies = {}) {
       images: options.images,
       model: options.model,
       permissionMode: options.permissionMode,
+      privateAutomationProfile,
       prompt: options.prompt,
       provider,
       runtimeDirectory: workspace.outputDestination,
@@ -32288,11 +33025,11 @@ async function launchAgent(options, dependencies = {}) {
 }
 
 // src/agent-host/resume.js
-var import_node_fs11 = __toESM(require("node:fs"), 1);
-var import_node_path10 = __toESM(require("node:path"), 1);
+var import_node_fs12 = __toESM(require("node:fs"), 1);
+var import_node_path11 = __toESM(require("node:path"), 1);
 function assertWorkspaceStillExists(workspace) {
   try {
-    if (import_node_fs11.default.statSync(workspace).isDirectory()) return;
+    if (import_node_fs12.default.statSync(workspace).isDirectory()) return;
   } catch {
   }
   throw new Error(`Execution workspace no longer exists: ${workspace}`);
@@ -32336,11 +33073,11 @@ async function resumeAgentWithStore(options, dependencies) {
     throw new Error(`${previous.provider} host is not installed. Run: rudi install agent:${previous.provider}`);
   }
   await preflightImpl({ binaryPath, provider: previous.provider });
-  const outputDestination = dependencies.artifactsRoot ? import_node_path10.default.resolve(artifactsRoot, launchId) : getAgentHostPaths({ launchId, rudiHome: dependencies.rudiHome }).launchDirectory;
-  if (import_node_fs11.default.existsSync(outputDestination)) {
+  const outputDestination = dependencies.artifactsRoot ? import_node_path11.default.resolve(artifactsRoot, launchId) : getAgentHostPaths({ launchId, rudiHome: dependencies.rudiHome }).launchDirectory;
+  if (import_node_fs12.default.existsSync(outputDestination)) {
     throw new Error(`Output destination already exists: ${outputDestination}`);
   }
-  import_node_fs11.default.mkdirSync(outputDestination, { recursive: true, mode: 448 });
+  import_node_fs12.default.mkdirSync(outputDestination, { recursive: true, mode: 448 });
   createLaunchOwnershipMarker({ launchDirectory: outputDestination, launchId });
   const resolvedEventSink = eventSink || ((event) => appendLaunchEvent(
     getLaunchArtifactFiles(outputDestination).events,
@@ -32363,7 +33100,7 @@ async function resumeAgentWithStore(options, dependencies) {
       workspaceMode: previous.workspaceMode
     });
   } catch (error) {
-    import_node_fs11.default.rmSync(outputDestination, { recursive: true, force: true });
+    import_node_fs12.default.rmSync(outputDestination, { recursive: true, force: true });
     throw error;
   }
   store.create({
@@ -32421,13 +33158,13 @@ function discardSink() {
   } };
 }
 function appendPrivateText(file, value) {
-  const handle = import_node_fs12.default.openSync(file, "a", 384);
+  const handle = import_node_fs13.default.openSync(file, "a", 384);
   try {
-    import_node_fs12.default.writeFileSync(handle, String(value), "utf8");
+    import_node_fs13.default.writeFileSync(handle, String(value), "utf8");
   } finally {
-    import_node_fs12.default.closeSync(handle);
+    import_node_fs13.default.closeSync(handle);
   }
-  import_node_fs12.default.chmodSync(file, 384);
+  import_node_fs13.default.chmodSync(file, 384);
 }
 async function dispatchDetachedAgent({ launchId, operation, options }, dependencies = {}) {
   assertLaunchId(launchId);
@@ -32438,7 +33175,7 @@ async function dispatchDetachedAgent({ launchId, operation, options }, dependenc
   const {
     entrypoint = process.argv[1],
     nodePath = process.execPath,
-    spawnImpl = import_node_child_process5.spawn,
+    spawnImpl = import_node_child_process6.spawn,
     timeoutMs = DEFAULT_START_TIMEOUT_MS
   } = dependencies;
   if (typeof entrypoint !== "string" || entrypoint.trim() === "") {
@@ -32587,11 +33324,11 @@ async function readDetachedWorkerRequest(stdin = process.stdin) {
 var import_node_crypto4 = __toESM(require("node:crypto"), 1);
 
 // src/agent-host/process-lifecycle.js
-var import_node_child_process6 = require("node:child_process");
+var import_node_child_process7 = require("node:child_process");
 var TERMINAL_STATUSES2 = /* @__PURE__ */ new Set(["completed", "failed", "stopped"]);
 function verifyDetachedWorkerProcess(launch, dependencies = {}) {
   if (!launch?.ownerPid || launch.executionKind !== "detached") return false;
-  const execFileSyncImpl = dependencies.execFileSyncImpl || import_node_child_process6.execFileSync;
+  const execFileSyncImpl = dependencies.execFileSyncImpl || import_node_child_process7.execFileSync;
   try {
     const command = String(execFileSyncImpl("ps", [
       "-ww",
@@ -32656,9 +33393,9 @@ async function stopAgentLaunch(launchId, dependencies = {}) {
 }
 
 // src/agent-host/workspace-lifecycle.js
-var import_node_fs13 = __toESM(require("node:fs"), 1);
-var import_node_path11 = __toESM(require("node:path"), 1);
-var import_node_child_process7 = require("node:child_process");
+var import_node_fs14 = __toESM(require("node:fs"), 1);
+var import_node_path12 = __toESM(require("node:path"), 1);
+var import_node_child_process8 = require("node:child_process");
 var TERMINAL_STATUSES3 = /* @__PURE__ */ new Set(["completed", "failed", "stopped"]);
 var MAX_DIFF_BYTES = 20 * 1024 * 1024;
 function git(execFileSyncImpl, cwd, args) {
@@ -32671,7 +33408,7 @@ function git(execFileSyncImpl, cwd, args) {
 }
 function noIndexDiff(execFileSyncImpl, left, right) {
   try {
-    return git(execFileSyncImpl, import_node_path11.default.dirname(left), [
+    return git(execFileSyncImpl, import_node_path12.default.dirname(left), [
       "diff",
       "--no-index",
       "--binary",
@@ -32686,16 +33423,16 @@ function noIndexDiff(execFileSyncImpl, left, right) {
   }
 }
 function isInside2(candidate, parent) {
-  const relative = import_node_path11.default.relative(parent, candidate);
-  return relative === "" || !relative.startsWith(`..${import_node_path11.default.sep}`) && relative !== ".." && !import_node_path11.default.isAbsolute(relative);
+  const relative = import_node_path12.default.relative(parent, candidate);
+  return relative === "" || !relative.startsWith(`..${import_node_path12.default.sep}`) && relative !== ".." && !import_node_path12.default.isAbsolute(relative);
 }
 function safeRelative(root, relativePath) {
   if (typeof relativePath !== "string" || relativePath === "" || relativePath.includes("\0")) {
     throw new Error("Launch change contains an invalid path");
   }
-  const platformPath = relativePath.split("/").join(import_node_path11.default.sep);
-  const destination = import_node_path11.default.resolve(root, platformPath);
-  if (!isInside2(destination, import_node_path11.default.resolve(root)) || destination === import_node_path11.default.resolve(root)) {
+  const platformPath = relativePath.split("/").join(import_node_path12.default.sep);
+  const destination = import_node_path12.default.resolve(root, platformPath);
+  if (!isInside2(destination, import_node_path12.default.resolve(root)) || destination === import_node_path12.default.resolve(root)) {
     throw new Error(`Launch change escapes the workspace: ${relativePath}`);
   }
   return destination;
@@ -32720,7 +33457,7 @@ function parseNullSeparated(value) {
   return String(value || "").split("\0").filter(Boolean).sort();
 }
 function getGitChangeSet(launch, execFileSyncImpl) {
-  if (!import_node_fs13.default.existsSync(launch.executionWorkspace)) {
+  if (!import_node_fs14.default.existsSync(launch.executionWorkspace)) {
     throw new Error(`Execution workspace no longer exists: ${launch.executionWorkspace}`);
   }
   const trackedPatch = git(execFileSyncImpl, launch.executionWorkspace, [
@@ -32756,19 +33493,19 @@ function getGitChangeSet(launch, execFileSyncImpl) {
   };
 }
 function assertSafeSymlinks(workspace, relativePaths) {
-  const root = import_node_fs13.default.realpathSync(workspace);
+  const root = import_node_fs14.default.realpathSync(workspace);
   for (const relativePath of relativePaths) {
     const candidate = safeRelative(root, relativePath);
     let stat;
     try {
-      stat = import_node_fs13.default.lstatSync(candidate);
+      stat = import_node_fs14.default.lstatSync(candidate);
     } catch {
       continue;
     }
     if (!stat.isSymbolicLink()) continue;
     let target;
     try {
-      target = import_node_fs13.default.realpathSync(candidate);
+      target = import_node_fs14.default.realpathSync(candidate);
     } catch {
       throw new Error(`Launch change contains a broken symlink: ${relativePath}`);
     }
@@ -32782,7 +33519,7 @@ function cleanupGitWorktree(launch, execFileSyncImpl) {
   if (launch.worktreeBranch !== expectedBranch) {
     throw new Error(`Refusing to clean unexpected worktree branch: ${launch.worktreeBranch || "none"}`);
   }
-  if (import_node_fs13.default.existsSync(launch.executionWorkspace)) {
+  if (import_node_fs14.default.existsSync(launch.executionWorkspace)) {
     git(execFileSyncImpl, launch.projectRoot, [
       "worktree",
       "remove",
@@ -32802,33 +33539,33 @@ function copyWorkspaceEntry(sourceRoot, destinationRoot, relativePath, entry) {
   const source = safeRelative(sourceRoot, relativePath);
   const destination = safeRelative(destinationRoot, relativePath);
   if (entry.type === "directory") {
-    import_node_fs13.default.mkdirSync(destination, { recursive: true, mode: entry.mode });
-    import_node_fs13.default.chmodSync(destination, entry.mode);
+    import_node_fs14.default.mkdirSync(destination, { recursive: true, mode: entry.mode });
+    import_node_fs14.default.chmodSync(destination, entry.mode);
     return;
   }
-  import_node_fs13.default.mkdirSync(import_node_path11.default.dirname(destination), { recursive: true });
-  const temporary = import_node_path11.default.join(
-    import_node_path11.default.dirname(destination),
-    `.${import_node_path11.default.basename(destination)}.rudi-promote-${process.pid}`
+  import_node_fs14.default.mkdirSync(import_node_path12.default.dirname(destination), { recursive: true });
+  const temporary = import_node_path12.default.join(
+    import_node_path12.default.dirname(destination),
+    `.${import_node_path12.default.basename(destination)}.rudi-promote-${process.pid}`
   );
-  import_node_fs13.default.rmSync(temporary, { recursive: true, force: true });
+  import_node_fs14.default.rmSync(temporary, { recursive: true, force: true });
   if (entry.type === "file") {
-    import_node_fs13.default.copyFileSync(source, temporary, import_node_fs13.default.constants.COPYFILE_EXCL);
-    import_node_fs13.default.chmodSync(temporary, entry.mode);
+    import_node_fs14.default.copyFileSync(source, temporary, import_node_fs14.default.constants.COPYFILE_EXCL);
+    import_node_fs14.default.chmodSync(temporary, entry.mode);
   } else if (entry.type === "symlink") {
-    import_node_fs13.default.symlinkSync(entry.target, temporary);
+    import_node_fs14.default.symlinkSync(entry.target, temporary);
   } else {
     throw new Error(`Unsupported promoted entry type: ${entry.type}`);
   }
-  import_node_fs13.default.rmSync(destination, { recursive: true, force: true });
-  import_node_fs13.default.renameSync(temporary, destination);
+  import_node_fs14.default.rmSync(destination, { recursive: true, force: true });
+  import_node_fs14.default.renameSync(temporary, destination);
 }
 function restoreDirectoryFromBackup(projectRoot, backup) {
-  for (const entry of import_node_fs13.default.readdirSync(projectRoot)) {
-    import_node_fs13.default.rmSync(import_node_path11.default.join(projectRoot, entry), { recursive: true, force: true });
+  for (const entry of import_node_fs14.default.readdirSync(projectRoot)) {
+    import_node_fs14.default.rmSync(import_node_path12.default.join(projectRoot, entry), { recursive: true, force: true });
   }
-  for (const entry of import_node_fs13.default.readdirSync(backup)) {
-    import_node_fs13.default.cpSync(import_node_path11.default.join(backup, entry), import_node_path11.default.join(projectRoot, entry), {
+  for (const entry of import_node_fs14.default.readdirSync(backup)) {
+    import_node_fs14.default.cpSync(import_node_path12.default.join(backup, entry), import_node_path12.default.join(projectRoot, entry), {
       errorOnExist: true,
       force: false,
       recursive: true
@@ -32842,13 +33579,13 @@ function applyIsolatedChanges(launch, baseline, current) {
   }
   assertSafeSymlinks(launch.executionWorkspace, Object.keys(current.entries));
   const changes = compareWorkspaceManifests(baseline, current);
-  const backup = import_node_path11.default.join(launch.outputDestination, "promotion-backup");
-  if (import_node_fs13.default.existsSync(backup)) throw new Error(`Promotion backup already exists: ${backup}`);
-  import_node_fs13.default.cpSync(launch.projectRoot, backup, { errorOnExist: true, force: false, recursive: true });
+  const backup = import_node_path12.default.join(launch.outputDestination, "promotion-backup");
+  if (import_node_fs14.default.existsSync(backup)) throw new Error(`Promotion backup already exists: ${backup}`);
+  import_node_fs14.default.cpSync(launch.projectRoot, backup, { errorOnExist: true, force: false, recursive: true });
   try {
     const removals = changes.filter((change) => change.after == null).sort((left, right) => right.path.split("/").length - left.path.split("/").length);
     for (const change of removals) {
-      import_node_fs13.default.rmSync(safeRelative(launch.projectRoot, change.path), { recursive: true, force: true });
+      import_node_fs14.default.rmSync(safeRelative(launch.projectRoot, change.path), { recursive: true, force: true });
     }
     const directories = changes.filter((change) => change.after?.type === "directory");
     const otherEntries = changes.filter((change) => change.after && change.after.type !== "directory");
@@ -32879,7 +33616,7 @@ function applyIsolatedChanges(launch, baseline, current) {
     }
     throw error;
   } finally {
-    import_node_fs13.default.rmSync(backup, { recursive: true, force: true });
+    import_node_fs14.default.rmSync(backup, { recursive: true, force: true });
   }
   return changes;
 }
@@ -32895,7 +33632,7 @@ function withLaunchStore(dependencies, operation) {
 function diffAgentLaunch(launchId, dependencies = {}) {
   return withLaunchStore(dependencies, (store) => {
     const launch = requireManagedLaunch(store, launchId);
-    const execFileSyncImpl = dependencies.execFileSyncImpl || import_node_child_process7.execFileSync;
+    const execFileSyncImpl = dependencies.execFileSyncImpl || import_node_child_process8.execFileSync;
     if (launch.workspaceMode === "worktree") {
       return {
         ...getGitChangeSet(launch, execFileSyncImpl),
@@ -32923,7 +33660,7 @@ function promoteAgentLaunch(launchId, dependencies = {}) {
       return { alreadyPromoted: true, changes: null, launch: existing };
     }
     const launch = requireManagedLaunch(store, launchId, { terminal: true });
-    const execFileSyncImpl = dependencies.execFileSyncImpl || import_node_child_process7.execFileSync;
+    const execFileSyncImpl = dependencies.execFileSyncImpl || import_node_child_process8.execFileSync;
     let changes;
     if (launch.workspaceMode === "worktree") {
       const targetStatus = git(execFileSyncImpl, launch.projectRoot, [
@@ -32949,7 +33686,7 @@ function promoteAgentLaunch(launchId, dependencies = {}) {
       assertSafeSymlinks(launch.executionWorkspace, [...changedTracked, ...changes.untracked]);
       for (const relativePath of changes.untracked) {
         const destination = safeRelative(launch.projectRoot, relativePath);
-        if (import_node_fs13.default.existsSync(destination)) {
+        if (import_node_fs14.default.existsSync(destination)) {
           throw new Error(`Cannot promote untracked file because the destination exists: ${relativePath}`);
         }
       }
@@ -32972,8 +33709,8 @@ function promoteAgentLaunch(launchId, dependencies = {}) {
       for (const relativePath of changes.untracked) {
         const source = safeRelative(launch.executionWorkspace, relativePath);
         const destination = safeRelative(launch.projectRoot, relativePath);
-        import_node_fs13.default.mkdirSync(import_node_path11.default.dirname(destination), { recursive: true });
-        import_node_fs13.default.cpSync(source, destination, { errorOnExist: true, force: false, recursive: true });
+        import_node_fs14.default.mkdirSync(import_node_path12.default.dirname(destination), { recursive: true });
+        import_node_fs14.default.cpSync(source, destination, { errorOnExist: true, force: false, recursive: true });
       }
       const updated = store.setDisposition(launchId, "promoted");
       cleanupGitWorktree(updated, execFileSyncImpl);
@@ -32984,7 +33721,7 @@ function promoteAgentLaunch(launchId, dependencies = {}) {
       const current = createWorkspaceManifest(launch.executionWorkspace);
       changes = applyIsolatedChanges(launch, baseline, current);
       const updated = store.setDisposition(launchId, "promoted");
-      import_node_fs13.default.rmSync(updated.executionWorkspace, { recursive: true, force: true });
+      import_node_fs14.default.rmSync(updated.executionWorkspace, { recursive: true, force: true });
       return { changes, launch: store.get(launchId) };
     }
     throw new Error("Read-only launches have no isolated changes to promote");
@@ -32997,9 +33734,9 @@ function discardAgentLaunch(launchId, dependencies = {}) {
       return { alreadyDiscarded: true, launch: existing };
     }
     const launch = requireManagedLaunch(store, launchId, { terminal: true });
-    const execFileSyncImpl = dependencies.execFileSyncImpl || import_node_child_process7.execFileSync;
+    const execFileSyncImpl = dependencies.execFileSyncImpl || import_node_child_process8.execFileSync;
     if (launch.workspaceMode === "worktree") cleanupGitWorktree(launch, execFileSyncImpl);
-    import_node_fs13.default.rmSync(launch.outputDestination, { recursive: true, force: true });
+    import_node_fs14.default.rmSync(launch.outputDestination, { recursive: true, force: true });
     const updated = store.setDisposition(launchId, "discarded");
     return { launch: updated };
   });
@@ -33008,7 +33745,7 @@ function discardAgentLaunch(launchId, dependencies = {}) {
 // src/agent-host/group.js
 var ACTIVE_STATUSES = /* @__PURE__ */ new Set(["starting", "running"]);
 var MAX_PROMPT_BYTES2 = 10 * 1024 * 1024;
-function requiredText2(value, field, maxBytes = 4096) {
+function requiredText3(value, field, maxBytes = 4096) {
   if (typeof value !== "string" || value.trim() === "" || value.includes("\0")) {
     throw new Error(`${field} must be a non-empty string without NUL bytes`);
   }
@@ -33028,7 +33765,7 @@ function validateTasks(tasks) {
     launchId: assertLaunchId(task.launchId),
     model: task.model,
     permissionMode: task.permissionMode,
-    prompt: requiredText2(task.prompt, `tasks[${index}].prompt`, MAX_PROMPT_BYTES2),
+    prompt: requiredText3(task.prompt, `tasks[${index}].prompt`, MAX_PROMPT_BYTES2),
     provider: resolveAgentProviderId(task.provider),
     timeoutMs: task.timeoutMs
   }));
@@ -33042,8 +33779,8 @@ function createAgentGroupId() {
 }
 async function launchDetachedAgentGroup(request, dependencies = {}) {
   const groupId = assertAgentGroupId(request?.groupId);
-  const originDirectory = requiredText2(request?.originDirectory, "originDirectory");
-  const workspace = requiredText2(request?.workspace, "workspace");
+  const originDirectory = requiredText3(request?.originDirectory, "originDirectory");
+  const workspace = requiredText3(request?.workspace, "workspace");
   const workspaceMode = request?.workspaceMode || "auto";
   const tasks = validateTasks(request?.tasks);
   const ownsStore = !dependencies.store;
@@ -33104,7 +33841,7 @@ async function stopAgentGroup(groupId, dependencies = {}) {
 }
 
 // src/daemon/routes/agent-host-validation.js
-var import_node_path12 = __toESM(require("node:path"), 1);
+var import_node_path13 = __toESM(require("node:path"), 1);
 var MAX_AGENT_HOST_BODY_BYTES = 12 * 1024 * 1024;
 var LAUNCH_FIELDS = /* @__PURE__ */ new Set([
   "approvalMode",
@@ -33205,7 +33942,7 @@ function validateRequest(body, allowed, { resume = false } = {}) {
   }
   if (!resume) {
     Object.assign(options, {
-      originDirectory: import_node_path12.default.resolve(requireText(body.originDirectory, "originDirectory")),
+      originDirectory: import_node_path13.default.resolve(requireText(body.originDirectory, "originDirectory")),
       outputDirectory: body.outputDirectory == null ? void 0 : requireText(body.outputDirectory, "outputDirectory"),
       provider: requireText(body.provider, "provider", 64),
       workspace: body.workspace == null ? void 0 : requireText(body.workspace, "workspace"),
@@ -33275,7 +34012,7 @@ function validateAgentGroupRequest(body) {
   });
   return {
     groupId: assertAgentGroupId(body.groupId),
-    originDirectory: import_node_path12.default.resolve(requireText(body.originDirectory, "originDirectory")),
+    originDirectory: import_node_path13.default.resolve(requireText(body.originDirectory, "originDirectory")),
     tasks,
     workspace: requireText(body.workspace, "workspace"),
     workspaceMode: body.workspaceMode == null ? "auto" : requireText(body.workspaceMode, "workspaceMode", 32)
@@ -33503,7 +34240,7 @@ function buildAgentHostRoutes(ctx, dependencies = {}) {
 
 // src/daemon/routes/packages.js
 var import_crypto2 = __toESM(require("crypto"), 1);
-var fs44 = __toESM(require("fs/promises"), 1);
+var fs45 = __toESM(require("fs/promises"), 1);
 var fsSync2 = __toESM(require("fs"), 1);
 var import_path23 = __toESM(require("path"), 1);
 init_src5();
@@ -33575,7 +34312,7 @@ var defaultDeps = {
 async function loadManifest3(installPath) {
   const manifestPath = import_path23.default.join(installPath, "manifest.json");
   try {
-    const content = await fs44.readFile(manifestPath, "utf-8");
+    const content = await fs45.readFile(manifestPath, "utf-8");
     return JSON.parse(content);
   } catch {
     return null;
@@ -33720,7 +34457,7 @@ async function checkSecrets3(manifest, deps) {
 async function parseEnvExample2(installPath) {
   const examplePath = import_path23.default.join(installPath, ".env.example");
   try {
-    const content = await fs44.readFile(examplePath, "utf-8");
+    const content = await fs45.readFile(examplePath, "utf-8");
     const keys = [];
     for (const line of content.split("\n")) {
       const trimmed = line.trim();
@@ -33736,7 +34473,7 @@ async function parseEnvExample2(installPath) {
 async function cleanupFailedStackInstall2(stackId, stackPath, removeConfig, deps) {
   if (stackPath) {
     try {
-      await fs44.rm(stackPath, { recursive: true, force: true });
+      await fs45.rm(stackPath, { recursive: true, force: true });
     } catch {
     }
   }
@@ -35325,9 +36062,9 @@ function uninstallLaunchAgent(options = {}) {
 }
 
 // src/daemon/runtime/lifecycle.js
-var import_node_fs14 = __toESM(require("node:fs"), 1);
-var import_node_path13 = __toESM(require("node:path"), 1);
-var import_node_child_process8 = require("node:child_process");
+var import_node_fs15 = __toESM(require("node:fs"), 1);
+var import_node_path14 = __toESM(require("node:path"), 1);
+var import_node_child_process9 = require("node:child_process");
 init_src();
 var DEFAULT_START_TIMEOUT_MS2 = 45e3;
 var DEFAULT_STOP_TIMEOUT_MS = 1e4;
@@ -35355,11 +36092,11 @@ function removeDaemonConnectionFiles({
   tokenFile = DAEMON_TOKEN_FILE
 } = {}) {
   try {
-    import_node_fs14.default.unlinkSync(portFile);
+    import_node_fs15.default.unlinkSync(portFile);
   } catch {
   }
   try {
-    import_node_fs14.default.unlinkSync(tokenFile);
+    import_node_fs15.default.unlinkSync(tokenFile);
   } catch {
   }
 }
@@ -35381,13 +36118,13 @@ function spawnDaemonProcess({
   logsDir = PATHS.logs,
   nodePath = process.execPath,
   serveArgs = ["serve"],
-  spawnImpl = import_node_child_process8.spawn
+  spawnImpl = import_node_child_process9.spawn
 } = {}) {
-  import_node_fs14.default.mkdirSync(logsDir, { recursive: true });
-  const stdoutPath = import_node_path13.default.join(logsDir, "daemon.out.log");
-  const stderrPath = import_node_path13.default.join(logsDir, "daemon.err.log");
-  const stdoutFd = import_node_fs14.default.openSync(stdoutPath, "a");
-  const stderrFd = import_node_fs14.default.openSync(stderrPath, "a");
+  import_node_fs15.default.mkdirSync(logsDir, { recursive: true });
+  const stdoutPath = import_node_path14.default.join(logsDir, "daemon.out.log");
+  const stderrPath = import_node_path14.default.join(logsDir, "daemon.err.log");
+  const stdoutFd = import_node_fs15.default.openSync(stdoutPath, "a");
+  const stderrFd = import_node_fs15.default.openSync(stderrPath, "a");
   try {
     const child = spawnImpl(nodePath, [entrypoint, ...serveArgs], {
       detached: true,
@@ -35398,11 +36135,11 @@ function spawnDaemonProcess({
     return { pid: child.pid, stderrPath, stdoutPath };
   } finally {
     try {
-      import_node_fs14.default.closeSync(stdoutFd);
+      import_node_fs15.default.closeSync(stdoutFd);
     } catch {
     }
     try {
-      import_node_fs14.default.closeSync(stderrFd);
+      import_node_fs15.default.closeSync(stderrFd);
     } catch {
     }
   }
@@ -35985,8 +36722,8 @@ async function attachAgentLaunch(launchId, dependencies = {}) {
 }
 
 // src/agent-host/cli-inputs.js
-var import_node_fs15 = __toESM(require("node:fs"), 1);
-var import_node_path14 = __toESM(require("node:path"), 1);
+var import_node_fs16 = __toESM(require("node:fs"), 1);
+var import_node_path15 = __toESM(require("node:path"), 1);
 var MAX_PROMPT_BYTES3 = 10 * 1024 * 1024;
 function flagValue(flags, kebab, camel = null) {
   return flags[kebab] ?? (camel ? flags[camel] : void 0);
@@ -35997,14 +36734,14 @@ function requiredFlagString(value, name) {
   }
   return value;
 }
-async function readPromptStream(stdin) {
+async function readPromptStream(stdin, maxBytes = MAX_PROMPT_BYTES3) {
   let value = "";
   let size = 0;
   for await (const chunk of stdin) {
     const buffer = Buffer.isBuffer(chunk) ? chunk : Buffer.from(String(chunk));
     size += buffer.length;
-    if (size > MAX_PROMPT_BYTES3) {
-      throw new Error(`stdin prompt exceeds ${MAX_PROMPT_BYTES3} bytes`);
+    if (size > maxBytes) {
+      throw new Error(`stdin prompt exceeds ${maxBytes} bytes`);
     }
     value += buffer.toString("utf8");
   }
@@ -36016,6 +36753,10 @@ async function resolveAgentPrompt(flags, {
 } = {}) {
   const inline = flags.prompt;
   const promptFile = flagValue(flags, "prompt-file", "promptFile");
+  const privateAutomation = flagValue(flags, "private-automation", "privateAutomation") === true;
+  if (privateAutomation && (inline != null || promptFile != null)) {
+    throw new Error("private automation prompt must be supplied through stdin");
+  }
   if (inline != null && promptFile != null) {
     throw new Error("Use exactly one of --prompt or --prompt-file");
   }
@@ -36024,25 +36765,29 @@ async function resolveAgentPrompt(flags, {
     prompt = requiredFlagString(inline, "--prompt");
   } else if (promptFile != null) {
     const fileValue = requiredFlagString(promptFile, "--prompt-file");
-    const filePath = import_node_path14.default.resolve(originDirectory, fileValue);
+    const filePath = import_node_path15.default.resolve(originDirectory, fileValue);
     let stat;
     try {
-      stat = import_node_fs15.default.statSync(filePath);
+      stat = import_node_fs16.default.statSync(filePath);
     } catch {
       throw new Error(`Prompt file does not exist: ${filePath}`);
     }
     if (!stat.isFile()) throw new Error(`Prompt file is not a regular file: ${filePath}`);
     if (stat.size > MAX_PROMPT_BYTES3) throw new Error(`Prompt file exceeds ${MAX_PROMPT_BYTES3} bytes`);
-    prompt = import_node_fs15.default.readFileSync(filePath, "utf8");
-  } else if (stdin && stdin.isTTY === false) {
-    prompt = await readPromptStream(stdin);
+    prompt = import_node_fs16.default.readFileSync(filePath, "utf8");
+  } else if (stdin && stdin.isTTY !== true) {
+    prompt = await readPromptStream(
+      stdin,
+      privateAutomation ? PRIVATE_AUTOMATION_MAX_PROMPT_BYTES : MAX_PROMPT_BYTES3
+    );
   } else {
     throw new Error("Prompt required via --prompt, --prompt-file, or stdin");
   }
   if (!prompt.trim()) throw new Error("Prompt must not be empty");
   if (prompt.includes("\0")) throw new Error("Prompt must not contain NUL bytes");
-  if (Buffer.byteLength(prompt, "utf8") > MAX_PROMPT_BYTES3) {
-    throw new Error(`Prompt exceeds ${MAX_PROMPT_BYTES3} bytes`);
+  const maxPromptBytes = privateAutomation ? PRIVATE_AUTOMATION_MAX_PROMPT_BYTES : MAX_PROMPT_BYTES3;
+  if (Buffer.byteLength(prompt, "utf8") > maxPromptBytes) {
+    throw new Error(`Prompt exceeds ${maxPromptBytes} bytes`);
   }
   return prompt;
 }
@@ -36060,10 +36805,10 @@ function parseImages(flags, originDirectory) {
   const value = flags.image ?? flags.images;
   if (value == null) return [];
   return requiredFlagString(value, "--image").split(",").map((item) => item.trim()).filter(Boolean).map((item) => {
-    const imagePath = import_node_path14.default.resolve(originDirectory, item);
+    const imagePath = import_node_path15.default.resolve(originDirectory, item);
     let stat;
     try {
-      stat = import_node_fs15.default.statSync(imagePath);
+      stat = import_node_fs16.default.statSync(imagePath);
     } catch {
       throw new Error(`Image attachment does not exist: ${imagePath}`);
     }
@@ -36081,6 +36826,55 @@ function parseTimeout2(flags) {
   return parsed;
 }
 function buildLaunchOptions(provider, prompt, flags, passthrough, originDirectory) {
+  const privateAutomation = flagValue(flags, "private-automation", "privateAutomation") === true;
+  if (privateAutomation) {
+    const forbiddenFlags = [
+      ["approval-mode", "approvalMode"],
+      ["image", "images"],
+      ["mode"],
+      ["output-dir", "outputDirectory"],
+      ["permission-mode", "permissionMode"],
+      ["read-only", "readOnly"],
+      ["workspace"],
+      ["workspace-mode", "workspaceMode"]
+    ];
+    for (const names of forbiddenFlags) {
+      if (names.some((name) => flags[name] != null)) {
+        throw new Error(`private automation forbids --${names[0]}`);
+      }
+    }
+    if (flags.detach === true) throw new Error("private automation forbids detached execution");
+    if (passthrough.length > 0) throw new Error("private automation forbids provider passthrough arguments");
+    const canonicalProvider = resolveAgentProviderId(provider);
+    const outputSchemaValue = requiredFlagString(
+      flagValue(flags, "output-schema", "outputSchema"),
+      "--output-schema"
+    );
+    const outputSchemaPath = import_node_path15.default.resolve(originDirectory, outputSchemaValue);
+    const timeoutMs = parseTimeout2(flags);
+    const privateAutomationProfile = createPrivateAutomationProfile({
+      model: flags.model,
+      outputSchemaPath,
+      provider: canonicalProvider,
+      timeoutMs
+    });
+    return {
+      approvalMode: null,
+      extraArgs: [],
+      images: [],
+      json: flags.json === true,
+      model: privateAutomationProfile.model,
+      originDirectory,
+      outputDirectory: null,
+      permissionMode: canonicalProvider === "codex" ? "readonly" : "plan",
+      privateAutomationProfile,
+      prompt,
+      provider: canonicalProvider,
+      timeoutMs: privateAutomationProfile.timeoutMs,
+      workspace: null,
+      workspaceMode: "read-only"
+    };
+  }
   return {
     approvalMode: flagValue(flags, "approval-mode", "approvalMode"),
     extraArgs: passthrough,
@@ -36130,16 +36924,16 @@ function readGroupTaskFiles(taskFlag, originDirectory, common = {}) {
     }
     const provider = value.slice(0, separator);
     resolveAgentProviderId(provider);
-    const filePath = import_node_path14.default.resolve(originDirectory, value.slice(separator + 1));
+    const filePath = import_node_path15.default.resolve(originDirectory, value.slice(separator + 1));
     let stat;
     try {
-      stat = import_node_fs15.default.statSync(filePath);
+      stat = import_node_fs16.default.statSync(filePath);
     } catch {
       throw new Error(`Task file does not exist: ${filePath}`);
     }
     if (!stat.isFile()) throw new Error(`Task file is not a regular file: ${filePath}`);
     if (stat.size > MAX_PROMPT_BYTES3) throw new Error(`Task file exceeds ${MAX_PROMPT_BYTES3} bytes`);
-    const prompt = import_node_fs15.default.readFileSync(filePath, "utf8");
+    const prompt = import_node_fs16.default.readFileSync(filePath, "utf8");
     if (!prompt.trim()) throw new Error(`Task file must not be empty: ${filePath}`);
     if (prompt.includes("\0")) throw new Error(`Task file must not contain NUL bytes: ${filePath}`);
     return { ...common, prompt, provider };
@@ -36230,6 +37024,12 @@ PROVIDER OPTIONS
   --json                       Emit normalized JSONL events
   --detach                     Run through the local background service
 
+PRIVATE AUTOMATION (FOREGROUND ONLY)
+  --private-automation         Metadata-only, zero-tool private inference profile
+  --output-schema <path>       Required bounded structured-output schema
+  --model <canonical-id>       Required exact configured provider model ID
+  stdin                        Required prompt source; prompt flags are forbidden
+
 Foreground execution needs neither the daemon nor Lite. Detached execution is
 owned by a dedicated RUDI worker and survives the invoking terminal and Lite.
 `);
@@ -36264,6 +37064,10 @@ async function cmdAgent(args = [], flags = {}, passthrough = [], dependencies = 
   const subcommand = args[0];
   const originDirectory = dependencies.originDirectory || process.cwd();
   const stdin = dependencies.stdin || process.stdin;
+  const privateAutomation = flagValue(flags, "private-automation", "privateAutomation") === true;
+  if (privateAutomation && subcommand !== "launch") {
+    throw new Error("private automation supports only rudi agent launch");
+  }
   if (subcommand === "_worker") {
     const launchId = requiredLaunchId(args, "_worker");
     const readWorkerRequestImpl = dependencies.readWorkerRequestImpl || readDetachedWorkerRequest;
@@ -36481,7 +37285,7 @@ async function cmdAgent(args = [], flags = {}, passthrough = [], dependencies = 
 }
 
 // src/index.js
-var VERSION = true ? "1.10.12" : process.env.npm_package_version || "0.0.0";
+var VERSION = true ? "1.10.15" : process.env.npm_package_version || "0.0.0";
 var RETIRED_COMMANDS = /* @__PURE__ */ new Map([
   ["apply", "Provider transcripts remain authoritative; organization-plan execution was removed."],
   ["database", "Use Studio only if you still need the isolated compatibility database."],
