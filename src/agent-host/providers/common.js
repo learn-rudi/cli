@@ -9,6 +9,7 @@ import {
   loadProviderConfig,
   resolveModel,
 } from './catalog.js';
+import { PRIVATE_AUTOMATION_PROFILE_ID } from '../private-automation-profile.js';
 
 const MAX_PROMPT_BYTES = 10 * 1024 * 1024;
 
@@ -52,7 +53,26 @@ export function validateExtraArgs(value) {
 
 export function providerContext(options, provider) {
   const config = loadProviderConfig(provider);
-  const prompt = requiredText(options.prompt, 'prompt');
+  const privateAutomationProfile = options.privateAutomationProfile || null;
+  if (privateAutomationProfile != null) {
+    if (privateAutomationProfile.id !== PRIVATE_AUTOMATION_PROFILE_ID) {
+      throw new Error('invalid private automation profile');
+    }
+    if (privateAutomationProfile.provider !== provider) {
+      throw new Error('private automation provider does not match process plan');
+    }
+    if (privateAutomationProfile.model !== options.model) {
+      throw new Error('private automation model does not match process plan');
+    }
+    if (options.nativeSessionId != null) {
+      throw new Error('private automation session resume is forbidden');
+    }
+  }
+  const prompt = requiredText(
+    options.prompt,
+    'prompt',
+    privateAutomationProfile?.maxPromptBytes || MAX_PROMPT_BYTES,
+  );
   const cwd = requiredText(options.cwd, 'cwd', 4096);
   const binaryPath = requiredText(options.binaryPath, 'binaryPath', 4096);
   const requestedModel = options.model || config.models.default;
@@ -76,6 +96,7 @@ export function providerContext(options, provider) {
       ? null
       : requiredText(options.nativeSessionId, 'nativeSessionId', 1024),
     prompt,
+    privateAutomationProfile,
     provider,
     runtimeDirectory: options.runtimeDirectory == null
       ? null
@@ -119,6 +140,33 @@ export function buildAgentExecutableEnvironment(binaryPath, overrides = {}, base
   return merged;
 }
 
+const PRIVATE_OPERATIONAL_ENVIRONMENT_KEYS = Object.freeze([
+  'HOME',
+  'LANG',
+  'LC_ALL',
+  'LOGNAME',
+  'PATH',
+  'SSL_CERT_DIR',
+  'SSL_CERT_FILE',
+  'TMPDIR',
+  'USER',
+]);
+
+export function buildPrivateProviderEnvironment(config, binaryPath, options = {}) {
+  const baseEnvironment = options.baseEnvironment || process.env;
+  const operational = Object.fromEntries(
+    PRIVATE_OPERATIONAL_ENVIRONMENT_KEYS
+      .filter(key => typeof baseEnvironment[key] === 'string' && baseEnvironment[key].length > 0)
+      .map(key => [key, baseEnvironment[key]]),
+  );
+  const providerEnvironment = buildProviderEnvironment(config, options);
+  return buildAgentExecutableEnvironment(
+    binaryPath,
+    { ...operational, ...providerEnvironment },
+    {},
+  );
+}
+
 export function buildProviderEnvironment(config, options = {}) {
   const baseEnvironment = options.baseEnvironment || process.env;
   const rudiHome = options.rudiHome || process.env.RUDI_HOME || path.join(os.homedir(), '.rudi');
@@ -139,10 +187,23 @@ export function buildProviderEnvironment(config, options = {}) {
 }
 
 export function finishPlan(context, args, permissionMode, providerEnvironment = null) {
-  const resolvedProviderEnvironment = providerEnvironment || buildProviderEnvironment(context.config);
+  const resolvedProviderEnvironment = providerEnvironment || (
+    context.privateAutomationProfile
+      ? buildPrivateProviderEnvironment(context.config, context.binaryPath)
+      : buildProviderEnvironment(context.config)
+  );
+  const environment = context.privateAutomationProfile
+    ? resolvedProviderEnvironment
+    : buildAgentExecutableEnvironment(context.binaryPath, resolvedProviderEnvironment);
   return Object.freeze({
     args,
-    environment: buildAgentExecutableEnvironment(context.binaryPath, resolvedProviderEnvironment),
+    environment,
+    ...(context.privateAutomationProfile ? {
+      maxFinalOutputBytes: context.privateAutomationProfile.maxFinalOutputBytes,
+      maxRawOutputBytes: context.privateAutomationProfile.maxRawOutputBytes,
+      privateAutomationProfile: context.privateAutomationProfile,
+      stdin: context.prompt,
+    } : {}),
     model: context.model,
     permissionMode,
     provider: context.provider,

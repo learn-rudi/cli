@@ -24,6 +24,14 @@
     "promptDelivery": "arg",
     "stdinPrompt": "-",
 
+    "privateAutomation": {
+      "minimumVersion": "0.146.0",
+      "profile": "private-automation-v1",
+      "promptDelivery": "stdin",
+      "sessionPersistence": false,
+      "tools": false
+    },
+
     "args": {
       "prefixConditionals": [
         { "if": "approvalPolicy", "args": ["--ask-for-approval", "{{approvalPolicy}}"] },

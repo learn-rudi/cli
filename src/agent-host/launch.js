@@ -17,6 +17,7 @@ import {
   cleanupUnstartedWorkspace,
   resolveAgentWorkspace,
 } from './workspace.js';
+import { assertPrivateAutomationHostCapabilities } from './private-automation-profile.js';
 
 export function createLaunchId() {
   return `launch_${crypto.randomUUID().replaceAll('-', '')}`;
@@ -30,6 +31,7 @@ export async function launchAgent(options, dependencies = {}) {
     ownerPid = null,
     onSpawn = null,
     preflightImpl = assertAgentHostReady,
+    privatePreflightImpl = assertPrivateAutomationHostCapabilities,
     resolveBinaryImpl = resolveAgentProviderBinary,
     spawnImpl,
     stderr = process.stderr,
@@ -39,12 +41,19 @@ export async function launchAgent(options, dependencies = {}) {
   } = dependencies;
 
   const launchId = idFactory();
+  const privateAutomationProfile = options?.privateAutomationProfile || null;
+  if (privateAutomationProfile && options?.executionKind && options.executionKind !== 'foreground') {
+    throw new Error('private automation supports foreground execution only');
+  }
   const provider = resolveAgentProviderId(options?.provider);
   const binaryPath = resolveBinaryImpl(provider);
   if (!binaryPath) {
     throw new Error(`${provider} host is not installed. Run: rudi install agent:${provider}`);
   }
   await preflightImpl({ binaryPath, provider });
+  if (privateAutomationProfile) {
+    await privatePreflightImpl({ binaryPath, profile: privateAutomationProfile });
+  }
 
   const workspace = workspaceResolver({
     artifactsRoot,
@@ -52,6 +61,7 @@ export async function launchAgent(options, dependencies = {}) {
     mode: options.workspaceMode || 'auto',
     originDirectory: options.originDirectory || process.cwd(),
     outputDirectory: options.outputDirectory || null,
+    privateAutomation: privateAutomationProfile != null,
     workspace: options.workspace || null,
   });
   const resolvedEventSink = eventSink || (event => appendLaunchEvent(
@@ -68,6 +78,7 @@ export async function launchAgent(options, dependencies = {}) {
       images: options.images,
       model: options.model,
       permissionMode: options.permissionMode,
+      privateAutomationProfile,
       prompt: options.prompt,
       provider,
       runtimeDirectory: workspace.outputDestination,

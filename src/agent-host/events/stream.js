@@ -5,6 +5,10 @@ import {
   extractNativeSessionId,
   renderAgentEvent,
 } from './normalize.js';
+import {
+  assertPrivateAutomationRawEvent,
+  projectPrivateAutomationEventMetadata,
+} from '../private-automation-profile.js';
 
 function boundedAppend(current, value, maxLength = 4096) {
   const combined = `${current}${value}`;
@@ -33,6 +37,7 @@ export function executeForegroundLaunch({
   }
 
   return new Promise((resolve, reject) => {
+    const privateAutomation = plan.privateAutomationProfile != null;
     const normalizer = createAgentEventNormalizer(plan.provider);
     let child;
     let finalized = false;
@@ -43,12 +48,43 @@ export function executeForegroundLaunch({
     let forceTimer = null;
     let requestedSignal = null;
     let sinkFailure = null;
+    let privateFailure = null;
+    let privateFinalOutput = null;
+    let privateObservedModel = null;
+    let privateRawOutputBytes = 0;
+    let privateUsage = null;
+
+    function terminateProvider(signal) {
+      if (privateAutomation && Number.isSafeInteger(child?.pid) && child.pid > 0) {
+        try {
+          process.kill(-child.pid, signal);
+          return true;
+        } catch {}
+      }
+      try {
+        return child?.kill(signal) === true;
+      } catch {
+        return false;
+      }
+    }
+
+    function privateProviderGroupAlive() {
+      if (!privateAutomation || !Number.isSafeInteger(child?.pid) || child.pid < 1) {
+        return false;
+      }
+      try {
+        process.kill(-child.pid, 0);
+        return true;
+      } catch {
+        return false;
+      }
+    }
 
     function recordSinkFailure(kind, error) {
       if (sinkFailure) return;
       sinkFailure = `${kind} persistence failed: ${error.message}`;
       try { writeLine(stderr, sinkFailure); } catch {}
-      try { child?.kill('SIGTERM'); } catch {}
+      terminateProvider('SIGTERM');
     }
 
     function publishEvent(payload, persistedPayload = payload) {
@@ -62,14 +98,15 @@ export function executeForegroundLaunch({
 
     const onSigint = () => {
       requestedSignal = 'SIGINT';
-      child?.kill('SIGINT');
+      terminateProvider('SIGINT');
     };
     const onSigterm = () => {
       requestedSignal = 'SIGTERM';
-      child?.kill('SIGTERM');
+      terminateProvider('SIGTERM');
     };
 
     function persistNativeSession(rawEvent, normalized) {
+      if (privateAutomation) return;
       const nativeSessionId = extractNativeSessionId(rawEvent)
         || normalized?.providerSessionId
         || null;
@@ -87,20 +124,55 @@ export function executeForegroundLaunch({
       ) || (
         rawEvent?.event === 'step_update' && rawEvent.step_update?.step_type === 'agent_response'
       );
+      let persistedEvent = normalized;
+      if (privateAutomation) {
+        try {
+          assertPrivateAutomationRawEvent(plan.provider, rawEvent);
+          persistedEvent = projectPrivateAutomationEventMetadata(normalized);
+        } catch {
+          privateFailure = 'private_tool_event';
+          terminateProvider('SIGTERM');
+          return;
+        }
+        if (normalized.model) {
+          if (normalized.model !== plan.model) {
+            privateFailure = 'private_model_mismatch';
+            terminateProvider('SIGTERM');
+            return;
+          }
+          privateObservedModel = normalized.model;
+        }
+        if (normalized.usage) privateUsage = persistedEvent.usage || privateUsage;
+        const structuredOutput = rawEvent?.structured_output ?? rawEvent?.structuredOutput;
+        if (structuredOutput && typeof structuredOutput === 'object' && !Array.isArray(structuredOutput)) {
+          privateFinalOutput = structuredOutput;
+        } else if (normalized.type === 'assistant' && Array.isArray(normalized.content)) {
+          const text = normalized.content
+            .filter(block => block?.type === 'text' && typeof block.text === 'string')
+            .map(block => block.text)
+            .join('');
+          if (text) privateFinalOutput = text;
+        } else if (normalized.type === 'result' && typeof normalized.result === 'string') {
+          privateFinalOutput = normalized.result;
+        }
+      }
       const persistedPayload = {
         delta: isDelta,
-        event: normalized,
+        event: persistedEvent,
         launchId,
         provider: plan.provider,
         type: 'agent.event',
       };
-      const payload = publishEvent({
-        event: normalized,
-        launchId,
-        provider: plan.provider,
-        rawEvent,
-        type: 'agent.event',
-      }, persistedPayload);
+      const payload = privateAutomation
+        ? publishEvent(persistedPayload)
+        : publishEvent({
+          event: normalized,
+          launchId,
+          provider: plan.provider,
+          rawEvent,
+          type: 'agent.event',
+        }, persistedPayload);
+      if (privateAutomation) return;
       if (jsonOutput) {
         writeLine(stdout, JSON.stringify(payload));
         return;
@@ -124,6 +196,11 @@ export function executeForegroundLaunch({
           if (result?.normalized) emitEvent(result.normalized, result.raw || rawEvent);
         }
       } catch {
+        if (privateAutomation) {
+          privateFailure = 'private_output_malformed';
+          terminateProvider('SIGTERM');
+          return;
+        }
         const payload = publishEvent({
           event: { message: line, subtype: 'provider_stdout', type: 'system' },
           launchId,
@@ -148,16 +225,49 @@ export function executeForegroundLaunch({
 
     function complete(status, exitCode, lastError = null) {
       if (finalized) return;
-      finalized = true;
       clearTimeout(runtimeTimer);
       if (forceTimer) clearTimeout(forceTimer);
       signalEmitter.removeListener('SIGINT', onSigint);
       signalEmitter.removeListener('SIGTERM', onSigterm);
       flushStdout();
+      finalized = true;
 
       if (sinkFailure) {
         status = 'failed';
         lastError = sinkFailure;
+      }
+
+      if (privateAutomation) {
+        if (privateFailure) {
+          status = 'failed';
+          lastError = `Private automation failed: ${privateFailure}`;
+        } else if (status === 'completed' && privateObservedModel === null) {
+          status = 'failed';
+          lastError = 'Private automation failed: private_model_unobserved';
+        } else if (status === 'completed') {
+          try {
+            const parsed = typeof privateFinalOutput === 'string'
+              ? JSON.parse(privateFinalOutput)
+              : privateFinalOutput;
+            if (!parsed || typeof parsed !== 'object' || Array.isArray(parsed)) {
+              throw new Error('not_object');
+            }
+            const serialized = JSON.stringify(parsed);
+            if (Buffer.byteLength(serialized, 'utf8') > plan.maxFinalOutputBytes) {
+              throw new Error('too_large');
+            }
+            privateFinalOutput = parsed;
+          } catch (error) {
+            status = 'failed';
+            lastError = `Private automation failed: ${error.message === 'too_large' ? 'private_final_output_overflow' : 'private_final_output_invalid'}`;
+          }
+        } else {
+          lastError = timedOut
+            ? 'Private automation failed: private_timeout'
+            : requestedSignal
+              ? 'Private automation failed: private_stopped'
+              : 'Private automation failed: private_provider_error';
+        }
       }
 
       const current = store.get(launchId);
@@ -169,28 +279,50 @@ export function executeForegroundLaunch({
         lastError,
       });
       const terminalEvent = publishEvent({ launch: updated, type: `launch.${status}` });
+      if (privateAutomation && status === 'completed') {
+        const privateResult = {
+          model: privateObservedModel,
+          output: privateFinalOutput,
+          provider: plan.provider,
+          type: 'private-automation.result',
+          ...(privateUsage ? { usage: privateUsage } : {}),
+        };
+        writeLine(stdout, jsonOutput ? JSON.stringify(privateResult) : JSON.stringify(privateFinalOutput));
+      }
       if (jsonOutput) {
-        writeLine(stdout, JSON.stringify(terminalEvent));
+        if (!privateAutomation) writeLine(stdout, JSON.stringify(terminalEvent));
       }
       resolve(updated);
     }
 
     const runtimeTimer = setTimeout(() => {
       timedOut = true;
-      child?.kill('SIGTERM');
-      forceTimer = setTimeout(() => child?.kill('SIGKILL'), plan.timeouts.shutdownGraceMs || 5000);
+      terminateProvider('SIGTERM');
+      forceTimer = setTimeout(
+        () => terminateProvider('SIGKILL'),
+        plan.timeouts.shutdownGraceMs || 5000,
+      );
     }, timeoutMs);
 
     try {
       child = spawnImpl(plan.spawn.command, plan.args, {
         cwd: plan.spawn.cwd,
-        env: { ...process.env, ...plan.environment },
-        stdio: ['ignore', 'pipe', 'pipe'],
+        detached: privateAutomation,
+        env: privateAutomation ? plan.environment : { ...process.env, ...plan.environment },
+        stdio: [privateAutomation ? 'pipe' : 'ignore', 'pipe', 'pipe'],
       });
     } catch (error) {
       clearTimeout(runtimeTimer);
       reject(error);
       return;
+    }
+
+    if (privateAutomation) {
+      child.stdin.on('error', () => {
+        privateFailure = 'private_stdin_error';
+        terminateProvider('SIGTERM');
+      });
+      child.stdin.end(plan.stdin);
     }
 
     child.once('spawn', () => {
@@ -206,6 +338,15 @@ export function executeForegroundLaunch({
     signalEmitter.once('SIGTERM', onSigterm);
 
     child.stdout.on('data', (chunk) => {
+      if (privateAutomation) {
+        privateRawOutputBytes += Buffer.byteLength(chunk);
+        if (privateRawOutputBytes > plan.maxRawOutputBytes) {
+          privateFailure = 'private_raw_output_overflow';
+          stdoutBuffer = '';
+          terminateProvider('SIGTERM');
+          return;
+        }
+      }
       stdoutBuffer += chunk.toString();
       const lines = stdoutBuffer.split('\n');
       stdoutBuffer = lines.pop() || '';
@@ -213,6 +354,7 @@ export function executeForegroundLaunch({
     });
 
     child.stderr.on('data', (chunk) => {
+      if (privateAutomation) return;
       const text = chunk.toString();
       stderrTail = boundedAppend(stderrTail, text);
       try {
@@ -223,10 +365,18 @@ export function executeForegroundLaunch({
     });
 
     child.once('error', (error) => {
-      complete('failed', null, `Provider process error: ${error.message}`);
+      complete(
+        'failed',
+        null,
+        privateAutomation ? 'Private automation failed: private_spawn_error' : `Provider process error: ${error.message}`,
+      );
     });
 
     child.once('close', (exitCode, signal) => {
+      if (privateProviderGroupAlive()) {
+        terminateProvider('SIGKILL');
+        privateFailure = 'private_termination_unconfirmed';
+      }
       if (sinkFailure) {
         complete('failed', exitCode, sinkFailure);
         return;

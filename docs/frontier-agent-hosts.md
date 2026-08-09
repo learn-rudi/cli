@@ -60,6 +60,58 @@ core the CLI calls directly. Groups are projections over
 independent child launches, preserving each provider's native session and each
 launch's own workspace, events, diff, promotion, and discard lifecycle.
 
+## Private automation profile
+
+`private-automation-v1` is the narrow inference-only surface for approved
+private data such as email classification. It is deliberately separate from
+normal Agent Host launches:
+
+```bash
+private-input-producer | rudi agent launch codex \
+  --private-automation \
+  --model gpt-5.6-luna \
+  --output-schema ./classification.schema.json \
+  --timeout-ms 130000 \
+  --json
+
+private-input-producer | rudi agent launch claude \
+  --private-automation \
+  --model claude-sonnet-5 \
+  --output-schema ./classification.schema.json \
+  --timeout-ms 130000 \
+  --json
+```
+
+Do not put the private prompt in the producer's argv or shell history. The
+profile accepts the prompt only from non-TTY stdin, and the provider receives
+it only through child stdin. It requires a canonical configured model ID and a
+self-contained, closed JSON object schema. Model defaults, aliases, fallback
+models, prompt files, detach/resume/groups, workspace selection, images,
+permission overrides, and native passthrough argv are rejected.
+
+Each launch gets a fresh empty workspace with no write bits. Codex and Claude
+run without tools, MCP, browser, shell, project instructions, plugins, skills,
+or session persistence. The profile has a 165-second hard maximum (160 seconds
+by default), a 2-MiB raw provider-stream ceiling, and a 64-KiB final structured
+result ceiling. Provider stderr is suppressed, native session IDs are not
+stored, and launch artifacts receive only event/usage/status metadata. The one
+structured result is returned transiently on stdout to the invoking process
+only after the provider stream reports the exact requested model. Missing or
+different provider-observed model identity fails closed.
+
+Private use still requires an organization-approved provider/model egress
+contract and a synthetic no-tool launch for each exact installed provider and
+model. Use this same command with a fixed benign prompt and a closed probe
+schema while the empty workspace and metadata-only artifacts are inspected;
+flag/help discovery alone is not activation evidence. The profile never
+chooses a provider or model and never falls back to another one.
+
+Codex private automation currently requires Codex CLI `0.146.0` or newer. The
+launcher checks that version, strict no-web/no-image configuration, all named
+feature controls, and the required `exec` flags before it creates a workspace
+or delivers stdin. Claude is similarly capability-probed from its installed
+CLI help contract after normal installation/authentication preflight.
+
 ## Install and update
 
 Claude and Antigravity use their vendors' native installers and update mechanisms. RUDI detects and registers those executables. Codex and Gemini CLI are RUDI-managed npm agents.

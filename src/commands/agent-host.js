@@ -79,6 +79,12 @@ PROVIDER OPTIONS
   --json                       Emit normalized JSONL events
   --detach                     Run through the local background service
 
+PRIVATE AUTOMATION (FOREGROUND ONLY)
+  --private-automation         Metadata-only, zero-tool private inference profile
+  --output-schema <path>       Required bounded structured-output schema
+  --model <canonical-id>       Required exact configured provider model ID
+  stdin                        Required prompt source; prompt flags are forbidden
+
 Foreground execution needs neither the daemon nor Lite. Detached execution is
 owned by a dedicated RUDI worker and survives the invoking terminal and Lite.
 `);
@@ -118,6 +124,11 @@ export async function cmdAgent(args = [], flags = {}, passthrough = [], dependen
   const subcommand = args[0];
   const originDirectory = dependencies.originDirectory || process.cwd();
   const stdin = dependencies.stdin || process.stdin;
+  const privateAutomation = flagValue(flags, 'private-automation', 'privateAutomation') === true;
+
+  if (privateAutomation && subcommand !== 'launch') {
+    throw new Error('private automation supports only rudi agent launch');
+  }
 
   if (subcommand === '_worker') {
     const launchId = requiredLaunchId(args, '_worker');
