@@ -127,10 +127,12 @@ export function executeForegroundLaunch({
       let persistedEvent = normalized;
       if (privateAutomation) {
         try {
-          assertPrivateAutomationRawEvent(plan.provider, rawEvent);
+          assertPrivateAutomationRawEvent(plan.provider, rawEvent, plan.model);
           persistedEvent = projectPrivateAutomationEventMetadata(normalized);
-        } catch {
-          privateFailure = 'private_tool_event';
+        } catch (error) {
+          privateFailure = String(error?.message || '').includes('model usage')
+            ? 'private_model_mismatch'
+            : 'private_tool_event';
           terminateProvider('SIGTERM');
           return;
         }

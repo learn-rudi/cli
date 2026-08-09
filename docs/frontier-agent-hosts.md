@@ -99,6 +99,13 @@ structured result is returned transiently on stdout to the invoking process
 only after the provider stream reports the exact requested model. Missing or
 different provider-observed model identity fails closed.
 
+Claude structured output is enforced by RUDI after the provider returns plain
+JSON. The private profile deliberately does not pass Claude `--json-schema`,
+because that CLI surface materializes a provider `StructuredOutput` tool. The
+launcher disables all Claude tools and nonessential/auxiliary model traffic,
+pins classifier and subagent model variables to the requested model, and
+rejects terminal model-usage metadata unless it names only that exact model.
+
 Private use still requires an organization-approved provider/model egress
 contract and a synthetic no-tool launch for each exact installed provider and
 model. Use this same command with a fixed benign prompt and a closed probe
@@ -107,10 +114,11 @@ flag/help discovery alone is not activation evidence. The profile never
 chooses a provider or model and never falls back to another one.
 
 Codex private automation currently requires Codex CLI `0.146.0` or newer. The
-launcher checks that version, strict no-web/no-image configuration, all named
-feature controls, and the required `exec` flags before it creates a workspace
-or delivers stdin. Claude is similarly capability-probed from its installed
-CLI help contract after normal installation/authentication preflight.
+launcher checks that version, executes an empty-stdin strict-config sentinel to
+prove the no-web/no-image fields are accepted, verifies all named feature
+controls, and checks the required `exec` flags before it creates a workspace or
+delivers the real stdin. Claude is similarly capability-probed from its
+installed CLI help contract after normal installation/authentication preflight.
 
 ## Install and update
 

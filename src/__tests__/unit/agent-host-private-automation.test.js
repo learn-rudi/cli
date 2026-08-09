@@ -20,6 +20,7 @@ import {
 } from '../../agent-host/private-automation-profile.js';
 import { buildClaudePlan } from '../../agent-host/providers/claude.js';
 import { buildCodexPlan } from '../../agent-host/providers/codex.js';
+import { getAgentProviderConfig } from '../../agent-host/providers/index.js';
 import { resolveAgentWorkspace } from '../../agent-host/workspace.js';
 import { cmdAgent } from '../../commands/agent-host.js';
 
@@ -247,11 +248,16 @@ describe('private Agent Host automation profile', () => {
     assert.equal(claude.args.includes('--no-chrome'), true);
     assert.equal(claude.args.includes('--disable-slash-commands'), true);
     assert.equal(claude.args.includes('--strict-mcp-config'), true);
-    assert.equal(claude.args.includes('--json-schema'), true);
+    assert.equal(claude.args.includes('--json-schema'), false);
     assert.equal(claude.args.includes('--fallback-model'), false);
     const toolsIndex = claude.args.indexOf('--tools');
     assert.notEqual(toolsIndex, -1);
     assert.equal(claude.args[toolsIndex + 1], '');
+    assert.equal(claude.environment.CLAUDE_CODE_NO_MODEL_FALLBACK, '1');
+    assert.equal(claude.environment.CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC, '1');
+    assert.equal(claude.environment.CLAUDE_CODE_AUTO_MODE_MODEL, 'claude-sonnet-5');
+    assert.equal(claude.environment.CLAUDE_CODE_BG_CLASSIFIER_MODEL, 'claude-sonnet-5');
+    assert.equal(claude.environment.CLAUDE_CODE_SUBAGENT_MODEL, 'claude-sonnet-5');
 
     for (const plan of [codex, claude]) {
       assert.equal(plan.maxFinalOutputBytes, PRIVATE_AUTOMATION_MAX_FINAL_OUTPUT_BYTES);
@@ -357,6 +363,17 @@ describe('private Agent Host automation profile', () => {
         model: 'claude-sonnet-5',
       },
     }));
+    assert.doesNotThrow(() => assertPrivateAutomationRawEvent('claude', {
+      type: 'result',
+      modelUsage: { 'claude-sonnet-5': { inputTokens: 1, outputTokens: 1 } },
+    }, 'claude-sonnet-5'));
+    assert.throws(() => assertPrivateAutomationRawEvent('claude', {
+      type: 'result',
+      modelUsage: {
+        'claude-haiku-4-5': { inputTokens: 1, outputTokens: 1 },
+        'claude-sonnet-5': { inputTokens: 1, outputTokens: 1 },
+      },
+    }, 'claude-sonnet-5'), /model usage does not match/u);
   });
 
   test('capability-gates exact provider controls before prompt delivery', () => {
@@ -402,12 +419,16 @@ describe('private Agent Host automation profile', () => {
       spawnSyncImpl(command, args) {
         calls.push({ args, command });
         if (calls.length === 1) return { status: 0, stdout: 'codex-cli 0.146.0' };
-        if (calls.length === 2) return { status: 0, stdout: codexHelp };
+        if (calls.length === 2) {
+          return { status: 1, stderr: 'No prompt provided via stdin.' };
+        }
+        if (calls.length === 3) return { status: 0, stdout: codexHelp };
         return { status: 0, stdout: featureList };
       },
     }), true);
     assert.equal(calls[1].args.includes('tools.view_image=false'), true);
     assert.equal(calls[1].args.includes('web_search="disabled"'), true);
+    assert.equal(calls[1].args.includes('--output-schema'), true);
 
     assert.throws(
       () => assertPrivateAutomationHostCapabilities({
@@ -419,6 +440,24 @@ describe('private Agent Host automation profile', () => {
       /version does not satisfy private automation config/u,
     );
 
+    assert.throws(
+      () => assertPrivateAutomationHostCapabilities({
+        binaryPath: '/fake/codex',
+        profile: codexProfile,
+      }, {
+        spawnSyncImpl(command, args) {
+          if (args.includes('--version')) {
+            return { status: 0, stdout: 'codex-cli 0.146.0-alpha.10.1' };
+          }
+          return {
+            status: 1,
+            stderr: 'unknown configuration field `tools.view_image`',
+          };
+        },
+      }),
+      /does not satisfy private automation config controls/u,
+    );
+
     const claudeProfile = createPrivateAutomationProfile({
       model: 'claude-sonnet-5',
       outputSchemaPath,
@@ -428,7 +467,6 @@ describe('private Agent Host automation profile', () => {
     const claudeHelp = [
       '--disable-slash-commands',
       '--input-format',
-      '--json-schema',
       '--mcp-config',
       '--no-chrome',
       '--no-session-persistence',
@@ -443,6 +481,12 @@ describe('private Agent Host automation profile', () => {
     }, {
       spawnSyncImpl: () => ({ status: 0, stdout: claudeHelp }),
     }), true);
+  });
+
+  test('prefers the RUDI Claude wrapper that mediates private authentication', () => {
+    const resolvePaths = getAgentProviderConfig('claude').binary.resolvePaths;
+    assert.equal(resolvePaths[0], '~/.rudi/bins/claude');
+    assert.equal(resolvePaths.includes('~/.local/bin/claude'), true);
   });
 
   test('isolates the integrated spawn, transient result, database, and launch artifacts', async () => {
