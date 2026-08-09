@@ -16710,7 +16710,7 @@ var require_core = __commonJS({
         uriResolver
       };
     }
-    var Ajv2 = class {
+    var Ajv3 = class {
       constructor(opts = {}) {
         this.schemas = {};
         this.refs = {};
@@ -17080,9 +17080,9 @@ var require_core = __commonJS({
         }
       }
     };
-    Ajv2.ValidationError = validation_error_1.default;
-    Ajv2.MissingRefError = ref_error_1.default;
-    exports2.default = Ajv2;
+    Ajv3.ValidationError = validation_error_1.default;
+    Ajv3.MissingRefError = ref_error_1.default;
+    exports2.default = Ajv3;
     function checkOptions(checkOpts, options, msg, log = "error") {
       for (const key in checkOpts) {
         const opt = key;
@@ -19184,7 +19184,7 @@ var require_ajv = __commonJS({
     var draft7MetaSchema = require_json_schema_draft_07();
     var META_SUPPORT_DATA = ["/properties"];
     var META_SCHEMA_ID = "http://json-schema.org/draft-07/schema";
-    var Ajv2 = class extends core_1.default {
+    var Ajv3 = class extends core_1.default {
       _addVocabularies() {
         super._addVocabularies();
         draft7_1.default.forEach((v) => this.addVocabulary(v));
@@ -19203,11 +19203,11 @@ var require_ajv = __commonJS({
         return this.opts.defaultMeta = super.defaultMeta() || (this.getSchema(META_SCHEMA_ID) ? META_SCHEMA_ID : void 0);
       }
     };
-    exports2.Ajv = Ajv2;
-    module2.exports = exports2 = Ajv2;
-    module2.exports.Ajv = Ajv2;
+    exports2.Ajv = Ajv3;
+    module2.exports = exports2 = Ajv3;
+    module2.exports.Ajv = Ajv3;
     Object.defineProperty(exports2, "__esModule", { value: true });
-    exports2.default = Ajv2;
+    exports2.default = Ajv3;
     var validate_1 = require_validate();
     Object.defineProperty(exports2, "KeywordCxt", { enumerable: true, get: function() {
       return validate_1.KeywordCxt;
@@ -29804,6 +29804,7 @@ function renderAgentEvent(event) {
 var import_node_fs5 = __toESM(require("node:fs"), 1);
 var import_node_path4 = __toESM(require("node:path"), 1);
 var import_node_child_process2 = require("node:child_process");
+var import_ajv2 = __toESM(require_ajv(), 1);
 
 // src/agent-host/providers/catalog.js
 var import_node_fs4 = require("node:fs");
@@ -30872,7 +30873,7 @@ var PRIVATE_AUTOMATION_MAX_TIMEOUT_MS = 165e3;
 var PRIVATE_AUTOMATION_DEFAULT_TIMEOUT_MS = 16e4;
 var PRIVATE_PROVIDERS = /* @__PURE__ */ new Set(["claude", "codex"]);
 var PRIVATE_RAW_EVENT_TYPES = Object.freeze({
-  claude: /* @__PURE__ */ new Set(["assistant", "error", "rate_limit_event", "result", "system"]),
+  claude: /* @__PURE__ */ new Set(["assistant", "error", "rate_limit_event", "result", "system", "user"]),
   codex: /* @__PURE__ */ new Set([
     "error",
     "item.completed",
@@ -30896,6 +30897,16 @@ var PRIVATE_CLAUDE_THINKING_TOKEN_KEYS = /* @__PURE__ */ new Set([
   "type",
   "uuid"
 ]);
+var PRIVATE_CLAUDE_SYNTHETIC_USER_KEYS = /* @__PURE__ */ new Set([
+  "isSynthetic",
+  "message",
+  "parent_tool_use_id",
+  "session_id",
+  "timestamp",
+  "type",
+  "uuid"
+]);
+var PRIVATE_OUTPUT_SCHEMA_COMPILER = new import_ajv2.default({ allErrors: true, strict: false });
 var PRIVATE_CODEX_DISABLED_FEATURES = Object.freeze([
   "apps",
   "browser_use",
@@ -30970,10 +30981,17 @@ function readOutputSchema(outputSchemaPath) {
   if (containsSchemaReference(schema)) {
     throw new Error("external schema references are forbidden in private automation");
   }
+  let validate;
+  try {
+    validate = PRIVATE_OUTPUT_SCHEMA_COMPILER.compile(schema);
+  } catch {
+    throw new Error("private automation output schema cannot be compiled");
+  }
   return Object.freeze({
     canonical: JSON.stringify(schema),
     path: import_node_fs5.default.realpathSync(requested),
-    schema: Object.freeze(schema)
+    schema: Object.freeze(schema),
+    validate
   });
 }
 function exactConfiguredModel(provider, model) {
@@ -31097,6 +31115,13 @@ function assertPrivateAutomationRawEvent(provider, event, expectedModel = null) 
     const content = Array.isArray(event.content) ? event.content : Array.isArray(message?.content) ? message.content : [];
     if (content.some((block) => !block || typeof block !== "object" || !PRIVATE_CLAUDE_ASSISTANT_BLOCK_TYPES.has(block.type))) {
       throw new Error("private automation Claude content block is not allowlisted");
+    }
+  }
+  if (provider === "claude" && event.type === "user") {
+    const content = Array.isArray(event.message?.content) ? event.message.content : [];
+    const textBytes = content.reduce((total, block) => total + (typeof block?.text === "string" ? Buffer.byteLength(block.text, "utf8") : 0), 0);
+    if (event.isSynthetic !== true || event.parent_tool_use_id != null || Object.keys(event).some((key) => !PRIVATE_CLAUDE_SYNTHETIC_USER_KEYS.has(key)) || event.message?.role !== "user" || content.length < 1 || content.length > 4 || content.some((block) => block?.type !== "text" || typeof block.text !== "string") || textBytes > 4096) {
+      throw new Error("private automation Claude synthetic user metadata is invalid");
     }
   }
   if (provider === "claude" && event.type === "result" && expectedModel != null) {
@@ -31250,6 +31275,21 @@ function boundedAppend(current, value, maxLength = 4096) {
 function writeLine(stream, value) {
   stream.write(value.endsWith("\n") ? value : `${value}
 `);
+}
+function parsePrivateFinalOutput(value) {
+  if (typeof value !== "string") return value;
+  const trimmed = value.trim();
+  try {
+    return JSON.parse(trimmed);
+  } catch {
+    const fenced = trimmed.match(/^```(?:json)?[ \t]*\r?\n([\s\S]*?)\r?\n```$/u);
+    if (!fenced) throw new Error("invalid");
+    try {
+      return JSON.parse(fenced[1]);
+    } catch {
+      throw new Error("invalid");
+    }
+  }
 }
 function executeForegroundLaunch({
   eventSink = null,
@@ -31457,7 +31497,7 @@ function executeForegroundLaunch({
           lastError = "Private automation failed: private_model_unobserved";
         } else if (status === "completed") {
           try {
-            const parsed = typeof privateFinalOutput === "string" ? JSON.parse(privateFinalOutput) : privateFinalOutput;
+            const parsed = parsePrivateFinalOutput(privateFinalOutput);
             if (!parsed || typeof parsed !== "object" || Array.isArray(parsed)) {
               throw new Error("not_object");
             }
@@ -31465,10 +31505,14 @@ function executeForegroundLaunch({
             if (Buffer.byteLength(serialized, "utf8") > plan.maxFinalOutputBytes) {
               throw new Error("too_large");
             }
+            if (!plan.privateAutomationProfile.outputSchema.validate(parsed)) {
+              throw new Error("schema");
+            }
             privateFinalOutput = parsed;
           } catch (error) {
             status = "failed";
-            lastError = `Private automation failed: ${error.message === "too_large" ? "private_final_output_overflow" : "private_final_output_invalid"}`;
+            const reason = error.message === "too_large" ? "private_final_output_overflow" : error.message === "schema" ? "private_final_output_schema_invalid" : "private_final_output_invalid";
+            lastError = `Private automation failed: ${reason}`;
           }
         } else {
           lastError = timedOut ? "Private automation failed: private_timeout" : requestedSignal ? "Private automation failed: private_stopped" : "Private automation failed: private_provider_error";

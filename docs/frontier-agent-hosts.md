@@ -103,14 +103,17 @@ in its JSONL stream; Codex JSONL does not otherwise echo the selected model.
 Claude must report terminal model usage containing only the requested exact
 model. Missing or different Claude model identity fails closed.
 
-Claude structured output is enforced by RUDI after the provider returns plain
-JSON. The private profile deliberately does not pass Claude `--json-schema`,
+Claude structured output is enforced by RUDI after the provider returns JSON.
+RUDI accepts either plain JSON or exactly one JSON Markdown fence, rejects any
+surrounding prose, and validates the parsed object against the caller's closed
+schema. The private profile deliberately does not pass Claude `--json-schema`,
 because that CLI surface materializes a provider `StructuredOutput` tool. The
 launcher disables all Claude tools and nonessential/auxiliary model traffic,
 pins classifier and subagent model variables to the requested model, and
 rejects terminal model-usage metadata unless it names only that exact model.
-Claude `thinking_tokens` progress events are accepted only as a closed numeric
-metadata shape; their session identifiers and token estimates are not persisted.
+Claude `thinking_tokens` progress and synthetic provider-control events are
+accepted only as closed, bounded shapes; their content, session identifiers,
+and token estimates are not persisted.
 
 Private use still requires an organization-approved provider/model egress
 contract and a synthetic no-tool launch for each exact installed provider and

@@ -1,6 +1,7 @@
 import fs from 'node:fs';
 import path from 'node:path';
 import { spawnSync } from 'node:child_process';
+import Ajv from 'ajv';
 
 import { getModelDef, loadProviderConfig } from './providers/catalog.js';
 
@@ -14,7 +15,7 @@ export const PRIVATE_AUTOMATION_DEFAULT_TIMEOUT_MS = 160_000;
 
 const PRIVATE_PROVIDERS = new Set(['claude', 'codex']);
 const PRIVATE_RAW_EVENT_TYPES = Object.freeze({
-  claude: new Set(['assistant', 'error', 'rate_limit_event', 'result', 'system']),
+  claude: new Set(['assistant', 'error', 'rate_limit_event', 'result', 'system', 'user']),
   codex: new Set([
     'error',
     'item.completed',
@@ -40,6 +41,16 @@ const PRIVATE_CLAUDE_THINKING_TOKEN_KEYS = new Set([
   'type',
   'uuid',
 ]);
+const PRIVATE_CLAUDE_SYNTHETIC_USER_KEYS = new Set([
+  'isSynthetic',
+  'message',
+  'parent_tool_use_id',
+  'session_id',
+  'timestamp',
+  'type',
+  'uuid',
+]);
+const PRIVATE_OUTPUT_SCHEMA_COMPILER = new Ajv({ allErrors: true, strict: false });
 const PRIVATE_CODEX_DISABLED_FEATURES = Object.freeze([
   'apps',
   'browser_use',
@@ -118,10 +129,17 @@ function readOutputSchema(outputSchemaPath) {
   if (containsSchemaReference(schema)) {
     throw new Error('external schema references are forbidden in private automation');
   }
+  let validate;
+  try {
+    validate = PRIVATE_OUTPUT_SCHEMA_COMPILER.compile(schema);
+  } catch {
+    throw new Error('private automation output schema cannot be compiled');
+  }
   return Object.freeze({
     canonical: JSON.stringify(schema),
     path: fs.realpathSync(requested),
     schema: Object.freeze(schema),
+    validate,
   });
 }
 
@@ -276,6 +294,24 @@ export function assertPrivateAutomationRawEvent(provider, event, expectedModel =
       || !PRIVATE_CLAUDE_ASSISTANT_BLOCK_TYPES.has(block.type)
     ))) {
       throw new Error('private automation Claude content block is not allowlisted');
+    }
+  }
+  if (provider === 'claude' && event.type === 'user') {
+    const content = Array.isArray(event.message?.content) ? event.message.content : [];
+    const textBytes = content.reduce((total, block) => (
+      total + (typeof block?.text === 'string' ? Buffer.byteLength(block.text, 'utf8') : 0)
+    ), 0);
+    if (
+      event.isSynthetic !== true
+      || event.parent_tool_use_id != null
+      || Object.keys(event).some(key => !PRIVATE_CLAUDE_SYNTHETIC_USER_KEYS.has(key))
+      || event.message?.role !== 'user'
+      || content.length < 1
+      || content.length > 4
+      || content.some(block => block?.type !== 'text' || typeof block.text !== 'string')
+      || textBytes > 4096
+    ) {
+      throw new Error('private automation Claude synthetic user metadata is invalid');
     }
   }
   if (provider === 'claude' && event.type === 'result' && expectedModel != null) {
