@@ -386,6 +386,26 @@ describe('private Agent Host automation profile', () => {
       type: 'system',
     }), /thinking-token metadata is invalid/u);
     assert.doesNotThrow(() => assertPrivateAutomationRawEvent('claude', {
+      isSynthetic: true,
+      message: {
+        content: [{ text: privatePrompt, type: 'text' }],
+        role: 'user',
+      },
+      parent_tool_use_id: null,
+      session_id: 'private-session-id',
+      timestamp: '2026-08-08T00:00:00.000Z',
+      type: 'user',
+      uuid: 'private-event-id',
+    }));
+    assert.throws(() => assertPrivateAutomationRawEvent('claude', {
+      isSynthetic: false,
+      message: {
+        content: [{ text: privatePrompt, type: 'text' }],
+        role: 'user',
+      },
+      type: 'user',
+    }), /synthetic user metadata is invalid/u);
+    assert.doesNotThrow(() => assertPrivateAutomationRawEvent('claude', {
       type: 'result',
       modelUsage: { 'claude-sonnet-5': { inputTokens: 1, outputTokens: 1 } },
     }, 'claude-sonnet-5'));
@@ -599,6 +619,107 @@ describe('private Agent Host automation profile', () => {
     }
   });
 
+  test('validates a single fenced Claude JSON result without persisting provider content', async () => {
+    const { artifactsRoot, originDirectory, outputSchemaPath, root } = fixture();
+    const profile = createPrivateAutomationProfile({
+      model: 'claude-sonnet-5',
+      outputSchemaPath,
+      provider: 'claude',
+      timeoutMs: 160_000,
+    });
+    const store = createLaunchStore({ databasePath: path.join(root, 'agent-hosts.db') });
+    const stdout = memorySink();
+    const fenced = '```json\n{"category":"conversation","schemaVersion":1}\n```';
+    const spawnImpl = () => {
+      const child = new EventEmitter();
+      child.pid = 9052;
+      child.stdin = new PassThrough();
+      child.stdout = new PassThrough();
+      child.stderr = new PassThrough();
+      child.kill = () => true;
+      child.stdin.once('finish', () => queueMicrotask(() => {
+        child.emit('spawn');
+        for (const event of [
+          {
+            mcp_servers: [],
+            model: 'claude-sonnet-5',
+            subtype: 'init',
+            tools: [],
+            type: 'system',
+          },
+          {
+            estimated_tokens: 10,
+            estimated_tokens_delta: 2,
+            subtype: 'thinking_tokens',
+            type: 'system',
+          },
+          {
+            isSynthetic: true,
+            message: {
+              content: [{ text: privatePrompt, type: 'text' }],
+              role: 'user',
+            },
+            parent_tool_use_id: null,
+            type: 'user',
+          },
+          {
+            message: {
+              content: [{ text: fenced, type: 'text' }],
+              model: 'claude-sonnet-5',
+            },
+            type: 'assistant',
+          },
+          {
+            modelUsage: { 'claude-sonnet-5': { inputTokens: 1, outputTokens: 1 } },
+            result: fenced,
+            type: 'result',
+            usage: { input_tokens: 1, output_tokens: 1 },
+          },
+        ]) child.stdout.write(`${JSON.stringify(event)}\n`);
+        child.stdout.end();
+        child.stderr.end();
+        child.emit('close', 0, null);
+      }));
+      return child;
+    };
+    try {
+      const launch = await launchAgent({
+        json: true,
+        model: profile.model,
+        originDirectory,
+        permissionMode: 'plan',
+        privateAutomationProfile: profile,
+        prompt: privatePrompt,
+        provider: profile.provider,
+        timeoutMs: profile.timeoutMs,
+        workspaceMode: 'read-only',
+      }, {
+        artifactsRoot,
+        idFactory: () => 'launch_claude_fenced_json',
+        preflightImpl: async () => ({ authenticated: true, installed: true }),
+        privatePreflightImpl: async () => true,
+        resolveBinaryImpl: () => '/fake/claude',
+        spawnImpl,
+        stderr: memorySink().sink,
+        stdout: stdout.sink,
+        store,
+      });
+      assert.equal(launch.status, 'completed');
+      assert.deepEqual(JSON.parse(stdout.value()).output, {
+        category: 'conversation',
+        schemaVersion: 1,
+      });
+      const persisted = fs.readFileSync(
+        getLaunchArtifactFiles(path.join(artifactsRoot, 'launch_claude_fenced_json')).events,
+        'utf8',
+      );
+      assert.equal(persisted.includes(privatePrompt), false);
+      assert.equal(persisted.includes('conversation'), false);
+    } finally {
+      store.close();
+    }
+  });
+
   for (const [label, spawnOptions, expectedError] of [
     ['malformed provider output', { malformed: true }, 'private_output_malformed'],
     ['provider tool execution', { tool: true }, 'private_tool_event'],
@@ -714,6 +835,21 @@ describe('private Agent Host automation profile', () => {
         })}\n`);
       },
     },
+    {
+      expected: 'private_final_output_schema_invalid',
+      label: 'final structured output schema mismatch',
+      write(child) {
+        child.stdout.write(`${JSON.stringify({
+          item: {
+            id: 'message-1',
+            model: 'gpt-5.6-luna',
+            text: JSON.stringify({ category: 'not-allowed', schemaVersion: 1 }),
+            type: 'agent_message',
+          },
+          type: 'item.completed',
+        })}\n`);
+      },
+    },
   ]) {
     test(`fails closed on ${scenario.label}`, async () => {
       const { artifactsRoot, originDirectory, outputSchemaPath, root } = fixture();
@@ -738,6 +874,7 @@ describe('private Agent Host automation profile', () => {
           child.stderr.end();
           child.emit('close', [
             'private_final_output_overflow',
+            'private_final_output_schema_invalid',
             'private_model_unobserved',
           ].includes(scenario.expected) ? 0 : 1, null);
         }));

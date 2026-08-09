@@ -19,6 +19,22 @@ function writeLine(stream, value) {
   stream.write(value.endsWith('\n') ? value : `${value}\n`);
 }
 
+function parsePrivateFinalOutput(value) {
+  if (typeof value !== 'string') return value;
+  const trimmed = value.trim();
+  try {
+    return JSON.parse(trimmed);
+  } catch {
+    const fenced = trimmed.match(/^```(?:json)?[ \t]*\r?\n([\s\S]*?)\r?\n```$/u);
+    if (!fenced) throw new Error('invalid');
+    try {
+      return JSON.parse(fenced[1]);
+    } catch {
+      throw new Error('invalid');
+    }
+  }
+}
+
 export function executeForegroundLaunch({
   eventSink = null,
   jsonOutput = false,
@@ -254,9 +270,7 @@ export function executeForegroundLaunch({
           lastError = 'Private automation failed: private_model_unobserved';
         } else if (status === 'completed') {
           try {
-            const parsed = typeof privateFinalOutput === 'string'
-              ? JSON.parse(privateFinalOutput)
-              : privateFinalOutput;
+            const parsed = parsePrivateFinalOutput(privateFinalOutput);
             if (!parsed || typeof parsed !== 'object' || Array.isArray(parsed)) {
               throw new Error('not_object');
             }
@@ -264,10 +278,18 @@ export function executeForegroundLaunch({
             if (Buffer.byteLength(serialized, 'utf8') > plan.maxFinalOutputBytes) {
               throw new Error('too_large');
             }
+            if (!plan.privateAutomationProfile.outputSchema.validate(parsed)) {
+              throw new Error('schema');
+            }
             privateFinalOutput = parsed;
           } catch (error) {
             status = 'failed';
-            lastError = `Private automation failed: ${error.message === 'too_large' ? 'private_final_output_overflow' : 'private_final_output_invalid'}`;
+            const reason = error.message === 'too_large'
+              ? 'private_final_output_overflow'
+              : error.message === 'schema'
+                ? 'private_final_output_schema_invalid'
+                : 'private_final_output_invalid';
+            lastError = `Private automation failed: ${reason}`;
           }
         } else {
           lastError = timedOut

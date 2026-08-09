@@ -57,12 +57,12 @@
 ## Phase 4: Green Tests And Refactor
 
 - Status: complete for focused and adjacent regression suites.
-- Focused result: 16/16 passing, including pre-egress provider capability
+- Focused result: 18/18 passing, including pre-egress provider capability
   gating and argv/stdin/env/workspace/artifact/DB
   isolation, malformed output, closed provider event types, Claude
   missing/different observed model identity, contradictory Codex model fields,
-  tool events, process-group termination, raw/final
-  overflow, timeout, and forbidden command surfaces.
+  tool events, process-group termination, raw/final overflow, exact single-fence
+  parsing, schema rejection, timeout, and forbidden command surfaces.
 - Adjacent result: 42/42 passing across Agent Host command, launch, provider,
   provider-environment, workspace, and model suites.
 
@@ -74,11 +74,12 @@
   check, changed-file debt scan, package dry-run, argv/artifact/log privacy
   smoke tests, and exact provider probes with synthetic data.
 - Completed evidence:
-  - full test: 633/633 passing on the combined CLI 1.10.15 lineage outside the network-bind sandbox; the initial
+  - full test: 635/635 passing on the combined CLI 1.10.15 lineage outside the
+    network-bind sandbox; the initial
     sandboxed run had only the expected localhost `EPERM` smoke-test failure;
   - build: passing; two builds produced identical SHA-256 hashes
     (`dist/index.cjs` =
-    `b48ce66b742dbe4990939447500e2e0d6a236435964d90acc823053e72615e97`);
+    `e2b0986bb8f396ff829700bfa2b82bafdcdaa870bf7ca5d1f468ddf0bdac54c0`);
   - package dry-run: six expected package entries only;
   - RUDI debt scan, `pr-review` profile: zero findings;
   - integrated synthetic privacy tests: prompt absent from provider argv,
