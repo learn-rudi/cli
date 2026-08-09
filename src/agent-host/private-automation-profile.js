@@ -27,6 +27,9 @@ const PRIVATE_RAW_EVENT_TYPES = Object.freeze({
   ]),
 });
 const PRIVATE_CODEX_ITEM_TYPES = new Set(['agent_message', 'reasoning']);
+const PRIVATE_CODEX_DISABLED_CAPABILITY_DIAGNOSTIC = (
+  'Code Mode is unavailable because code-mode host is disabled.'
+);
 const PRIVATE_CLAUDE_ASSISTANT_BLOCK_TYPES = new Set(['text', 'thinking']);
 const PRIVATE_CLAUDE_SYSTEM_SUBTYPES = new Set(['init']);
 const PRIVATE_CODEX_DISABLED_FEATURES = Object.freeze([
@@ -48,6 +51,7 @@ const PRIVATE_CODEX_DISABLED_FEATURES = Object.freeze([
   'tool_call_mcp_elicitation',
   'tool_suggest',
   'unified_exec',
+  'view_image',
 ]);
 
 export function getPrivateCodexDisabledFeatures() {
@@ -217,12 +221,17 @@ export function assertPrivateAutomationRawEvent(provider, event, expectedModel =
   if (!PRIVATE_RAW_EVENT_TYPES[provider].has(event.type)) {
     throw new Error('private automation provider event type is not allowlisted');
   }
-  if (
-    provider === 'codex'
-    && event.type.startsWith('item.')
-    && !PRIVATE_CODEX_ITEM_TYPES.has(event.item?.type)
-  ) {
-    throw new Error('private automation Codex item type is not allowlisted');
+  if (provider === 'codex' && event.type.startsWith('item.')) {
+    const itemType = event.item?.type;
+    const isBlockedCapabilityDiagnostic = (
+      event.type === 'item.completed'
+      && itemType === 'error'
+      && typeof event.item?.message === 'string'
+      && event.item.message.startsWith(PRIVATE_CODEX_DISABLED_CAPABILITY_DIAGNOSTIC)
+    );
+    if (!PRIVATE_CODEX_ITEM_TYPES.has(itemType) && !isBlockedCapabilityDiagnostic) {
+      throw new Error('private automation Codex item type is not allowlisted');
+    }
   }
   if (provider === 'claude' && event.type === 'system') {
     if (!PRIVATE_CLAUDE_SYSTEM_SUBTYPES.has(event.subtype)) {
@@ -310,7 +319,6 @@ export function assertPrivateAutomationHostCapabilities({ binaryPath, profile },
     configArgs.push(
       '-c', 'mcp_servers={}',
       '-c', 'web_search="disabled"',
-      '-c', 'tools.view_image=false',
       'exec', '-',
       '--json',
       '--skip-git-repo-check',

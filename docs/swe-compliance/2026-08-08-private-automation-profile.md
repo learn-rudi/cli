@@ -57,10 +57,11 @@
 ## Phase 4: Green Tests And Refactor
 
 - Status: complete for focused and adjacent regression suites.
-- Focused result: 17/17 passing, including pre-egress provider capability
+- Focused result: 16/16 passing, including pre-egress provider capability
   gating and argv/stdin/env/workspace/artifact/DB
-  isolation, malformed output, closed Claude event types, missing/different
-  observed model identity, tool event, process-group termination, raw/final
+  isolation, malformed output, closed provider event types, Claude
+  missing/different observed model identity, contradictory Codex model fields,
+  tool events, process-group termination, raw/final
   overflow, timeout, and forbidden command surfaces.
 - Adjacent result: 42/42 passing across Agent Host command, launch, provider,
   provider-environment, workspace, and model suites.
@@ -73,17 +74,21 @@
   check, changed-file debt scan, package dry-run, argv/artifact/log privacy
   smoke tests, and exact provider probes with synthetic data.
 - Completed evidence:
-  - full test: 634/634 passing on the combined CLI 1.10.15 lineage outside the network-bind sandbox; the initial
+  - full test: 633/633 passing on the combined CLI 1.10.15 lineage outside the network-bind sandbox; the initial
     sandboxed run had only the expected localhost `EPERM` smoke-test failure;
-  - build: passing; two builds produced identical SHA-256 hashes;
+  - build: passing; two builds produced identical SHA-256 hashes
+    (`dist/index.cjs` =
+    `735395bb2d2e9fe6deaa9a61c8f3714c80c0da0ce546c8ba61a7f67a60c586c7`);
   - package dry-run: six expected package entries only;
   - RUDI debt scan, `pr-review` profile: zero findings;
   - integrated synthetic privacy tests: prompt absent from provider argv,
     environment, stderr, database, native session field, and artifacts;
-  - Codex 0.146.0-alpha.10.1: authenticated but rejected by the empty-stdin
-    strict-config sentinel because that published build does not recognize
-    `tools.view_image`; the Luna lane stays disabled until an installed build
-    accepts every no-tool field and passes the live probe;
+  - Codex 0.147.0: its official release binary accepts `view_image` as an
+    explicitly disabled feature in the empty-stdin strict-config sentinel. A
+    direct benign probe returned the requested closed JSON and emitted only a
+    fail-closed diagnostic that Code Mode was unavailable because its host was
+    disabled. The Luna lane stays disabled until that exact binary is installed
+    and the integrated RUDI live probe repeats that result;
   - Claude 2.1.226: authenticated through the RUDI secret-mediated wrapper. A
     benign live provider probe with tools empty, nonessential traffic disabled,
     no fallback, simple prompt mode, and post-response schema validation

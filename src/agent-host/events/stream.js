@@ -50,7 +50,13 @@ export function executeForegroundLaunch({
     let sinkFailure = null;
     let privateFailure = null;
     let privateFinalOutput = null;
-    let privateObservedModel = null;
+    // Codex's JSONL stream does not currently echo the selected model. Its
+    // private plan is still exact: a canonical model is supplied with `-m`,
+    // user config is ignored, and the CLI has no fallback-model input. Claude
+    // does report modelUsage, so it remains provider-observed below.
+    let privateObservedModel = privateAutomation && plan.provider === 'codex'
+      ? plan.model
+      : null;
     let privateRawOutputBytes = 0;
     let privateUsage = null;
 
