@@ -18,6 +18,7 @@ import fs from 'fs';
 import path from 'path';
 import os from 'os';
 import { createWhichCommand, runCommand, runCommandPlan } from '../utils/subprocess.js';
+import { inspectCodexInstallation } from '../codex-installation.js';
 
 // Agent credential checks
 const AGENT_CREDENTIALS = {
@@ -97,6 +98,19 @@ function findRudiAgentBin(name) {
   return null;
 }
 
+export function getCodexCheckResult(inspection) {
+  const installed = inspection.standalone.verified;
+  const versionMatch = inspection.standalone.version?.match(/(\d+\.\d+\.?\d*)/);
+  return {
+    installed,
+    path: installed ? inspection.standalone.path : null,
+    source: installed ? 'system' : null,
+    version: versionMatch?.[1] || null,
+    legacyPaths: inspection.legacy.map(entry => entry.path),
+    externalDuplicatePaths: inspection.externalDuplicates.map(entry => entry.path),
+  };
+}
+
 /**
  * Auto-detect package kind by checking filesystem locations
  * Priority: agent > runtime > binary > stack (checks where it exists)
@@ -174,28 +188,33 @@ export async function cmdCheck(args, flags) {
   // Check installation based on kind
   switch (kind) {
     case 'agent': {
-      // Check RUDI global location first (preferred)
-      const rudiPath = findRudiAgentBin(name);
-      const rudiInstalled = !!rudiPath;
+      if (name === 'codex') {
+        const inspectCodex = flags.codexInspectionProvider || inspectCodexInstallation;
+        Object.assign(result, getCodexCheckResult(inspectCodex()));
+      } else {
+        // Check RUDI global location first (preferred for legacy agent packages).
+        const rudiPath = findRudiAgentBin(name);
+        const rudiInstalled = !!rudiPath;
 
-      // Check global PATH as fallback
-      let globalPath = null;
-      let globalInstalled = false;
-      if (!rudiInstalled) {
-        const which = findGlobalBinary(name);
-        // Make sure it's not a RUDI shim
-        if (which && !which.includes('.rudi/bins') && !which.includes('.rudi/shims')) {
-          globalPath = which;
-          globalInstalled = true;
+        // Check global PATH as fallback
+        let globalPath = null;
+        let globalInstalled = false;
+        if (!rudiInstalled) {
+          const which = findGlobalBinary(name);
+          // Make sure it's not a RUDI shim
+          if (which && !which.includes('.rudi/bins') && !which.includes('.rudi/shims')) {
+            globalPath = which;
+            globalInstalled = true;
+          }
         }
-      }
 
-      result.installed = rudiInstalled || globalInstalled;
-      result.path = rudiInstalled ? rudiPath : globalPath;
-      result.source = rudiInstalled ? 'rudi' : (globalInstalled ? 'global' : null);
+        result.installed = rudiInstalled || globalInstalled;
+        result.path = rudiInstalled ? rudiPath : globalPath;
+        result.source = rudiInstalled ? 'rudi' : (globalInstalled ? 'global' : null);
 
-      if (result.installed && result.path) {
-        result.version = getVersion(result.path);
+        if (result.installed && result.path) {
+          result.version = getVersion(result.path);
+        }
       }
 
       // Check credentials

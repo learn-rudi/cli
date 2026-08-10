@@ -11,10 +11,57 @@ import {
 import { getPlatformArch, isPackageInstalled, parsePackageId } from '@learnrudi/env';
 
 const SINGLE_FILE_KINDS = new Set(['skill', 'prompt', 'workflow']);
+const CODEX_STANDALONE_INSTALL_HINT =
+  "Install or update Codex with OpenAI's standalone installer: curl -fsSL https://chatgpt.com/codex/install.sh | sh";
+
+export function isProviderOwnedAgentId(id) {
+  const normalized = String(id || '').trim();
+  return normalized === 'agent:codex' || normalized === 'codex';
+}
+
+function getProviderOwnedAgentFallback(id) {
+  if (!isProviderOwnedAgentId(id)) return null;
+  return {
+    id: 'agent:codex',
+    kind: 'agent',
+    name: 'OpenAI Codex',
+    version: 'system',
+    delivery: 'system',
+    install: { source: 'system' },
+    bins: ['codex'],
+    detect: { command: 'codex --version', expectExitCode: 0 },
+    auth: { required: true, command: 'codex login' },
+    installHints: { manual: CODEX_STANDALONE_INSTALL_HINT },
+  };
+}
+
+function enforceProviderOwnedAgent(pkg) {
+  if (pkg?.id !== 'agent:codex') return pkg;
+
+  return {
+    ...pkg,
+    version: 'system',
+    delivery: 'system',
+    install: { source: 'system' },
+    installType: 'system',
+    npmPackage: undefined,
+    installHints: {
+      ...pkg.installHints,
+      manual: pkg.installHints?.manual || CODEX_STANDALONE_INSTALL_HINT,
+    },
+  };
+}
 
 async function getInstallableRegistryPackage(id) {
-  const pkg = await getPackage(id);
-  if (!pkg) return null;
+  let pkg;
+  try {
+    pkg = await getPackage(id);
+  } catch (error) {
+    const fallback = getProviderOwnedAgentFallback(id);
+    if (fallback) return enforceProviderOwnedAgent(fallback);
+    throw error;
+  }
+  if (!pkg) return getProviderOwnedAgentFallback(id);
 
   const isCanonicalV2Package = Boolean(pkg.delivery && pkg.install?.source);
   let manifest = null;
@@ -23,9 +70,11 @@ async function getInstallableRegistryPackage(id) {
   }
 
   const merged = manifest ? { ...pkg, ...manifest } : pkg;
-  return isCanonicalV2Package
+  const resolved = isCanonicalV2Package
     ? resolveRegistryPackageForPlatform(merged, getPlatformArch())
     : merged;
+  // Keep the CLI safe while older Registry indexes age out of caches/CDNs.
+  return enforceProviderOwnedAgent(resolved);
 }
 
 /**

@@ -1,5 +1,5 @@
-import { readFileSync, readdirSync, existsSync } from 'node:fs';
-import { join, dirname, basename } from 'node:path';
+import { readFileSync, readdirSync, existsSync, realpathSync } from 'node:fs';
+import { join, dirname, basename, isAbsolute, relative, resolve } from 'node:path';
 import { homedir } from 'node:os';
 import { createWhichCommand, runCommandPlan } from '../../utils/subprocess.js';
 
@@ -41,22 +41,47 @@ export function loadProviderConfig(providerId) {
  * Checks each path in config.binary.resolvePaths (expanding ~ to homedir),
  * then falls back to `which` if configured.
  */
-export function resolveProviderBinary(config) {
-  const home = homedir();
+export function resolveProviderBinary(config, options = {}) {
+  const home = options.home || homedir();
+  const rudiHome = options.rudiHome || join(home, '.rudi');
   const arch = process.arch;
+  const pathExists = options.existsSync || existsSync;
+  const resolveRealpath = options.realpathSync || realpathSync;
+  const findOnPath = options.findOnPath || ((name) => (
+    runCommandPlan(createWhichCommand(name), { encoding: 'utf-8' }).trim()
+  ));
+  const acceptCandidate = (candidate) => {
+    if (!candidate) return null;
+    if (!config.binary.rejectRudiOwned) return candidate;
+
+    let canonical = candidate;
+    try {
+      canonical = resolveRealpath(candidate);
+    } catch {
+      // An existing candidate can still be classified by its lexical path.
+    }
+
+    const isInsideRudi = (candidatePath) => {
+      const delta = relative(resolve(rudiHome), resolve(candidatePath));
+      return delta === '' || (!delta.startsWith('..') && !isAbsolute(delta));
+    };
+
+    return isInsideRudi(candidate) || isInsideRudi(canonical) ? null : candidate;
+  };
 
   for (const rawPath of config.binary.resolvePaths) {
     const resolved = rawPath
       .replace(/^~/, home)
       .replace(/\{arch\}/g, arch);
-    if (existsSync(resolved)) {
-      return resolved;
+    if (pathExists(resolved)) {
+      const accepted = acceptCandidate(resolved);
+      if (accepted) return accepted;
     }
   }
 
   if (config.binary.fallback === 'which') {
     try {
-      return runCommandPlan(createWhichCommand(config.binary.name), { encoding: 'utf-8' }).trim();
+      return acceptCandidate(findOnPath(config.binary.name));
     } catch {
       // which failed — binary not found
     }

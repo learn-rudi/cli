@@ -23,6 +23,13 @@ test('commands: install exports cmdInstall function', async () => {
   assert.strictEqual(typeof cmdInstall, 'function');
 });
 
+test('commands: install does not require a registry refresh for provider-owned Codex', async () => {
+  const { shouldRefreshRegistryForInstall } = await import('../../commands/install.js');
+  assert.strictEqual(shouldRefreshRegistryForInstall('agent:codex'), false);
+  assert.strictEqual(shouldRefreshRegistryForInstall('codex'), false);
+  assert.strictEqual(shouldRefreshRegistryForInstall('stack:video-editor'), true);
+});
+
 test('commands: run exports cmdRun function', async () => {
   const { cmdRun } = await import('../../commands/run.js');
   assert.strictEqual(typeof cmdRun, 'function');

@@ -374,3 +374,75 @@ test('installPackage registers system agents instead of downloading them', () =>
     fs.rmSync(root, { recursive: true, force: true });
   }
 });
+
+test('installPackage rejects a RUDI-owned executable for a system agent without mutating legacy state', () => {
+  const root = fs.mkdtempSync(path.join(os.tmpdir(), 'rudi-system-agent-boundary-'));
+  const rudiHome = path.join(root, '.rudi');
+  const registryRoot = path.join(root, 'registry');
+  const legacyAgentPath = path.join(rudiHome, 'agents', 'codex');
+  const legacyBinary = path.join(rudiHome, 'bins', 'codex');
+  const legacySentinel = path.join(legacyAgentPath, 'legacy-state.json');
+  const codexPackage = {
+    id: 'agent:codex',
+    kind: 'agent',
+    name: 'OpenAI Codex',
+    version: 'system',
+    delivery: 'system',
+    install: { source: 'system' },
+    installHints: {
+      manual: 'Install with https://chatgpt.com/codex/install.sh',
+    },
+    bins: ['codex'],
+    detect: { command: 'codex --version' },
+  };
+
+  fs.mkdirSync(path.join(registryRoot, 'catalog', 'agents'), { recursive: true });
+  fs.mkdirSync(path.dirname(legacyBinary), { recursive: true });
+  fs.mkdirSync(legacyAgentPath, { recursive: true });
+  fs.writeFileSync(legacyBinary, '#!/usr/bin/env bash\necho codex-cli 0.147.0\n');
+  fs.chmodSync(legacyBinary, 0o755);
+  fs.writeFileSync(legacySentinel, '{"owner":"rudi"}');
+  fs.writeFileSync(path.join(registryRoot, 'index.json'), JSON.stringify({
+    schemaVersion: '2',
+    packages: { 'agent:codex': codexPackage },
+  }, null, 2));
+  fs.writeFileSync(
+    path.join(registryRoot, 'catalog', 'agents', 'codex.json'),
+    JSON.stringify(codexPackage, null, 2)
+  );
+
+  try {
+    const script = `
+      const fs = await import('node:fs');
+      const path = await import('node:path');
+      const { installPackage } = await import(process.argv[1]);
+      const result = await installPackage('agent:codex', { force: true });
+      console.log(JSON.stringify({
+        success: result.success,
+        error: result.error,
+        legacyPreserved: fs.existsSync(path.join(
+          process.env.RUDI_HOME,
+          'agents/codex/legacy-state.json'
+        )),
+      }));
+    `;
+    const output = execFileSync(process.execPath, ['--input-type=module', '-e', script, installerUrl], {
+      cwd: repoRoot,
+      env: {
+        ...process.env,
+        PATH: `${path.dirname(legacyBinary)}${path.delimiter}${process.env.PATH || ''}`,
+        RUDI_HOME: rudiHome,
+        USE_LOCAL_REGISTRY: 'true',
+        RUDI_REGISTRY_ROOT: registryRoot,
+      },
+      encoding: 'utf8',
+    });
+
+    const result = JSON.parse(output.trim().split(/\r?\n/).at(-1));
+    assert.equal(result.success, false);
+    assert.match(result.error, /chatgpt\.com\/codex\/install\.sh/);
+    assert.equal(result.legacyPreserved, true);
+  } finally {
+    fs.rmSync(root, { recursive: true, force: true });
+  }
+});

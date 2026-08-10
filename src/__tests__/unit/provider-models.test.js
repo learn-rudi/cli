@@ -8,6 +8,7 @@ import {
   hasCapability,
   listProviders,
   loadProviderConfig,
+  resolveProviderBinary,
   resolveModel,
 } from '../../agent-host/providers/catalog.js';
 
@@ -41,6 +42,32 @@ describe('frontier agent provider registry', () => {
     assert.equal(hasCapability(config, 'forkSession'), true);
     assert.equal(hasCapability(config, 'skills'), true);
     assert.equal(hasCapability(config, 'rawArgs'), true);
+  });
+
+  test('resolves Codex from the standalone install before PATH fallback', () => {
+    const config = loadProviderConfig('codex');
+    const standalonePath = '/Users/test/.local/bin/codex';
+
+    assert.deepEqual(config.binary.resolvePaths, ['~/.local/bin/codex']);
+    assert.equal(resolveProviderBinary(config, {
+      home: '/Users/test',
+      existsSync: candidate => candidate === standalonePath,
+      findOnPath: () => '/Users/test/.rudi/bins/codex',
+      realpathSync: candidate => candidate,
+    }), standalonePath);
+  });
+
+  test('rejects a RUDI-owned Codex returned by PATH fallback', () => {
+    const config = loadProviderConfig('codex');
+
+    assert.equal(config.binary.rejectRudiOwned, true);
+    assert.equal(resolveProviderBinary(config, {
+      home: '/Users/test',
+      rudiHome: '/Users/test/.rudi',
+      existsSync: () => false,
+      findOnPath: () => '/Users/test/.rudi/bins/codex',
+      realpathSync: () => '/Users/test/.rudi/runtimes/node/bin/codex',
+    }), null);
   });
 
   test('passes the current Codex model and workspace through to codex exec', () => {

@@ -51,6 +51,13 @@ async function withCatalog(run) {
       bins: ['agy'],
       detect: { command: 'agy --version' },
     }));
+    await writeFile(path.join(dir, 'agents', 'codex.json'), JSON.stringify({
+      id: 'agent:codex',
+      name: 'OpenAI Codex',
+      install: { source: 'system' },
+      bins: ['codex'],
+      detect: { command: 'codex --version' },
+    }));
 
     await run(dir);
   } finally {
@@ -96,6 +103,15 @@ test('generateManifest is deterministic for unchanged catalog content', async ()
         basePath: 'runtimes',
         installType: 'npm-global',
         commands: [{ name: 'claude', bin: 'bin/claude', args: null }],
+      },
+      {
+        id: 'codex',
+        name: 'OpenAI Codex',
+        kind: 'agent',
+        installDir: 'codex',
+        basePath: 'agents',
+        installType: 'system',
+        commands: [{ name: 'codex', bin: 'codex', args: null }],
       },
     ]);
   });

@@ -18,6 +18,7 @@ import path from 'path';
 import os from 'os';
 import { getDaemonStatus } from '../daemon/client.js';
 import { createWhichCommand, runCommand, runCommandPlan } from '../utils/subprocess.js';
+import { inspectCodexInstallation } from '../codex-installation.js';
 
 // Agent definitions with credential check info
 const AGENTS = [
@@ -180,7 +181,27 @@ function findBinary(command, kind = 'binary') {
  * Get agent status
  * Checks RUDI-managed global install (~/.rudi/runtimes/node/bin) and global PATH
  */
-function getAgentStatus(agent) {
+function getAgentStatus(agent, options = {}) {
+  if (agent.id === 'codex') {
+    const inspection = options.codexInspection || inspectCodexInstallation();
+    const installed = inspection.standalone.verified;
+    const versionMatch = inspection.standalone.version?.match(/(\d+\.\d+\.?\d*)/);
+    const authenticated = fileExists(agent.credentialPath);
+
+    return {
+      id: agent.id,
+      name: agent.name,
+      installed,
+      source: installed ? 'system' : null,
+      authenticated,
+      version: versionMatch?.[1] || null,
+      path: installed ? inspection.standalone.path : null,
+      ready: installed && authenticated,
+      legacyPaths: inspection.legacy.map(entry => entry.path),
+      externalDuplicatePaths: inspection.externalDuplicates.map(entry => entry.path),
+    };
+  }
+
   // Check RUDI global location first (preferred)
   const rudiPath = findRudiAgentBin(agent.id);
   const rudiInstalled = !!rudiPath;
@@ -265,7 +286,9 @@ function getBinaryStatus(binary) {
  * Get full system status
  */
 export async function getFullStatus(options = {}) {
-  const agents = AGENTS.map(getAgentStatus);
+  const codexInspectionProvider = options.codexInspectionProvider || inspectCodexInstallation;
+  const codexInspection = codexInspectionProvider();
+  const agents = AGENTS.map(agent => getAgentStatus(agent, { codexInspection }));
   const runtimes = RUNTIMES.map(getRuntimeStatus);
   const binaries = BINARIES.map(getBinaryStatus);
   const daemonStatusProvider = options.daemonStatusProvider || getDaemonStatus;

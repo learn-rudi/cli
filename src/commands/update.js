@@ -2,7 +2,7 @@
  * Update command - update installed packages from the registry.
  */
 
-import { indexAllStacks, listInstalled, updatePackage as coreUpdatePackage } from '@learnrudi/core';
+import { indexAllStacks, isProviderOwnedAgentId, listInstalled, updatePackage as coreUpdatePackage } from '@learnrudi/core';
 import { fetchIndex } from '@learnrudi/registry-client';
 
 const KNOWN_PACKAGE_KINDS = new Set(['stack', 'skill', 'prompt', 'workflow', 'runtime', 'binary', 'agent', 'npm']);
@@ -162,8 +162,12 @@ export async function runUpdate(args = [], flags = {}, deps = defaultDependencie
     installed = await getInstalledPackages(deps);
   }
 
-  deps.log('Refreshing registry...');
-  await deps.fetchIndex({ force: true });
+  if (target && isProviderOwnedAgentId(target.id)) {
+    deps.log('Using provider-owned Codex metadata...');
+  } else {
+    deps.log('Refreshing registry...');
+    await deps.fetchIndex({ force: true });
+  }
 
   if (pkgId) {
     const updated = await updateOnePackage(target, flags, deps);

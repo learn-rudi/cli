@@ -114,13 +114,13 @@
         "id": "codex",
         "name": "OpenAI Codex",
         "kind": "agent",
-        "installDir": "node",
-        "basePath": "runtimes",
-        "installType": "npm-global",
+        "installDir": "codex",
+        "basePath": "agents",
+        "installType": "system",
         "commands": [
           {
             "name": "codex",
-            "bin": "bin/codex",
+            "bin": "codex",
             "args": null
           }
         ]

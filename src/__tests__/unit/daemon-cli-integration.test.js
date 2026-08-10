@@ -28,6 +28,34 @@ describe('daemon status CLI integration', () => {
     assert.equal(status.summary.daemonReady, true);
   });
 
+  test('getFullStatus reports only verified standalone Codex as installed', async () => {
+    const standalonePath = '/Users/test/.local/bin/codex';
+    const status = await getFullStatus({
+      daemonStatusProvider: async () => ({
+        running: false,
+        reachable: false,
+        ready: false,
+        reason: 'not_running',
+      }),
+      codexInspectionProvider: () => ({
+        standalone: {
+          path: standalonePath,
+          verified: true,
+          version: 'codex-cli 0.148.0',
+        },
+        legacy: [{ path: '/Users/test/.rudi/bins/codex' }],
+        externalDuplicates: [],
+      }),
+    });
+    const codex = status.agents.find(agent => agent.id === 'codex');
+
+    assert.equal(codex.installed, true);
+    assert.equal(codex.path, standalonePath);
+    assert.equal(codex.source, 'system');
+    assert.equal(codex.version, '0.148.0');
+    assert.deepEqual(codex.legacyPaths, ['/Users/test/.rudi/bins/codex']);
+  });
+
   test('getDaemonOnlyStatus avoids unrelated system inventory work', async () => {
     const daemon = {
       running: false,

@@ -72,6 +72,91 @@ test('resolvePackage preserves canonical v2 installation fields', async () => {
   }
 });
 
+test('resolvePackage enforces provider-owned Codex during Registry rollout', async () => {
+  const root = fs.mkdtempSync(path.join(os.tmpdir(), 'rudi-codex-rollout-'));
+  const registryRoot = path.join(root, 'registry');
+  const previous = {
+    RUDI_HOME: process.env.RUDI_HOME,
+    USE_LOCAL_REGISTRY: process.env.USE_LOCAL_REGISTRY,
+    RUDI_REGISTRY_ROOT: process.env.RUDI_REGISTRY_ROOT,
+  };
+
+  try {
+    fs.mkdirSync(registryRoot, { recursive: true });
+    fs.writeFileSync(path.join(registryRoot, 'index.json'), JSON.stringify({
+      schemaVersion: '2',
+      packages: {
+        'agent:codex': {
+          id: 'agent:codex',
+          kind: 'agent',
+          name: 'OpenAI Codex',
+          version: 'latest',
+          delivery: 'remote',
+          install: { source: 'npm', package: '@openai/codex' },
+          bins: ['codex'],
+          detect: { command: 'codex --version', expectExitCode: 0 },
+        },
+      },
+    }));
+
+    process.env.RUDI_HOME = path.join(root, '.rudi');
+    process.env.USE_LOCAL_REGISTRY = 'true';
+    process.env.RUDI_REGISTRY_ROOT = registryRoot;
+
+    const { resolvePackage } = await import('../../resolver.js');
+    const resolved = await resolvePackage('agent:codex');
+
+    assert.equal(resolved.version, 'system');
+    assert.equal(resolved.delivery, 'system');
+    assert.deepEqual(resolved.install, { source: 'system' });
+    assert.equal(resolved.npmPackage, undefined);
+    assert.match(resolved.installHints.manual, /chatgpt\.com\/codex\/install\.sh/);
+  } finally {
+    for (const [key, value] of Object.entries(previous)) {
+      if (value === undefined) delete process.env[key];
+      else process.env[key] = value;
+    }
+    fs.rmSync(root, { recursive: true, force: true });
+  }
+});
+
+test('resolvePackage keeps provider-owned Codex registrable when Registry omits the package', async () => {
+  const root = fs.mkdtempSync(path.join(os.tmpdir(), 'rudi-codex-registry-fallback-'));
+  const registryRoot = path.join(root, 'registry');
+  const previous = {
+    RUDI_HOME: process.env.RUDI_HOME,
+    USE_LOCAL_REGISTRY: process.env.USE_LOCAL_REGISTRY,
+    RUDI_REGISTRY_ROOT: process.env.RUDI_REGISTRY_ROOT,
+  };
+
+  try {
+    fs.mkdirSync(registryRoot, { recursive: true });
+    fs.writeFileSync(path.join(registryRoot, 'index.json'), JSON.stringify({
+      schemaVersion: '2',
+      packages: {},
+    }));
+
+    process.env.RUDI_HOME = path.join(root, '.rudi');
+    process.env.USE_LOCAL_REGISTRY = 'true';
+    process.env.RUDI_REGISTRY_ROOT = registryRoot;
+
+    const { resolvePackage } = await import('../../resolver.js');
+    const resolved = await resolvePackage('agent:codex');
+
+    assert.equal(resolved.id, 'agent:codex');
+    assert.equal(resolved.delivery, 'system');
+    assert.deepEqual(resolved.install, { source: 'system' });
+    assert.deepEqual(resolved.bins, ['codex']);
+    assert.equal(resolved.detect.command, 'codex --version');
+  } finally {
+    for (const [key, value] of Object.entries(previous)) {
+      if (value === undefined) delete process.env[key];
+      else process.env[key] = value;
+    }
+    fs.rmSync(root, { recursive: true, force: true });
+  }
+});
+
 test('resolvePackage keeps v2 stack dependencies installable for skills', async () => {
   const root = fs.mkdtempSync(path.join(os.tmpdir(), 'rudi-v2-skill-dependency-'));
   const registryRoot = path.join(root, 'registry');

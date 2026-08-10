@@ -351,10 +351,33 @@ function findExecutableOnPath(command) {
   }
 }
 
+function isPathWithin(rootPath, candidatePath) {
+  const delta = path.relative(path.resolve(rootPath), path.resolve(candidatePath));
+  return delta === '' || (!delta.startsWith('..') && !path.isAbsolute(delta));
+}
+
+function isRudiOwnedSystemAgentExecutable(candidate, pkg) {
+  if (pkg?.kind !== 'agent' || pkg?.install?.source !== 'system') return false;
+
+  let canonical = candidate;
+  try {
+    canonical = fs.realpathSync(candidate);
+  } catch {
+    // The lexical path is still sufficient to reject a path below RUDI home.
+  }
+
+  return isPathWithin(PATHS.home, candidate) || isPathWithin(PATHS.home, canonical);
+}
+
 function collectSystemExecutableCandidates(command, pkg) {
   const candidates = [];
   const addCandidate = (candidate) => {
-    if (typeof candidate === 'string' && candidate && !candidates.includes(candidate)) {
+    if (
+      typeof candidate === 'string' &&
+      candidate &&
+      !isRudiOwnedSystemAgentExecutable(candidate, pkg) &&
+      !candidates.includes(candidate)
+    ) {
       candidates.push(candidate);
     }
   };
@@ -381,7 +404,9 @@ function collectSystemExecutableCandidates(command, pkg) {
 function detectSystemBinary(pkg, pkgName) {
   const detectPlan = getSystemDetectPlan(pkg, pkgName);
   const candidates = collectSystemExecutableCandidates(detectPlan.command, pkg);
-  const commandsToTry = candidates.length > 0 ? candidates : [detectPlan.command];
+  const commandsToTry = candidates.length > 0
+    ? candidates
+    : (pkg.kind === 'agent' ? [] : [detectPlan.command]);
 
   for (const command of commandsToTry) {
     try {
@@ -389,7 +414,11 @@ function detectSystemBinary(pkg, pkgName) {
       const resolvedPath = path.isAbsolute(command)
         ? command
         : findExecutableOnPath(command);
-      if (resolvedPath && isExecutableFile(resolvedPath)) {
+      if (
+        resolvedPath &&
+        !isRudiOwnedSystemAgentExecutable(resolvedPath, pkg) &&
+        isExecutableFile(resolvedPath)
+      ) {
         return {
           path: resolvedPath,
           command: detectPlan.rawCommand,
@@ -411,7 +440,8 @@ async function installSystemBinaryPackage(pkg, installPath, pkgName, options = {
 
   const detected = detectSystemBinary(pkg, bins[0] || pkgName);
   if (!detected) {
-    const hint = pkg.instructions ? ` ${pkg.instructions}` : '';
+    const instructions = pkg.installHints?.manual || pkg.instructions;
+    const hint = instructions ? ` ${instructions}` : '';
     throw new Error(`System binary ${pkg.id} was not detected.${hint}`);
   }
 

@@ -541,9 +541,10 @@ describe('private Agent Host automation profile', () => {
     assert.equal(claudeCalls[0].options.input, '');
   });
 
-  test('prefers the RUDI Claude wrapper that mediates private authentication', () => {
+  test('prefers provider-owned Codex and the RUDI Claude authentication wrapper', () => {
     const codexResolvePaths = getAgentProviderConfig('codex').binary.resolvePaths;
-    assert.equal(codexResolvePaths[0], '~/.rudi/agents/codex/bin/codex');
+    assert.deepEqual(codexResolvePaths, ['~/.local/bin/codex']);
+    assert.equal(getAgentProviderConfig('codex').binary.rejectRudiOwned, true);
 
     const resolvePaths = getAgentProviderConfig('claude').binary.resolvePaths;
     assert.equal(resolvePaths[0], '~/.rudi/bins/claude');

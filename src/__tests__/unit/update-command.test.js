@@ -94,6 +94,26 @@ test('runUpdate preserves install-local state only when explicitly requested', a
   );
 });
 
+test('runUpdate does not require the registry to update provider-owned Codex', async () => {
+  const deps = createDeps({
+    async listInstalled() {
+      deps.calls.push(['listInstalled']);
+      return [{ id: 'agent:codex', kind: 'agent', name: 'codex' }];
+    },
+    async fetchIndex() {
+      throw new Error('registry unavailable');
+    },
+  });
+
+  const result = await runUpdate(['agent:codex'], {}, deps);
+
+  assert.equal(result.updated, 1);
+  assert.deepEqual(
+    deps.calls.filter(call => call[0] === 'updatePackage'),
+    [['updatePackage', 'agent:codex', { preserveState: false }]]
+  );
+});
+
 test('runUpdate reports native skill wrapper sync commands after updating a skill', async () => {
   const deps = createDeps();
 

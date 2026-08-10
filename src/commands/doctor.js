@@ -12,6 +12,11 @@ import {
 import { listSecretNames } from '@learnrudi/runner';
 import fs from 'fs';
 import { getDaemonStatus } from '../daemon/client.js';
+import {
+  assessCodexOwnership,
+  inspectCodexInstallation,
+  migrateLegacyCodexInstallation,
+} from '../codex-installation.js';
 
 export function formatDaemonDoctorState(daemon) {
   if (daemon.ready) return 'ready';
@@ -155,6 +160,36 @@ export async function cmdDoctor(args, flags) {
     }
   } catch (error) {
     console.log(`  ✗ Error checking dependencies: ${error.message}`);
+  }
+
+  // Check that Codex is provider-owned rather than installed in RUDI's runtime.
+  console.log('\n🤖 Codex ownership');
+  const codexInspection = inspectCodexInstallation();
+  const codexHealth = assessCodexOwnership(codexInspection);
+  if (codexInspection.standalone.verified) {
+    console.log(`  ✓ Standalone: ${codexInspection.standalone.path}`);
+    console.log(`    Version: ${codexInspection.standalone.version}`);
+  } else {
+    console.log(`  ○ Standalone: ${codexInspection.standalone.reason}`);
+  }
+  for (const entry of codexInspection.legacy) {
+    console.log(`  ✗ Legacy RUDI path: ${entry.path}`);
+  }
+  for (const entry of codexInspection.externalDuplicates) {
+    console.log(`  ✗ Additional external path: ${entry.path}`);
+  }
+  if (codexHealth.hint) {
+    console.log(`  ${codexHealth.hint}`);
+  }
+  if (codexHealth.issue) {
+    issues.push(`Codex ownership: ${codexHealth.status}`);
+  }
+  if (codexHealth.fixable) {
+    fixes.push(() => {
+      const result = migrateLegacyCodexInstallation();
+      if (!result.success) throw new Error(result.error);
+      console.log(`  ✓ Removed ${result.removed.length} legacy Codex path(s)`);
+    });
   }
 
   // Check Node.js version

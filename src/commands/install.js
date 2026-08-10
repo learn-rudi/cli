@@ -12,7 +12,7 @@
 import * as fs from 'fs/promises';
 import * as fsSync from 'fs';
 import * as path from 'path';
-import { fetchIndex, installPackage, resolvePackage, checkAllDependencies, formatDependencyResults, addStack, removeStack, updateSecretStatus, indexAllStacks } from '@learnrudi/core';
+import { fetchIndex, installPackage, resolvePackage, checkAllDependencies, formatDependencyResults, addStack, removeStack, updateSecretStatus, indexAllStacks, isProviderOwnedAgentId } from '@learnrudi/core';
 import { hasSecret, listSecrets, setSecret, getSecret } from '@learnrudi/secrets';
 import { getInstalledAgents } from '@learnrudi/mcp';
 import { runCommand } from '../utils/subprocess.js';
@@ -656,6 +656,10 @@ async function cleanupFailedStackInstall(stackId, stackPath, removeConfig) {
   }
 }
 
+export function shouldRefreshRegistryForInstall(pkgId) {
+  return !String(pkgId || '').startsWith('npm:') && !isProviderOwnedAgentId(pkgId);
+}
+
 export async function cmdInstall(args, flags) {
   let pkgId = args[0];
 
@@ -682,7 +686,7 @@ export async function cmdInstall(args, flags) {
   console.log(`Resolving ${pkgId}...`);
 
   try {
-    if (!pkgId.startsWith('npm:')) {
+    if (shouldRefreshRegistryForInstall(pkgId)) {
       await fetchIndex({ force: true });
     }
 
