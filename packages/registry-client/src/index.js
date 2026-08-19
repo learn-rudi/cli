@@ -163,6 +163,14 @@ function getLocalRegistryPaths() {
   return getLocalRegistryRoots().map((registryRoot) => path.join(registryRoot, 'index.json'));
 }
 
+function getExplicitLocalRegistryPath() {
+  if (process.env.USE_LOCAL_REGISTRY !== 'true' || !process.env.RUDI_REGISTRY_ROOT) {
+    return null;
+  }
+
+  return path.join(path.resolve(process.env.RUDI_REGISTRY_ROOT), 'index.json');
+}
+
 function getLocalRegistrySource(registryPath) {
   if (process.env.USE_LOCAL_REGISTRY !== 'true') {
     return null;
@@ -251,7 +259,16 @@ export async function fetchIndex(options = {}) {
   // In development, prefer local registry if it's newer than cache
   const localResult = getLocalIndex();
   if (localResult) {
-    const { index: localIndex, mtime: localMtime } = localResult;
+    const { index: localIndex, mtime: localMtime, path: localPath } = localResult;
+    const explicitLocalPath = getExplicitLocalRegistryPath();
+
+    // An explicit root is an operator-selected source. Its cache may have been
+    // populated from another root, so freshness cannot safely override it.
+    if (explicitLocalPath && localPath === explicitLocalPath) {
+      cacheIndex(localIndex);
+      return localIndex;
+    }
+
     const cacheMtime = getCacheMtime();
 
     // Use local if: forcing, no cache, or local is newer
@@ -378,7 +395,7 @@ function getCacheMtime() {
 
 /**
  * Get local index if available (for development)
- * @returns {{ index: Object, mtime: number }|null}
+ * @returns {{ index: Object, mtime: number, path: string }|null}
  */
 function getLocalIndex() {
   for (const localPath of getLocalRegistryPaths()) {
@@ -386,7 +403,7 @@ function getLocalIndex() {
       try {
         const index = JSON.parse(fs.readFileSync(localPath, 'utf-8'));
         const mtime = fs.statSync(localPath).mtimeMs;
-        return { index, mtime };
+        return { index, mtime, path: localPath };
       } catch {
         continue;
       }
