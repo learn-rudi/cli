@@ -32462,10 +32462,10 @@ var MCP_AGENT_IDS = Object.freeze({ claude: "claude-code" });
 function commandArgs(configuredCommand) {
   return Array.isArray(configuredCommand) ? configuredCommand.slice(1) : [];
 }
-function runCheck(binaryPath, args, spawnSyncImpl, timeout = 5e3) {
+function runCheck(binaryPath, args, spawnSyncImpl, providerEnvironment, timeout = 5e3) {
   const result = spawnSyncImpl(binaryPath, args, {
     encoding: "utf8",
-    env: buildAgentExecutableEnvironment(binaryPath),
+    env: buildAgentExecutableEnvironment(binaryPath, providerEnvironment),
     timeout
   });
   return {
@@ -32509,11 +32509,20 @@ async function inspectAgentHost(provider, dependencies = {}) {
       version: null
     };
   }
-  const version = runCheck(binaryPath, commandArgs(config.binary.checkCommand), spawnSyncImpl);
+  const providerEnvironment = buildProviderEnvironment(config, {
+    baseEnvironment: dependencies.baseEnvironment,
+    rudiHome: dependencies.rudiHome
+  });
+  const version = runCheck(
+    binaryPath,
+    commandArgs(config.binary.checkCommand),
+    spawnSyncImpl,
+    providerEnvironment
+  );
   const authArgs = commandArgs(config.binary.authCheck);
   const versionArgs = commandArgs(config.binary.checkCommand);
   const authIsObservable = JSON.stringify(authArgs) !== JSON.stringify(versionArgs);
-  const auth = authIsObservable ? runCheck(binaryPath, authArgs, spawnSyncImpl) : { ok: null };
+  const auth = authIsObservable ? runCheck(binaryPath, authArgs, spawnSyncImpl, providerEnvironment) : { ok: null };
   return {
     authenticated: auth.ok,
     authentication: auth.ok == null ? "unknown" : auth.ok ? "authenticated" : "unauthenticated",
