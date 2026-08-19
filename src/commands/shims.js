@@ -30,8 +30,10 @@ function listShims() {
   return entries.filter(entry => {
     const fullPath = path.join(binsDir, entry);
     const stat = fs.lstatSync(fullPath);
-    // Include files and symlinks, exclude directories
-    return stat.isFile() || stat.isSymbolicLink();
+    if (stat.isSymbolicLink()) return true;
+    // A regular file is a command shim only when it is executable. This keeps
+    // documentation and other support files out of validation and repair.
+    return stat.isFile() && (stat.mode & 0o111) !== 0;
   });
 }
 
@@ -48,7 +50,14 @@ function getShimType(shimPath) {
   // Check if it's a wrapper script
   try {
     const content = fs.readFileSync(shimPath, 'utf8');
-    if (content.includes('#!/usr/bin/env bash')) {
+    const firstLine = content.split(/\r?\n/, 1)[0];
+    const shebang = firstLine.startsWith('#!')
+      ? firstLine.slice(2).trim().split(/\s+/)
+      : [];
+    const interpreter = path.basename(shebang[0] || '') === 'env'
+      ? shebang.slice(1).find(token => !token.startsWith('-'))
+      : shebang[0];
+    if (['sh', 'bash', 'dash', 'ksh', 'zsh'].includes(path.basename(interpreter || ''))) {
       return 'wrapper';
     }
   } catch (err) {
@@ -459,19 +468,15 @@ fi
     console.log('\n\x1b[33mAttempting to fix broken shims...\x1b[0m\n');
 
     const brokenWithPkg = results.filter(r => !r.valid && r.package);
-    const orphaned = results.filter(r => !r.valid && !r.package);
+    const unmanaged = results.filter(r => !r.valid && !r.package);
 
-    // Remove orphaned shims (no associated package)
-    if (orphaned.length > 0) {
-      console.log(`Removing ${orphaned.length} orphaned shims...`);
-      for (const shim of orphaned) {
-        const shimPath = path.join(PATHS.bins, shim.name);
-        try {
-          fs.unlinkSync(shimPath);
-          console.log(`  \x1b[32m✓\x1b[0m Removed ${shim.name}`);
-        } catch (err) {
-          console.log(`  \x1b[31m✗\x1b[0m Failed to remove ${shim.name}: ${err.message}`);
-        }
+    // Unmanaged wrappers may be custom commands or use a wrapper form the
+    // validator does not recognize. Never delete them without explicit review.
+    if (unmanaged.length > 0) {
+      const label = unmanaged.length === 1 ? 'shim' : 'shims';
+      console.log(`Skipping ${unmanaged.length} unmanaged ${label}; review manually:`);
+      for (const shim of unmanaged) {
+        console.log(`  - ${shim.name}: ${shim.error}`);
       }
       console.log('');
     }
@@ -479,7 +484,7 @@ fi
     // Reinstall broken packages
     const brokenPackages = new Set(brokenWithPkg.map(r => r.package));
 
-    if (brokenPackages.size === 0 && orphaned.length === 0) {
+    if (brokenPackages.size === 0 && unmanaged.length === 0) {
       console.log('No broken shims to fix.');
       process.exit(0);
     }
