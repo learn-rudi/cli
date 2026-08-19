@@ -12,7 +12,10 @@ import {
   resolveAgentProviderBinary,
   resolveAgentProviderId,
 } from './providers/index.js';
-import { buildAgentExecutableEnvironment } from './providers/common.js';
+import {
+  buildAgentExecutableEnvironment,
+  buildProviderEnvironment,
+} from './providers/common.js';
 
 const MCP_AGENT_IDS = Object.freeze({ claude: 'claude-code' });
 
@@ -20,10 +23,10 @@ function commandArgs(configuredCommand) {
   return Array.isArray(configuredCommand) ? configuredCommand.slice(1) : [];
 }
 
-function runCheck(binaryPath, args, spawnSyncImpl, timeout = 5000) {
+function runCheck(binaryPath, args, spawnSyncImpl, providerEnvironment, timeout = 5000) {
   const result = spawnSyncImpl(binaryPath, args, {
     encoding: 'utf8',
-    env: buildAgentExecutableEnvironment(binaryPath),
+    env: buildAgentExecutableEnvironment(binaryPath, providerEnvironment),
     timeout,
   });
   return {
@@ -74,12 +77,21 @@ export async function inspectAgentHost(provider, dependencies = {}) {
     };
   }
 
-  const version = runCheck(binaryPath, commandArgs(config.binary.checkCommand), spawnSyncImpl);
+  const providerEnvironment = buildProviderEnvironment(config, {
+    baseEnvironment: dependencies.baseEnvironment,
+    rudiHome: dependencies.rudiHome,
+  });
+  const version = runCheck(
+    binaryPath,
+    commandArgs(config.binary.checkCommand),
+    spawnSyncImpl,
+    providerEnvironment,
+  );
   const authArgs = commandArgs(config.binary.authCheck);
   const versionArgs = commandArgs(config.binary.checkCommand);
   const authIsObservable = JSON.stringify(authArgs) !== JSON.stringify(versionArgs);
   const auth = authIsObservable
-    ? runCheck(binaryPath, authArgs, spawnSyncImpl)
+    ? runCheck(binaryPath, authArgs, spawnSyncImpl, providerEnvironment)
     : { ok: null };
 
   return {
