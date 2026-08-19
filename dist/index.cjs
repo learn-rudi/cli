@@ -9804,6 +9804,48 @@ function listShims() {
     }
   });
 }
+function findExecutable(command, searchPath = process.env.PATH || "") {
+  if (!command || command.includes("\0")) return null;
+  const candidates = import_path5.default.isAbsolute(command) || command.includes(import_path5.default.sep) ? [command] : searchPath.split(import_path5.default.delimiter).filter(Boolean).map((directory) => import_path5.default.join(directory, command));
+  for (const candidate of candidates) {
+    try {
+      if (!import_fs4.default.statSync(candidate).isFile()) continue;
+      import_fs4.default.accessSync(candidate, import_fs4.default.constants.X_OK);
+      return candidate;
+    } catch {
+    }
+  }
+  return null;
+}
+function resolveWrapperTarget(content, rawTarget) {
+  const variableMatch = rawTarget.match(/^\$\{?([A-Za-z_][A-Za-z0-9_]*)\}?$/);
+  if (!variableMatch) return rawTarget;
+  const variableName = variableMatch[1];
+  const assignmentPattern = new RegExp(
+    `^${variableName}=(?:"([^"]*)"|'([^']*)')\\s*$`,
+    "m"
+  );
+  const assignment = content.match(assignmentPattern);
+  if (assignment) return assignment[1] ?? assignment[2];
+  const commandLookupPattern = new RegExp(
+    `^${variableName}=\\$\\(PATH=(?:"([^"]*)"|'([^']*)')\\s+command\\s+-v\\s+(?:"([^"]+)"|'([^']+)'|([^\\s)]+))[^)]*\\)\\s*$`,
+    "m"
+  );
+  const commandLookup = content.match(commandLookupPattern);
+  if (!commandLookup) return rawTarget;
+  const searchPath = commandLookup[1] ?? commandLookup[2];
+  const command = commandLookup[3] ?? commandLookup[4] ?? commandLookup[5];
+  return findExecutable(command, searchPath) || rawTarget;
+}
+function getWrapperTargets(content) {
+  const targets = [];
+  const execPattern = /^\s*exec\s+(?:"([^"]+)"|'([^']+)'|([^\s]+))/gm;
+  for (const match of content.matchAll(execPattern)) {
+    const rawTarget = match[1] ?? match[2] ?? match[3];
+    targets.push(resolveWrapperTarget(content, rawTarget));
+  }
+  return targets;
+}
 function validateShim(bin) {
   const shimPath = import_path5.default.join(PATHS.bins, bin);
   if (!import_fs4.default.existsSync(shimPath)) {
@@ -9820,13 +9862,13 @@ function validateShim(bin) {
       return { valid: true, target: targetAbs };
     } else if (stat.isFile()) {
       const content = import_fs4.default.readFileSync(shimPath, "utf8");
-      const match = content.match(/exec "([^"]+)"/);
-      const target = match?.[1];
-      if (!target) {
+      const targets = getWrapperTargets(content);
+      const target = targets.map((candidate) => findExecutable(candidate)).find(Boolean);
+      if (targets.length === 0) {
         return { valid: false, error: "Cannot parse wrapper script" };
       }
-      if (!import_fs4.default.existsSync(target)) {
-        return { valid: false, target, error: "Wrapper target does not exist" };
+      if (!target) {
+        return { valid: false, target: targets[0], error: "Wrapper target does not exist" };
       }
       return { valid: true, target };
     }
@@ -27789,7 +27831,8 @@ function listShims2() {
   return entries.filter((entry) => {
     const fullPath = import_path20.default.join(binsDir, entry);
     const stat = import_fs22.default.lstatSync(fullPath);
-    return stat.isFile() || stat.isSymbolicLink();
+    if (stat.isSymbolicLink()) return true;
+    return stat.isFile() && (stat.mode & 73) !== 0;
   });
 }
 function getShimType(shimPath) {
@@ -27799,7 +27842,10 @@ function getShimType(shimPath) {
   }
   try {
     const content = import_fs22.default.readFileSync(shimPath, "utf8");
-    if (content.includes("#!/usr/bin/env bash")) {
+    const firstLine = content.split(/\r?\n/, 1)[0];
+    const shebang = firstLine.startsWith("#!") ? firstLine.slice(2).trim().split(/\s+/) : [];
+    const interpreter = import_path20.default.basename(shebang[0] || "") === "env" ? shebang.slice(1).find((token) => !token.startsWith("-")) : shebang[0];
+    if (["sh", "bash", "dash", "ksh", "zsh"].includes(import_path20.default.basename(interpreter || ""))) {
       return "wrapper";
     }
   } catch (err) {
@@ -28124,22 +28170,17 @@ ${valid} valid, ${broken} broken`);
   if (subcommand === "fix") {
     console.log("\n\x1B[33mAttempting to fix broken shims...\x1B[0m\n");
     const brokenWithPkg = results.filter((r) => !r.valid && r.package);
-    const orphaned = results.filter((r) => !r.valid && !r.package);
-    if (orphaned.length > 0) {
-      console.log(`Removing ${orphaned.length} orphaned shims...`);
-      for (const shim of orphaned) {
-        const shimPath = import_path20.default.join(PATHS.bins, shim.name);
-        try {
-          import_fs22.default.unlinkSync(shimPath);
-          console.log(`  \x1B[32m\u2713\x1B[0m Removed ${shim.name}`);
-        } catch (err) {
-          console.log(`  \x1B[31m\u2717\x1B[0m Failed to remove ${shim.name}: ${err.message}`);
-        }
+    const unmanaged = results.filter((r) => !r.valid && !r.package);
+    if (unmanaged.length > 0) {
+      const label = unmanaged.length === 1 ? "shim" : "shims";
+      console.log(`Skipping ${unmanaged.length} unmanaged ${label}; review manually:`);
+      for (const shim of unmanaged) {
+        console.log(`  - ${shim.name}: ${shim.error}`);
       }
       console.log("");
     }
     const brokenPackages = new Set(brokenWithPkg.map((r) => r.package));
-    if (brokenPackages.size === 0 && orphaned.length === 0) {
+    if (brokenPackages.size === 0 && unmanaged.length === 0) {
       console.log("No broken shims to fix.");
       process.exit(0);
     }
