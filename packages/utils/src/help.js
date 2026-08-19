@@ -51,6 +51,7 @@ ADVANCED COMMANDS
   which <cmd>           Resolve an installed stack command
   lanes <cmd>           Manage the local main/dev lane worktree layout
   leverage [preset]     Calculate human-attention leverage for agent workflows
+  crm <cmd>             Sweep authenticated Gmail metadata into CRM discovery
 
 INTERNAL COMMANDS
   serve                 Daemon process entrypoint; use rudi daemon for lifecycle
@@ -176,6 +177,30 @@ OPTIONS
 EXAMPLES
   rudi run pdf-creator
   rudi run pdf-creator --input '{"file": "doc.html"}'
+`,
+    crm: `
+rudi crm - Operate local CRM workflows
+
+USAGE
+  rudi crm sweep-gmail --account <email> --after <YYYY-MM-DD> --before <YYYY-MM-DD> [options]
+
+OPTIONS
+  --account <email>       Configured Google Workspace account (required)
+  --after <date>          Inclusive sweep start, YYYY-MM-DD (required)
+  --before <date>         Exclusive sweep end, YYYY-MM-DD (required)
+  --preview               Extract to a private artifact without CRM writes (default)
+  --record                Record idempotent discovery evidence in CRM; never promotes people
+  --page-size <n>         Gmail page size, 1-500 (default: 100)
+  --max-messages <n>      Optional message cap within the bounded window
+  --output <path>         Override the private JSON artifact path
+  --json                  Print the result as JSON
+
+EXAMPLES
+  rudi crm sweep-gmail --account operator@example.com --after 2026-01-01 --before 2026-08-05
+  rudi crm sweep-gmail --account operator@example.com --after 2026-01-01 --before 2026-08-05 --record
+
+The sweep reads From, To, Cc, and Bcc metadata only. It excludes spam and trash,
+deduplicates exact normalized addresses, and never creates or attaches CRM people.
 `,
     agent: `
 rudi agent - Run and inspect native headless agent hosts

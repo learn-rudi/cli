@@ -55,6 +55,25 @@ test('routing: instructions with install flag', () => {
   assert.strictEqual(result.flags.project, true);
 });
 
+test('routing: CRM Gmail sweep preserves the subcommand and bounds', () => {
+  const result = parseArgs([
+    'crm',
+    'sweep-gmail',
+    '--account',
+    'operator@example.com',
+    '--after',
+    '2026-01-01',
+    '--before',
+    '2026-08-05',
+  ]);
+
+  assert.strictEqual(result.command, 'crm');
+  assert.deepStrictEqual(result.args, ['sweep-gmail']);
+  assert.strictEqual(result.flags.account, 'operator@example.com');
+  assert.strictEqual(result.flags.after, '2026-01-01');
+  assert.strictEqual(result.flags.before, '2026-08-05');
+});
+
 // =============================================================================
 // FLAGS PARSING
 // =============================================================================

@@ -26,6 +26,7 @@ tests when the grouping changes.
 
 - `rudi auth`, `check`, `info`, `local-llm`, `mcp`, `runtime`
 - `rudi daemon`, `shims`, `studio`, `which`, `lanes`, `leverage`
+- `rudi crm sweep-gmail`
 
 ### Internal
 

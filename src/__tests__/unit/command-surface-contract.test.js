@@ -15,8 +15,21 @@ test('default help visibly separates core, advanced, internal, and retired comma
   assert.equal(result.status, 0, result.stderr || result.stdout);
   assert.match(result.stdout, /CORE COMMANDS/);
   assert.match(result.stdout, /ADVANCED COMMANDS/);
+  assert.match(result.stdout, /crm <cmd>\s+Sweep authenticated Gmail metadata into CRM discovery/);
   assert.match(result.stdout, /INTERNAL COMMANDS/);
   assert.match(result.stdout, /RETIRED LEGACY COMMANDS/);
+});
+
+test('CRM help documents explicit account bounds and preview-first behavior', () => {
+  const result = runCli(['help', 'crm']);
+
+  assert.equal(result.status, 0, result.stderr || result.stdout);
+  assert.match(result.stdout, /rudi crm sweep-gmail/);
+  assert.match(result.stdout, /--account <email>/);
+  assert.match(result.stdout, /--after <date>/);
+  assert.match(result.stdout, /--before <date>/);
+  assert.match(result.stdout, /--record/);
+  assert.match(result.stdout, /never creates or attaches CRM people/i);
 });
 
 test('retired execution and session commands are notices rather than dispatch targets', () => {
