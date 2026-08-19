@@ -125,6 +125,11 @@ test('commands: agent exports cmdAgent function', async () => {
   assert.strictEqual(typeof cmdAgent, 'function');
 });
 
+test('commands: crm exports cmdCrm function', async () => {
+  const { cmdCrm } = await import('../../commands/crm.js');
+  assert.strictEqual(typeof cmdCrm, 'function');
+});
+
 // =============================================================================
 // UTILS EXPORTS
 // =============================================================================

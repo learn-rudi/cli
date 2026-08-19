@@ -99,6 +99,22 @@ rudi secrets get OPENAI_API_KEY        # Print raw value for scripts only
 rudi secrets remove SLACK_BOT_TOKEN    # Remove a secret
 ```
 
+### Discovering CRM Contacts from Gmail
+
+Sweep a bounded window from one explicitly selected authenticated account. The
+default preview writes a private JSON artifact and does not change CRM state:
+
+```bash
+rudi crm sweep-gmail \
+  --account operator@example.com \
+  --after 2026-01-01 \
+  --before 2026-08-05
+```
+
+After reviewing the preview, `--record` stores idempotent header observations in
+CRM discovery and runs its validators. Neither mode creates, merges, or attaches
+CRM people. The sweep reads address headers only and excludes spam and trash.
+
 ### Integrating with AI Agents
 
 See [Frontier Agent Hosts](docs/frontier-agent-hosts.md) for the complete

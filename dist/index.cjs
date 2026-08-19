@@ -676,9 +676,9 @@ function resolveRegistryPackageForPlatform(value, platformArch) {
   if (!pkg.delivery || !pkg.install?.source) {
     return pkg;
   }
-  const os18 = platformArch.slice(0, platformArch.lastIndexOf("-"));
+  const os19 = platformArch.slice(0, platformArch.lastIndexOf("-"));
   const platforms = pkg.install.platforms || {};
-  const platformKey = [platformArch, os18, "default"].find((key) => platforms[key]);
+  const platformKey = [platformArch, os19, "default"].find((key) => platforms[key]);
   const platform = platformKey ? platforms[platformKey] : void 0;
   const install = {
     ...pkg.install,
@@ -693,7 +693,7 @@ function resolveRegistryPackageForPlatform(value, platformArch) {
     _resolved: {
       platform,
       platformKey,
-      keysTried: [platformArch, os18, "default"]
+      keysTried: [platformArch, os19, "default"]
     }
   });
   if (install.source === "download") {
@@ -2309,17 +2309,17 @@ var require_visit = __commonJS({
     visit.BREAK = BREAK;
     visit.SKIP = SKIP;
     visit.REMOVE = REMOVE;
-    function visit_(key, node, visitor, path53) {
-      const ctrl = callVisitor(key, node, visitor, path53);
+    function visit_(key, node, visitor, path54) {
+      const ctrl = callVisitor(key, node, visitor, path54);
       if (identity.isNode(ctrl) || identity.isPair(ctrl)) {
-        replaceNode(key, path53, ctrl);
-        return visit_(key, ctrl, visitor, path53);
+        replaceNode(key, path54, ctrl);
+        return visit_(key, ctrl, visitor, path54);
       }
       if (typeof ctrl !== "symbol") {
         if (identity.isCollection(node)) {
-          path53 = Object.freeze(path53.concat(node));
+          path54 = Object.freeze(path54.concat(node));
           for (let i = 0; i < node.items.length; ++i) {
-            const ci = visit_(i, node.items[i], visitor, path53);
+            const ci = visit_(i, node.items[i], visitor, path54);
             if (typeof ci === "number")
               i = ci - 1;
             else if (ci === BREAK)
@@ -2330,13 +2330,13 @@ var require_visit = __commonJS({
             }
           }
         } else if (identity.isPair(node)) {
-          path53 = Object.freeze(path53.concat(node));
-          const ck = visit_("key", node.key, visitor, path53);
+          path54 = Object.freeze(path54.concat(node));
+          const ck = visit_("key", node.key, visitor, path54);
           if (ck === BREAK)
             return BREAK;
           else if (ck === REMOVE)
             node.key = null;
-          const cv = visit_("value", node.value, visitor, path53);
+          const cv = visit_("value", node.value, visitor, path54);
           if (cv === BREAK)
             return BREAK;
           else if (cv === REMOVE)
@@ -2357,17 +2357,17 @@ var require_visit = __commonJS({
     visitAsync.BREAK = BREAK;
     visitAsync.SKIP = SKIP;
     visitAsync.REMOVE = REMOVE;
-    async function visitAsync_(key, node, visitor, path53) {
-      const ctrl = await callVisitor(key, node, visitor, path53);
+    async function visitAsync_(key, node, visitor, path54) {
+      const ctrl = await callVisitor(key, node, visitor, path54);
       if (identity.isNode(ctrl) || identity.isPair(ctrl)) {
-        replaceNode(key, path53, ctrl);
-        return visitAsync_(key, ctrl, visitor, path53);
+        replaceNode(key, path54, ctrl);
+        return visitAsync_(key, ctrl, visitor, path54);
       }
       if (typeof ctrl !== "symbol") {
         if (identity.isCollection(node)) {
-          path53 = Object.freeze(path53.concat(node));
+          path54 = Object.freeze(path54.concat(node));
           for (let i = 0; i < node.items.length; ++i) {
-            const ci = await visitAsync_(i, node.items[i], visitor, path53);
+            const ci = await visitAsync_(i, node.items[i], visitor, path54);
             if (typeof ci === "number")
               i = ci - 1;
             else if (ci === BREAK)
@@ -2378,13 +2378,13 @@ var require_visit = __commonJS({
             }
           }
         } else if (identity.isPair(node)) {
-          path53 = Object.freeze(path53.concat(node));
-          const ck = await visitAsync_("key", node.key, visitor, path53);
+          path54 = Object.freeze(path54.concat(node));
+          const ck = await visitAsync_("key", node.key, visitor, path54);
           if (ck === BREAK)
             return BREAK;
           else if (ck === REMOVE)
             node.key = null;
-          const cv = await visitAsync_("value", node.value, visitor, path53);
+          const cv = await visitAsync_("value", node.value, visitor, path54);
           if (cv === BREAK)
             return BREAK;
           else if (cv === REMOVE)
@@ -2411,23 +2411,23 @@ var require_visit = __commonJS({
       }
       return visitor;
     }
-    function callVisitor(key, node, visitor, path53) {
+    function callVisitor(key, node, visitor, path54) {
       if (typeof visitor === "function")
-        return visitor(key, node, path53);
+        return visitor(key, node, path54);
       if (identity.isMap(node))
-        return visitor.Map?.(key, node, path53);
+        return visitor.Map?.(key, node, path54);
       if (identity.isSeq(node))
-        return visitor.Seq?.(key, node, path53);
+        return visitor.Seq?.(key, node, path54);
       if (identity.isPair(node))
-        return visitor.Pair?.(key, node, path53);
+        return visitor.Pair?.(key, node, path54);
       if (identity.isScalar(node))
-        return visitor.Scalar?.(key, node, path53);
+        return visitor.Scalar?.(key, node, path54);
       if (identity.isAlias(node))
-        return visitor.Alias?.(key, node, path53);
+        return visitor.Alias?.(key, node, path54);
       return void 0;
     }
-    function replaceNode(key, path53, node) {
-      const parent = path53[path53.length - 1];
+    function replaceNode(key, path54, node) {
+      const parent = path54[path54.length - 1];
       if (identity.isCollection(parent)) {
         parent.items[key] = node;
       } else if (identity.isPair(parent)) {
@@ -3035,10 +3035,10 @@ var require_Collection = __commonJS({
     var createNode = require_createNode();
     var identity = require_identity();
     var Node = require_Node();
-    function collectionFromPath(schema, path53, value) {
+    function collectionFromPath(schema, path54, value) {
       let v = value;
-      for (let i = path53.length - 1; i >= 0; --i) {
-        const k = path53[i];
+      for (let i = path54.length - 1; i >= 0; --i) {
+        const k = path54[i];
         if (typeof k === "number" && Number.isInteger(k) && k >= 0) {
           const a = [];
           a[k] = v;
@@ -3057,7 +3057,7 @@ var require_Collection = __commonJS({
         sourceObjects: /* @__PURE__ */ new Map()
       });
     }
-    var isEmptyPath = (path53) => path53 == null || typeof path53 === "object" && !!path53[Symbol.iterator]().next().done;
+    var isEmptyPath = (path54) => path54 == null || typeof path54 === "object" && !!path54[Symbol.iterator]().next().done;
     var Collection = class extends Node.NodeBase {
       constructor(type, schema) {
         super(type);
@@ -3087,11 +3087,11 @@ var require_Collection = __commonJS({
        * be a Pair instance or a `{ key, value }` object, which may not have a key
        * that already exists in the map.
        */
-      addIn(path53, value) {
-        if (isEmptyPath(path53))
+      addIn(path54, value) {
+        if (isEmptyPath(path54))
           this.add(value);
         else {
-          const [key, ...rest] = path53;
+          const [key, ...rest] = path54;
           const node = this.get(key, true);
           if (identity.isCollection(node))
             node.addIn(rest, value);
@@ -3105,8 +3105,8 @@ var require_Collection = __commonJS({
        * Removes a value from the collection.
        * @returns `true` if the item was found and removed.
        */
-      deleteIn(path53) {
-        const [key, ...rest] = path53;
+      deleteIn(path54) {
+        const [key, ...rest] = path54;
         if (rest.length === 0)
           return this.delete(key);
         const node = this.get(key, true);
@@ -3120,8 +3120,8 @@ var require_Collection = __commonJS({
        * scalar values from their surrounding node; to disable set `keepScalar` to
        * `true` (collections are always returned intact).
        */
-      getIn(path53, keepScalar) {
-        const [key, ...rest] = path53;
+      getIn(path54, keepScalar) {
+        const [key, ...rest] = path54;
         const node = this.get(key, true);
         if (rest.length === 0)
           return !keepScalar && identity.isScalar(node) ? node.value : node;
@@ -3139,8 +3139,8 @@ var require_Collection = __commonJS({
       /**
        * Checks if the collection includes a value with the key `key`.
        */
-      hasIn(path53) {
-        const [key, ...rest] = path53;
+      hasIn(path54) {
+        const [key, ...rest] = path54;
         if (rest.length === 0)
           return this.has(key);
         const node = this.get(key, true);
@@ -3150,8 +3150,8 @@ var require_Collection = __commonJS({
        * Sets a value in this collection. For `!!set`, `value` needs to be a
        * boolean to add/remove the item from the set.
        */
-      setIn(path53, value) {
-        const [key, ...rest] = path53;
+      setIn(path54, value) {
+        const [key, ...rest] = path54;
         if (rest.length === 0) {
           this.set(key, value);
         } else {
@@ -5655,9 +5655,9 @@ var require_Document = __commonJS({
           this.contents.add(value);
       }
       /** Adds a value to the document. */
-      addIn(path53, value) {
+      addIn(path54, value) {
         if (assertCollection(this.contents))
-          this.contents.addIn(path53, value);
+          this.contents.addIn(path54, value);
       }
       /**
        * Create a new `Alias` node, ensuring that the target `node` has the required anchor.
@@ -5732,14 +5732,14 @@ var require_Document = __commonJS({
        * Removes a value from the document.
        * @returns `true` if the item was found and removed.
        */
-      deleteIn(path53) {
-        if (Collection.isEmptyPath(path53)) {
+      deleteIn(path54) {
+        if (Collection.isEmptyPath(path54)) {
           if (this.contents == null)
             return false;
           this.contents = null;
           return true;
         }
-        return assertCollection(this.contents) ? this.contents.deleteIn(path53) : false;
+        return assertCollection(this.contents) ? this.contents.deleteIn(path54) : false;
       }
       /**
        * Returns item at `key`, or `undefined` if not found. By default unwraps
@@ -5754,10 +5754,10 @@ var require_Document = __commonJS({
        * scalar values from their surrounding node; to disable set `keepScalar` to
        * `true` (collections are always returned intact).
        */
-      getIn(path53, keepScalar) {
-        if (Collection.isEmptyPath(path53))
+      getIn(path54, keepScalar) {
+        if (Collection.isEmptyPath(path54))
           return !keepScalar && identity.isScalar(this.contents) ? this.contents.value : this.contents;
-        return identity.isCollection(this.contents) ? this.contents.getIn(path53, keepScalar) : void 0;
+        return identity.isCollection(this.contents) ? this.contents.getIn(path54, keepScalar) : void 0;
       }
       /**
        * Checks if the document includes a value with the key `key`.
@@ -5768,10 +5768,10 @@ var require_Document = __commonJS({
       /**
        * Checks if the document includes a value at `path`.
        */
-      hasIn(path53) {
-        if (Collection.isEmptyPath(path53))
+      hasIn(path54) {
+        if (Collection.isEmptyPath(path54))
           return this.contents !== void 0;
-        return identity.isCollection(this.contents) ? this.contents.hasIn(path53) : false;
+        return identity.isCollection(this.contents) ? this.contents.hasIn(path54) : false;
       }
       /**
        * Sets a value in this document. For `!!set`, `value` needs to be a
@@ -5788,13 +5788,13 @@ var require_Document = __commonJS({
        * Sets a value in this document. For `!!set`, `value` needs to be a
        * boolean to add/remove the item from the set.
        */
-      setIn(path53, value) {
-        if (Collection.isEmptyPath(path53)) {
+      setIn(path54, value) {
+        if (Collection.isEmptyPath(path54)) {
           this.contents = value;
         } else if (this.contents == null) {
-          this.contents = Collection.collectionFromPath(this.schema, Array.from(path53), value);
+          this.contents = Collection.collectionFromPath(this.schema, Array.from(path54), value);
         } else if (assertCollection(this.contents)) {
-          this.contents.setIn(path53, value);
+          this.contents.setIn(path54, value);
         }
       }
       /**
@@ -7746,9 +7746,9 @@ var require_cst_visit = __commonJS({
     visit.BREAK = BREAK;
     visit.SKIP = SKIP;
     visit.REMOVE = REMOVE;
-    visit.itemAtPath = (cst, path53) => {
+    visit.itemAtPath = (cst, path54) => {
       let item = cst;
-      for (const [field, index] of path53) {
+      for (const [field, index] of path54) {
         const tok = item?.[field];
         if (tok && "items" in tok) {
           item = tok.items[index];
@@ -7757,23 +7757,23 @@ var require_cst_visit = __commonJS({
       }
       return item;
     };
-    visit.parentCollection = (cst, path53) => {
-      const parent = visit.itemAtPath(cst, path53.slice(0, -1));
-      const field = path53[path53.length - 1][0];
+    visit.parentCollection = (cst, path54) => {
+      const parent = visit.itemAtPath(cst, path54.slice(0, -1));
+      const field = path54[path54.length - 1][0];
       const coll = parent?.[field];
       if (coll && "items" in coll)
         return coll;
       throw new Error("Parent collection not found");
     };
-    function _visit(path53, item, visitor) {
-      let ctrl = visitor(item, path53);
+    function _visit(path54, item, visitor) {
+      let ctrl = visitor(item, path54);
       if (typeof ctrl === "symbol")
         return ctrl;
       for (const field of ["key", "value"]) {
         const token = item[field];
         if (token && "items" in token) {
           for (let i = 0; i < token.items.length; ++i) {
-            const ci = _visit(Object.freeze(path53.concat([[field, i]])), token.items[i], visitor);
+            const ci = _visit(Object.freeze(path54.concat([[field, i]])), token.items[i], visitor);
             if (typeof ci === "number")
               i = ci - 1;
             else if (ci === BREAK)
@@ -7784,10 +7784,10 @@ var require_cst_visit = __commonJS({
             }
           }
           if (typeof ctrl === "function" && field === "key")
-            ctrl = ctrl(item, path53);
+            ctrl = ctrl(item, path54);
         }
       }
-      return typeof ctrl === "function" ? ctrl(item, path53) : ctrl;
+      return typeof ctrl === "function" ? ctrl(item, path54) : ctrl;
     }
     exports2.visit = visit;
   }
@@ -9072,14 +9072,14 @@ var require_parser = __commonJS({
             case "scalar":
             case "single-quoted-scalar":
             case "double-quoted-scalar": {
-              const fs52 = this.flowScalar(this.type);
+              const fs53 = this.flowScalar(this.type);
               if (atNextItem || it.value) {
-                map.items.push({ start, key: fs52, sep: [] });
+                map.items.push({ start, key: fs53, sep: [] });
                 this.onKeyLine = true;
               } else if (it.sep) {
-                this.stack.push(fs52);
+                this.stack.push(fs53);
               } else {
-                Object.assign(it, { key: fs52, sep: [] });
+                Object.assign(it, { key: fs53, sep: [] });
                 this.onKeyLine = true;
               }
               return;
@@ -9207,13 +9207,13 @@ var require_parser = __commonJS({
             case "scalar":
             case "single-quoted-scalar":
             case "double-quoted-scalar": {
-              const fs52 = this.flowScalar(this.type);
+              const fs53 = this.flowScalar(this.type);
               if (!it || it.value)
-                fc.items.push({ start: [], key: fs52, sep: [] });
+                fc.items.push({ start: [], key: fs53, sep: [] });
               else if (it.sep)
-                this.stack.push(fs52);
+                this.stack.push(fs53);
               else
-                Object.assign(it, { key: fs52, sep: [] });
+                Object.assign(it, { key: fs53, sep: [] });
               return;
             }
             case "flow-map-end":
@@ -16174,8 +16174,8 @@ var require_utils = __commonJS({
       }
       return ind;
     }
-    function removeDotSegments(path53) {
-      let input = path53;
+    function removeDotSegments(path54) {
+      let input = path54;
       const output = [];
       let nextSlash = -1;
       let len = 0;
@@ -16374,8 +16374,8 @@ var require_schemes = __commonJS({
         wsComponent.secure = void 0;
       }
       if (wsComponent.resourceName) {
-        const [path53, query] = wsComponent.resourceName.split("?");
-        wsComponent.path = path53 && path53 !== "/" ? path53 : void 0;
+        const [path54, query] = wsComponent.resourceName.split("?");
+        wsComponent.path = path54 && path54 !== "/" ? path54 : void 0;
         wsComponent.query = query;
         wsComponent.resourceName = void 0;
       }
@@ -19728,12 +19728,12 @@ var require_dist2 = __commonJS({
         throw new Error(`Unknown format "${name}"`);
       return f;
     };
-    function addFormats2(ajv2, list, fs52, exportName) {
+    function addFormats2(ajv2, list, fs53, exportName) {
       var _a;
       var _b;
       (_a = (_b = ajv2.opts.code).formats) !== null && _a !== void 0 ? _a : _b.formats = (0, codegen_1._)`require("ajv-formats/dist/formats").${exportName}`;
       for (const f of list)
-        ajv2.addFormat(f, fs52[f]);
+        ajv2.addFormat(f, fs53[f]);
     }
     module2.exports = exports2 = formatsPlugin;
     Object.defineProperty(exports2, "__esModule", { value: true });
@@ -19837,6 +19837,7 @@ ADVANCED COMMANDS
   which <cmd>           Resolve an installed stack command
   lanes <cmd>           Manage the local main/dev lane worktree layout
   leverage [preset]     Calculate human-attention leverage for agent workflows
+  crm <cmd>             Sweep authenticated Gmail metadata into CRM discovery
 
 INTERNAL COMMANDS
   serve                 Daemon process entrypoint; use rudi daemon for lifecycle
@@ -19959,6 +19960,30 @@ OPTIONS
 EXAMPLES
   rudi run pdf-creator
   rudi run pdf-creator --input '{"file": "doc.html"}'
+`,
+    crm: `
+rudi crm - Operate local CRM workflows
+
+USAGE
+  rudi crm sweep-gmail --account <email> --after <YYYY-MM-DD> --before <YYYY-MM-DD> [options]
+
+OPTIONS
+  --account <email>       Configured Google Workspace account (required)
+  --after <date>          Inclusive sweep start, YYYY-MM-DD (required)
+  --before <date>         Exclusive sweep end, YYYY-MM-DD (required)
+  --preview               Extract to a private artifact without CRM writes (default)
+  --record                Record idempotent discovery evidence in CRM; never promotes people
+  --page-size <n>         Gmail page size, 1-500 (default: 100)
+  --max-messages <n>      Optional message cap within the bounded window
+  --output <path>         Override the private JSON artifact path
+  --json                  Print the result as JSON
+
+EXAMPLES
+  rudi crm sweep-gmail --account operator@example.com --after 2026-01-01 --before 2026-08-05
+  rudi crm sweep-gmail --account operator@example.com --after 2026-01-01 --before 2026-08-05 --record
+
+The sweep reads From, To, Cc, and Bcc metadata only. It excludes spam and trash,
+deduplicates exact normalized addresses, and never creates or attaches CRM people.
 `,
     agent: `
 rudi agent - Run and inspect native headless agent hosts
@@ -21859,17 +21884,17 @@ async function promptForRelatedSkills(plan) {
     return selectRelatedSkillsForInstall(plan);
   }
   const { createInterface: createInterface2 } = await import("node:readline/promises");
-  const readline3 = createInterface2({
+  const readline4 = createInterface2({
     input: process.stdin,
     output: process.stdout
   });
   try {
     const label = plan.missingCompanions.length === 1 ? plan.missingCompanions[0].id : `${plan.missingCompanions.length} companion skills`;
-    const answer = await readline3.question(`
+    const answer = await readline4.question(`
 Install ${label} now? [y/N] `);
     return selectRelatedSkillsForInstall(plan, /^(y|yes)$/i.test(answer.trim()));
   } finally {
-    readline3.close();
+    readline4.close();
   }
 }
 async function installRelatedSkills(skills, options = {}) {
@@ -22480,11 +22505,11 @@ async function runStack(id, options = {}) {
   const startTime = Date.now();
   const packagePath = getPackagePath(id);
   const manifestPath = import_path11.default.join(packagePath, "manifest.json");
-  const { default: fs52 } = await import("fs");
-  if (!fs52.existsSync(manifestPath)) {
+  const { default: fs53 } = await import("fs");
+  if (!fs53.existsSync(manifestPath)) {
     throw new Error(`Stack manifest not found: ${id}`);
   }
-  const manifest = JSON.parse(fs52.readFileSync(manifestPath, "utf-8"));
+  const manifest = JSON.parse(fs53.readFileSync(manifestPath, "utf-8"));
   const { command, args } = resolveCommandFromManifest(manifest, packagePath);
   const secrets = await getSecrets(manifest.requires?.secrets || []);
   const runEnv = buildStackRunEnv({
@@ -37790,6 +37815,646 @@ async function cmdAgent(args = [], flags = {}, passthrough = [], dependencies = 
   throw new Error(`Unknown rudi agent command: ${subcommand}`);
 }
 
+// src/commands/crm.js
+var import_promises3 = __toESM(require("node:fs/promises"), 1);
+var import_node_fs18 = require("node:fs");
+var import_node_os7 = __toESM(require("node:os"), 1);
+var import_node_path18 = __toESM(require("node:path"), 1);
+
+// src/mcp-stdio-client.js
+var import_node_child_process10 = require("node:child_process");
+var import_node_readline = __toESM(require("node:readline"), 1);
+var MCP_PROTOCOL_VERSION = "2024-11-05";
+function toolErrorText(result) {
+  if (!Array.isArray(result?.content)) return null;
+  return result.content.filter((item) => item?.type === "text" && typeof item.text === "string").map((item) => item.text.trim()).filter(Boolean).join("\n");
+}
+function parseJsonToolResult(result, toolName) {
+  const text = toolErrorText(result);
+  if (result?.isError === true) {
+    throw new Error(`${toolName} failed${text ? `: ${text}` : ""}`);
+  }
+  if (!text) throw new Error(`${toolName} returned no text result`);
+  try {
+    return JSON.parse(text);
+  } catch {
+    throw new Error(`${toolName} returned non-JSON text`);
+  }
+}
+function createMcpStdioClient({
+  command,
+  args = [],
+  cwd,
+  env = process.env,
+  timeoutMs = 35e3,
+  onStderr = () => {
+  }
+}) {
+  if (typeof command !== "string" || command.trim() === "") {
+    throw new Error("MCP client command is required");
+  }
+  const child = (0, import_node_child_process10.spawn)(command, args, {
+    cwd,
+    env,
+    stdio: ["pipe", "pipe", "pipe"]
+  });
+  const lines = import_node_readline.default.createInterface({ input: child.stdout, terminal: false });
+  const pending = /* @__PURE__ */ new Map();
+  let requestId = 0;
+  let terminalError = null;
+  let closed = false;
+  const rejectPending = (error) => {
+    terminalError = error;
+    for (const request2 of pending.values()) {
+      clearTimeout(request2.timeout);
+      request2.reject(error);
+    }
+    pending.clear();
+  };
+  lines.on("line", (line) => {
+    let response;
+    try {
+      response = JSON.parse(line);
+    } catch {
+      return;
+    }
+    if (response.id == null) return;
+    const request2 = pending.get(response.id);
+    if (!request2) return;
+    pending.delete(response.id);
+    clearTimeout(request2.timeout);
+    if (response.error) {
+      request2.reject(new Error(response.error.message || "MCP request failed"));
+    } else {
+      request2.resolve(response.result);
+    }
+  });
+  child.stderr.on("data", (chunk) => onStderr(String(chunk)));
+  child.on("error", (error) => rejectPending(new Error(`Unable to start MCP router: ${error.message}`)));
+  child.on("exit", (code, signal) => {
+    if (!closed) {
+      rejectPending(new Error(`MCP router exited before completion (${signal || code})`));
+    }
+  });
+  const request = (method, params = {}) => new Promise((resolve2, reject) => {
+    if (terminalError) {
+      reject(terminalError);
+      return;
+    }
+    if (closed || !child.stdin.writable) {
+      reject(new Error("MCP router is not writable"));
+      return;
+    }
+    const id = ++requestId;
+    const timeout = setTimeout(() => {
+      pending.delete(id);
+      reject(new Error(`MCP ${method} timed out after ${timeoutMs}ms`));
+    }, timeoutMs);
+    pending.set(id, { resolve: resolve2, reject, timeout });
+    child.stdin.write(`${JSON.stringify({ jsonrpc: "2.0", id, method, params })}
+`, (error) => {
+      if (!error) return;
+      const active = pending.get(id);
+      if (!active) return;
+      pending.delete(id);
+      clearTimeout(active.timeout);
+      active.reject(error);
+    });
+  });
+  const initialized = request("initialize", {
+    protocolVersion: MCP_PROTOCOL_VERSION,
+    capabilities: {},
+    clientInfo: { name: "rudi-cli", version: "1.0.0" }
+  }).then(() => {
+    child.stdin.write(`${JSON.stringify({
+      jsonrpc: "2.0",
+      method: "notifications/initialized"
+    })}
+`);
+  });
+  return {
+    async callJsonTool(toolName, input = {}) {
+      await initialized;
+      const result = await request("tools/call", {
+        name: toolName,
+        arguments: input
+      });
+      return parseJsonToolResult(result, toolName);
+    },
+    async close() {
+      if (closed) return;
+      closed = true;
+      lines.close();
+      if (child.exitCode !== null || child.signalCode !== null) return;
+      const exited = new Promise((resolve2) => child.once("exit", () => resolve2("exited")));
+      child.kill("SIGTERM");
+      let timerId;
+      const timer = new Promise((resolve2) => {
+        timerId = setTimeout(resolve2, 1e3, "timeout");
+      });
+      const closeResult = await Promise.race([exited, timer]);
+      clearTimeout(timerId);
+      if (closeResult === "timeout" && child.exitCode === null && child.signalCode === null) {
+        child.kill("SIGKILL");
+        await exited;
+      }
+    }
+  };
+}
+
+// src/commands/crm.js
+function requireFlagString(flags, name) {
+  const value = flags?.[name];
+  if (typeof value !== "string" || value.trim() === "") {
+    throw new Error(`--${name} is required`);
+  }
+  return value.trim();
+}
+function requireIsoDate(value, name) {
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(value)) {
+    throw new Error(`--${name} must use YYYY-MM-DD`);
+  }
+  const parsed = /* @__PURE__ */ new Date(`${value}T00:00:00.000Z`);
+  if (Number.isNaN(parsed.getTime()) || parsed.toISOString().slice(0, 10) !== value) {
+    throw new Error(`--${name} must be a valid calendar date`);
+  }
+  return value;
+}
+function optionalBoundedInteger(value, name, { defaultValue, minimum, maximum }) {
+  if (value == null) return defaultValue;
+  const parsed = typeof value === "number" ? value : Number(value);
+  if (!Number.isInteger(parsed) || parsed < minimum || parsed > maximum) {
+    throw new Error(`--${name} must be an integer between ${minimum} and ${maximum}`);
+  }
+  return parsed;
+}
+var EMAIL_PATTERN = /[A-Z0-9.!#$%&'*+/=?^_`{|}~-]+@[A-Z0-9](?:[A-Z0-9-]{0,61}[A-Z0-9])?(?:\.[A-Z0-9](?:[A-Z0-9-]{0,61}[A-Z0-9])?)+/gi;
+var CRM_EMAIL_PATTERN = /^(?!\.)(?!.*\.\.)([A-Z0-9_'+\-.]*)[A-Z0-9_+-]@([A-Z0-9][A-Z0-9-]*\.)+[A-Z]{2,}$/i;
+var HEADER_ROLES = ["from", "to", "cc", "bcc"];
+var GOOGLE_WORKSPACE_STACK = "stack:google-workspace";
+var RUDI_CRM_STACK = "stack:rudi-crm";
+function splitAddressHeader(value) {
+  if (typeof value !== "string" || value.trim() === "") return [];
+  const tokens = [];
+  let token = "";
+  let quoted = false;
+  let escaped = false;
+  let angleDepth = 0;
+  for (const character of value) {
+    if (escaped) {
+      token += character;
+      escaped = false;
+      continue;
+    }
+    if (quoted && character === "\\") {
+      token += character;
+      escaped = true;
+      continue;
+    }
+    if (character === '"') quoted = !quoted;
+    if (!quoted && character === "<") angleDepth += 1;
+    if (!quoted && character === ">" && angleDepth > 0) angleDepth -= 1;
+    if (!quoted && angleDepth === 0 && (character === "," || character === ";")) {
+      if (token.trim()) tokens.push(token.trim());
+      token = "";
+      continue;
+    }
+    token += character;
+  }
+  if (token.trim()) tokens.push(token.trim());
+  return tokens;
+}
+function displayNameForToken(token, emailIndex) {
+  const angleIndex = token.lastIndexOf("<", emailIndex);
+  let value = angleIndex >= 0 ? token.slice(0, angleIndex) : token.slice(0, emailIndex);
+  const groupIndex = value.lastIndexOf(":");
+  if (groupIndex >= 0) value = value.slice(groupIndex + 1);
+  value = value.trim().replace(/^"|"$/g, "").replace(/\\(["\\])/g, "$1").trim();
+  return value ? value.slice(0, 200) : void 0;
+}
+function parseAddressHeader(value) {
+  const addresses = [];
+  let skipped = 0;
+  for (const token of splitAddressHeader(value)) {
+    const matches = [...token.matchAll(EMAIL_PATTERN)];
+    if (matches.length === 0) {
+      if (token.includes("@")) skipped += 1;
+      continue;
+    }
+    for (const match of matches) {
+      const address = match[0].toLowerCase();
+      if (address.length > 320 || !CRM_EMAIL_PATTERN.test(address)) {
+        skipped += 1;
+        continue;
+      }
+      addresses.push({
+        address,
+        displayName: displayNameForToken(token, match.index ?? 0)
+      });
+    }
+  }
+  return { addresses, skipped };
+}
+function requireProviderString(value, field) {
+  if (typeof value !== "string" || value.trim() === "") {
+    throw new Error(`${field} must be a non-empty string`);
+  }
+  return value.trim();
+}
+function requireObservedAt(value, field) {
+  const normalized = requireProviderString(value, field);
+  if (!/(?:Z|[+-]\d{2}:\d{2})$/.test(normalized) || Number.isNaN(Date.parse(normalized))) {
+    throw new Error(`${field} must be an offset-aware timestamp`);
+  }
+  return new Date(normalized).toISOString();
+}
+function buildDiscoveryObservations(messages, mailbox) {
+  if (!Array.isArray(messages)) throw new Error("messages must be an array");
+  const normalizedMailbox = requireProviderString(mailbox, "mailbox").toLowerCase();
+  const observations = [];
+  let skippedAddresses = 0;
+  messages.forEach((message, messageIndex) => {
+    if (!message || typeof message !== "object" || Array.isArray(message)) {
+      throw new Error(`messages[${messageIndex}] must be an object`);
+    }
+    const sourceId = requireProviderString(message.messageId, `messages[${messageIndex}].messageId`);
+    const sourceThreadId = requireProviderString(message.threadId, `messages[${messageIndex}].threadId`);
+    const observedAt = requireObservedAt(message.observedAt, `messages[${messageIndex}].observedAt`);
+    for (const role of HEADER_ROLES) {
+      const parsed = parseAddressHeader(message[role]);
+      skippedAddresses += parsed.skipped;
+      const seen = /* @__PURE__ */ new Set();
+      for (const candidate of parsed.addresses) {
+        if (candidate.address === normalizedMailbox || seen.has(candidate.address)) continue;
+        seen.add(candidate.address);
+        observations.push({
+          source: "gmail",
+          source_id: sourceId,
+          source_thread_id: sourceThreadId,
+          observed_at: observedAt,
+          address_role: role,
+          address: candidate.address,
+          ...candidate.displayName ? { display_name: candidate.displayName } : {},
+          idempotency_key: `${sourceId}:${role}:${candidate.address}`,
+          raw: { mailbox: normalizedMailbox }
+        });
+      }
+    }
+  });
+  return { observations, skippedAddresses };
+}
+function buildGmailQuery(after, before) {
+  const gmailDate = (value) => value.replaceAll("-", "/");
+  return `in:anywhere -in:spam -in:trash after:${gmailDate(after)} before:${gmailDate(before)}`;
+}
+function updateContactRollups(rollups, observations) {
+  for (const observation of observations) {
+    let rollup = rollups.get(observation.address);
+    if (!rollup) {
+      rollup = {
+        email: observation.address,
+        bestDisplayName: null,
+        observationCount: 0,
+        messageIds: /* @__PURE__ */ new Set(),
+        threadIds: /* @__PURE__ */ new Set(),
+        firstSeen: observation.observed_at,
+        lastSeen: observation.observed_at,
+        roles: {}
+      };
+      rollups.set(observation.address, rollup);
+    }
+    rollup.observationCount += 1;
+    rollup.messageIds.add(observation.source_id);
+    rollup.threadIds.add(observation.source_thread_id);
+    if (observation.observed_at < rollup.firstSeen) rollup.firstSeen = observation.observed_at;
+    if (observation.observed_at >= rollup.lastSeen) {
+      rollup.lastSeen = observation.observed_at;
+      if (observation.display_name) rollup.bestDisplayName = observation.display_name;
+    } else if (!rollup.bestDisplayName && observation.display_name) {
+      rollup.bestDisplayName = observation.display_name;
+    }
+    rollup.roles[observation.address_role] = (rollup.roles[observation.address_role] || 0) + 1;
+  }
+}
+function serializeContactRollups(rollups) {
+  return [...rollups.values()].map((rollup) => ({
+    email: rollup.email,
+    bestDisplayName: rollup.bestDisplayName,
+    observationCount: rollup.observationCount,
+    messageCount: rollup.messageIds.size,
+    threadCount: rollup.threadIds.size,
+    firstSeen: rollup.firstSeen,
+    lastSeen: rollup.lastSeen,
+    roles: rollup.roles
+  })).sort((left, right) => right.observationCount - left.observationCount || right.lastSeen.localeCompare(left.lastSeen) || left.email.localeCompare(right.email));
+}
+function requireToolObject(value, toolName) {
+  if (!value || typeof value !== "object" || Array.isArray(value)) {
+    throw new Error(`${toolName} returned malformed data`);
+  }
+  return value;
+}
+async function executeGmailSweep(options, dependencies) {
+  if (!dependencies || typeof dependencies.callTool !== "function") {
+    throw new Error("executeGmailSweep requires a callTool dependency");
+  }
+  const { callTool } = dependencies;
+  let crm = null;
+  if (options.record) {
+    const readiness = requireToolObject(
+      await callTool(`${RUDI_CRM_STACK}.rudi_crm_setup_status`, {}),
+      "rudi_crm_setup_status"
+    );
+    if (readiness.ok !== true) {
+      throw new Error("RUDI CRM is not ready; run rudi_crm_setup_status for details");
+    }
+    crm = {
+      readiness,
+      recorded: {
+        received: 0,
+        inserted: 0,
+        updated: 0,
+        duplicates: 0,
+        newDomains: 0
+      }
+    };
+  }
+  const profile = requireToolObject(
+    await callTool(`${GOOGLE_WORKSPACE_STACK}.gmail_profile`, { account: options.account }),
+    "gmail_profile"
+  );
+  const profileEmail = requireProviderString(profile.emailAddress, "gmail_profile.emailAddress").toLowerCase();
+  if (options.account.includes("@") && options.account.toLowerCase() !== profileEmail) {
+    throw new Error(`Authenticated Gmail profile ${profileEmail} does not match --account ${options.account}`);
+  }
+  const query = buildGmailQuery(options.after, options.before);
+  const rollups = /* @__PURE__ */ new Map();
+  const seenPageTokens = /* @__PURE__ */ new Set();
+  let nextPageToken;
+  let messagesSeen = 0;
+  let observationsSeen = 0;
+  let skippedAddresses = 0;
+  let recordBuffer = [];
+  const flushRecordBuffer = async (force = false) => {
+    while (recordBuffer.length >= 500 || force && recordBuffer.length > 0) {
+      const size = recordBuffer.length >= 500 ? 500 : recordBuffer.length;
+      const batch = recordBuffer.splice(0, size);
+      const recorded = requireToolObject(
+        await callTool(`${RUDI_CRM_STACK}.rudi_crm_record_discovery_observations`, {
+          observations: batch
+        }),
+        "rudi_crm_record_discovery_observations"
+      );
+      for (const field of ["received", "inserted", "updated", "duplicates"]) {
+        const value = Number(recorded[field] ?? 0);
+        if (!Number.isInteger(value) || value < 0) {
+          throw new Error(`rudi_crm_record_discovery_observations returned invalid ${field}`);
+        }
+        crm.recorded[field] += value;
+      }
+      const newDomains = Number(recorded.new_domains ?? 0);
+      if (!Number.isInteger(newDomains) || newDomains < 0) {
+        throw new Error("rudi_crm_record_discovery_observations returned invalid new_domains");
+      }
+      crm.recorded.newDomains += newDomains;
+    }
+  };
+  do {
+    const remaining = options.maxMessages == null ? options.pageSize : Math.min(options.pageSize, options.maxMessages - messagesSeen);
+    if (remaining <= 0) break;
+    const pageInput = {
+      query,
+      max_results: remaining,
+      account: options.account,
+      ...nextPageToken ? { next_page_token: nextPageToken } : {}
+    };
+    const page = requireToolObject(
+      await callTool(`${GOOGLE_WORKSPACE_STACK}.gmail_search_headers`, pageInput),
+      "gmail_search_headers"
+    );
+    if (!Array.isArray(page.messages)) {
+      throw new Error("gmail_search_headers returned malformed messages");
+    }
+    const selectedMessages = options.maxMessages == null ? page.messages : page.messages.slice(0, options.maxMessages - messagesSeen);
+    const extracted = buildDiscoveryObservations(selectedMessages, profileEmail);
+    messagesSeen += selectedMessages.length;
+    observationsSeen += extracted.observations.length;
+    skippedAddresses += extracted.skippedAddresses;
+    updateContactRollups(rollups, extracted.observations);
+    if (options.record) {
+      recordBuffer.push(...extracted.observations);
+      await flushRecordBuffer();
+    }
+    const returnedToken = page.nextPageToken;
+    if (returnedToken == null || returnedToken === "") {
+      nextPageToken = void 0;
+    } else {
+      nextPageToken = requireProviderString(returnedToken, "gmail_search_headers.nextPageToken");
+      if (seenPageTokens.has(nextPageToken)) {
+        throw new Error(`gmail_search_headers repeated pagination token ${nextPageToken}`);
+      }
+      seenPageTokens.add(nextPageToken);
+    }
+  } while (nextPageToken && (options.maxMessages == null || messagesSeen < options.maxMessages));
+  if (options.record) {
+    await flushRecordBuffer(true);
+    crm.heuristics = requireToolObject(
+      await callTool(`${RUDI_CRM_STACK}.rudi_crm_apply_discovery_heuristics`, {}),
+      "rudi_crm_apply_discovery_heuristics"
+    );
+    crm.ingestBatch = requireToolObject(
+      await callTool(`${RUDI_CRM_STACK}.rudi_crm_log_ingest_batch`, {
+        source: "gmail",
+        window_start: options.after,
+        window_end: options.before,
+        messages_seen: messagesSeen,
+        messages_inserted: crm.recorded.inserted,
+        messages_updated: crm.recorded.updated,
+        skipped_noise: skippedAddresses,
+        triage_count: rollups.size,
+        notes: `Header-only Gmail contact sweep for ${profileEmail}; observations=${observationsSeen}`
+      }),
+      "rudi_crm_log_ingest_batch"
+    );
+    crm.validators = requireToolObject(
+      await callTool(`${RUDI_CRM_STACK}.rudi_crm_run_validators`, { include_rows: false }),
+      "rudi_crm_run_validators"
+    );
+  }
+  return {
+    schemaVersion: 1,
+    kind: "rudi-crm.gmail-contact-sweep",
+    mode: options.record ? "record" : "preview",
+    account: options.account,
+    profileEmail,
+    window: { after: options.after, before: options.before },
+    query,
+    messagesSeen,
+    observationsSeen,
+    skippedAddresses,
+    contactCount: rollups.size,
+    contacts: serializeContactRollups(rollups),
+    ...crm ? { crm } : {}
+  };
+}
+function normalizeGmailSweepOptions(flags = {}) {
+  const account = requireFlagString(flags, "account");
+  const after = requireIsoDate(requireFlagString(flags, "after"), "after");
+  const before = requireIsoDate(requireFlagString(flags, "before"), "before");
+  if (before <= after) {
+    throw new Error("--before must be later than --after");
+  }
+  if (flags.record === true && flags.preview === true) {
+    throw new Error("--record and --preview cannot be used together");
+  }
+  return {
+    account,
+    after,
+    before,
+    pageSize: optionalBoundedInteger(flags["page-size"], "page-size", {
+      defaultValue: 100,
+      minimum: 1,
+      maximum: 500
+    }),
+    maxMessages: optionalBoundedInteger(flags["max-messages"], "max-messages", {
+      defaultValue: null,
+      minimum: 1,
+      maximum: 1e6
+    }),
+    record: flags.record === true,
+    output: typeof flags.output === "string" && flags.output.trim() ? flags.output.trim() : null
+  };
+}
+function crmHelpText() {
+  return `
+rudi crm - Operate local CRM workflows
+
+USAGE
+  rudi crm sweep-gmail --account <email> --after <YYYY-MM-DD> --before <YYYY-MM-DD> [options]
+
+OPTIONS
+  --account <email>       Configured Google Workspace account (required)
+  --after <date>          Inclusive sweep start, YYYY-MM-DD (required)
+  --before <date>         Exclusive sweep end, YYYY-MM-DD (required)
+  --preview               Extract to a private artifact without CRM writes (default)
+  --record                Record idempotent discovery evidence in CRM; never promotes people
+  --page-size <n>         Gmail page size, 1-500 (default: 100)
+  --max-messages <n>      Optional message cap within the bounded window
+  --output <path>         Override the private JSON artifact path
+  --json                  Print the result as JSON
+
+EXAMPLES
+  rudi crm sweep-gmail --account operator@example.com --after 2026-01-01 --before 2026-08-05
+  rudi crm sweep-gmail --account operator@example.com --after 2026-01-01 --before 2026-08-05 --record
+
+The sweep reads From, To, Cc, and Bcc metadata only. It excludes spam and trash,
+deduplicates exact normalized addresses, and never creates or attaches CRM people.
+`;
+}
+function defaultRudiHome() {
+  return process.env.RUDI_HOME || import_node_path18.default.join(import_node_os7.default.homedir(), ".rudi");
+}
+function defaultSweepOutputPath(options) {
+  const accountSlug = options.account.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-|-$/g, "");
+  return import_node_path18.default.join(
+    defaultRudiHome(),
+    "outputs",
+    "rudi-crm",
+    "gmail-sweeps",
+    accountSlug,
+    `${options.after}_${options.before}-${options.record ? "record" : "preview"}.json`
+  );
+}
+async function writePrivateArtifact(artifact, { requestedPath, options }) {
+  const targetPath = requestedPath ? import_node_path18.default.resolve(process.cwd(), requestedPath) : defaultSweepOutputPath(options);
+  const directory = import_node_path18.default.dirname(targetPath);
+  await import_promises3.default.mkdir(directory, { recursive: true, mode: 448 });
+  const temporaryPath = `${targetPath}.${process.pid}.${Date.now()}.tmp`;
+  try {
+    await import_promises3.default.writeFile(temporaryPath, `${JSON.stringify(artifact, null, 2)}
+`, {
+      encoding: "utf8",
+      mode: 384,
+      flag: "wx"
+    });
+    await import_promises3.default.rename(temporaryPath, targetPath);
+  } catch (error) {
+    await import_promises3.default.rm(temporaryPath, { force: true });
+    throw error;
+  }
+  return targetPath;
+}
+function createDefaultToolClient(verbose) {
+  const routerPath = import_node_path18.default.join(defaultRudiHome(), "bins", "rudi-router");
+  if (!(0, import_node_fs18.existsSync)(routerPath)) {
+    throw new Error(`RUDI router not found at ${routerPath}; run rudi integrate codex`);
+  }
+  return createMcpStdioClient({
+    command: routerPath,
+    env: {
+      ...process.env,
+      RUDI_ROUTER_TOOL_NAMES: "canonical"
+    },
+    onStderr: verbose ? (message) => process.stderr.write(message) : () => {
+    }
+  });
+}
+function printSweepSummary(result, outputPath, log) {
+  log(`Gmail contact sweep ${result.mode}`);
+  log(`Account: ${result.profileEmail}`);
+  log(`Window: ${result.window.after} through ${result.window.before} (end exclusive)`);
+  log(`Messages: ${result.messagesSeen}`);
+  log(`Unique contacts: ${result.contactCount}`);
+  log(`Header observations: ${result.observationsSeen}`);
+  if (result.crm) {
+    log(`CRM observations inserted: ${result.crm.recorded.inserted}`);
+    log(`CRM duplicates: ${result.crm.recorded.duplicates}`);
+    log(`CRM validators: ${result.crm.validators.ok === true ? "passed" : "violations found"}`);
+  } else {
+    log("CRM changes: none");
+  }
+  log("CRM people promoted: 0");
+  log(`Artifact: ${outputPath}`);
+}
+async function cmdCrm(args, flags, dependencies = {}) {
+  const subcommand = args[0];
+  const log = dependencies.log || console.log;
+  if (!subcommand || subcommand === "help" || flags.help || flags.h) {
+    log(crmHelpText());
+    return null;
+  }
+  if (subcommand !== "sweep-gmail") {
+    throw new Error(`Unknown CRM command: ${subcommand}. Run 'rudi help crm' for usage.`);
+  }
+  const options = normalizeGmailSweepOptions(flags);
+  let client = null;
+  const callTool = dependencies.callTool || (() => {
+    client = createDefaultToolClient(flags.verbose === true);
+    return client.callJsonTool.bind(client);
+  })();
+  try {
+    const result = await executeGmailSweep(options, { callTool });
+    const artifact = {
+      ...result,
+      generatedAt: (dependencies.now ? dependencies.now() : /* @__PURE__ */ new Date()).toISOString()
+    };
+    const writer = dependencies.writeArtifact || writePrivateArtifact;
+    const outputPath = await writer(artifact, {
+      requestedPath: options.output,
+      options
+    });
+    const commandResult = { ...artifact, outputPath };
+    if (flags.json === true) {
+      log(JSON.stringify(commandResult, null, 2));
+    } else {
+      printSweepSummary(commandResult, outputPath, log);
+    }
+    return commandResult;
+  } finally {
+    await client?.close();
+  }
+}
+
 // src/index.js
 var VERSION = true ? "1.10.15" : process.env.npm_package_version || "0.0.0";
 var RETIRED_COMMANDS = /* @__PURE__ */ new Map([
@@ -37925,6 +38590,9 @@ async function main() {
         break;
       case "agent":
         await cmdAgent(args, flags, passthrough);
+        break;
+      case "crm":
+        await cmdCrm(args, flags);
         break;
       // Shortcuts for listing specific package types
       case "stacks":

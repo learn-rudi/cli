@@ -62,6 +62,7 @@ import { cmdInstructions } from './commands/instructions.js';
 import { cmdLeverage } from './commands/leverage.js';
 import { cmdSkills } from './commands/skills.js';
 import { cmdAgent } from './commands/agent-host.js';
+import { cmdCrm } from './commands/crm.js';
 
 const VERSION = typeof __RUDI_CLI_VERSION__ === 'string'
   ? __RUDI_CLI_VERSION__
@@ -235,6 +236,10 @@ async function main() {
 
       case 'agent':
         await cmdAgent(args, flags, passthrough);
+        break;
+
+      case 'crm':
+        await cmdCrm(args, flags);
         break;
 
       // Shortcuts for listing specific package types
