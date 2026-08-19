@@ -95,8 +95,8 @@ importers:
   packages/registry-client:
     dependencies:
       '@learnrudi/env':
-        specifier: ^1.0.0
-        version: 1.0.0
+        specifier: workspace:*
+        version: link:../env
 
   packages/runner:
     dependencies:
