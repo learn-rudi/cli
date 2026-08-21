@@ -116,6 +116,7 @@ function buildCodexRouterTomlBlock(routerPath) {
     '[mcp_servers.rudi]',
     `command = ${tomlString(routerPath)}`,
     'args = []',
+    'default_tools_approval_mode = "writes"',
     '',
     '[mcp_servers.rudi.env]',
     'RUDI_ROUTER_TOOL_NAMES = "portable"',
