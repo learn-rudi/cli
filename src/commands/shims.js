@@ -95,11 +95,16 @@ function writeShimScript(name, script) {
   fs.writeFileSync(shimPath, script, { encoding: 'utf8', mode: 0o755 });
 }
 
-function getCliEntryPath() {
-  const candidates = [
-    path.join(path.dirname(process.argv[1]), '..', 'dist', 'index.cjs'),
-    path.join(path.dirname(process.argv[1]), '..', 'src', 'index.js'),
-  ];
+export function resolveCliArtifactPath(entryPath, relativeCandidates) {
+  let resolvedEntryPath = entryPath;
+  try {
+    resolvedEntryPath = fs.realpathSync(entryPath);
+  } catch {
+    // Preserve source-checkout behavior when the entrypoint is not yet installed.
+  }
+
+  const packageRoot = path.resolve(path.dirname(resolvedEntryPath), '..');
+  const candidates = relativeCandidates.map((candidate) => path.join(packageRoot, candidate));
 
   for (const candidate of candidates) {
     if (fs.existsSync(candidate)) {
@@ -110,21 +115,17 @@ function getCliEntryPath() {
   return null;
 }
 
+function getCliEntryPath() {
+  return resolveCliArtifactPath(process.argv[1], ['dist/index.cjs', 'src/index.js']);
+}
+
 function copyRouterMcp(routerDir) {
   const destPath = path.join(routerDir, 'router-mcp.js');
-  const possibleSources = [
-    path.join(path.dirname(process.argv[1]), '..', 'dist', 'router-mcp.js'),
-    path.join(path.dirname(process.argv[1]), '..', 'src', 'router-mcp.js'),
-  ];
+  const source = resolveCliArtifactPath(process.argv[1], ['dist/router-mcp.js', 'src/router-mcp.js']);
 
-  for (const source of possibleSources) {
-    if (fs.existsSync(source)) {
-      fs.copyFileSync(source, destPath);
-      return true;
-    }
-  }
-
-  return false;
+  if (!source) return false;
+  fs.copyFileSync(source, destPath);
+  return true;
 }
 
 function getRuntimeShimDefs() {
