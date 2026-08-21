@@ -14,6 +14,8 @@ test('patchCodexTomlRouter adds rudi router to Codex config.toml', () => {
   assert.match(result.content, /\[mcp_servers\.rudi]/);
   assert.match(result.content, /command = "\/Users\/test\/\.rudi\/bins\/rudi-router"/);
   assert.match(result.content, /args = \[]/);
+  assert.match(result.content, /\[mcp_servers\.rudi\.env]/);
+  assert.match(result.content, /RUDI_ROUTER_TOOL_NAMES = "portable"/);
 });
 
 test('patchCodexTomlRouter removes direct RUDI stack entries and nested subtables', () => {
@@ -79,6 +81,9 @@ test('patchCodexTomlRouter leaves matching rudi router entry unchanged', () => {
     '[mcp_servers.rudi]',
     'command = "/Users/test/.rudi/bins/rudi-router"',
     'args = []',
+    '',
+    '[mcp_servers.rudi.env]',
+    'RUDI_ROUTER_TOOL_NAMES = "portable"',
     '',
   ].join('\n');
 

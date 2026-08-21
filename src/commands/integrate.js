@@ -117,6 +117,9 @@ function buildCodexRouterTomlBlock(routerPath) {
     `command = ${tomlString(routerPath)}`,
     'args = []',
     '',
+    '[mcp_servers.rudi.env]',
+    'RUDI_ROUTER_TOOL_NAMES = "portable"',
+    '',
   ].join('\n');
 }
 
