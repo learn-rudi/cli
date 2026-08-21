@@ -27473,11 +27473,14 @@ function writeShimScript(name, script) {
   const shimPath = import_path20.default.join(PATHS.bins, name);
   import_fs22.default.writeFileSync(shimPath, script, { encoding: "utf8", mode: 493 });
 }
-function getCliEntryPath() {
-  const candidates = [
-    import_path20.default.join(import_path20.default.dirname(process.argv[1]), "..", "dist", "index.cjs"),
-    import_path20.default.join(import_path20.default.dirname(process.argv[1]), "..", "src", "index.js")
-  ];
+function resolveCliArtifactPath(entryPath, relativeCandidates) {
+  let resolvedEntryPath = entryPath;
+  try {
+    resolvedEntryPath = import_fs22.default.realpathSync(entryPath);
+  } catch {
+  }
+  const packageRoot = import_path20.default.resolve(import_path20.default.dirname(resolvedEntryPath), "..");
+  const candidates = relativeCandidates.map((candidate) => import_path20.default.join(packageRoot, candidate));
   for (const candidate of candidates) {
     if (import_fs22.default.existsSync(candidate)) {
       return candidate;
@@ -27485,19 +27488,15 @@ function getCliEntryPath() {
   }
   return null;
 }
+function getCliEntryPath() {
+  return resolveCliArtifactPath(process.argv[1], ["dist/index.cjs", "src/index.js"]);
+}
 function copyRouterMcp(routerDir) {
   const destPath = import_path20.default.join(routerDir, "router-mcp.js");
-  const possibleSources = [
-    import_path20.default.join(import_path20.default.dirname(process.argv[1]), "..", "dist", "router-mcp.js"),
-    import_path20.default.join(import_path20.default.dirname(process.argv[1]), "..", "src", "router-mcp.js")
-  ];
-  for (const source of possibleSources) {
-    if (import_fs22.default.existsSync(source)) {
-      import_fs22.default.copyFileSync(source, destPath);
-      return true;
-    }
-  }
-  return false;
+  const source = resolveCliArtifactPath(process.argv[1], ["dist/router-mcp.js", "src/router-mcp.js"]);
+  if (!source) return false;
+  import_fs22.default.copyFileSync(source, destPath);
+  return true;
 }
 function getRuntimeShimDefs() {
   const pythonBin = import_path20.default.join(PATHS.runtimes, "python", "bin");
