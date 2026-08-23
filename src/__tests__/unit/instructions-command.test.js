@@ -109,6 +109,30 @@ test('resolveInstructionTarget maps global and project instruction files', () =>
   );
 });
 
+test('gemini instructions target ~/.gemini/GEMINI.md with a Gemini block', () => {
+  const env = {
+    home: '/Users/test',
+    cwd: '/Users/test/project',
+  };
+
+  assert.equal(normalizeInstructionAgent('gemini'), 'gemini');
+  assert.equal(normalizeInstructionAgent('gemini-cli'), 'gemini');
+
+  const block = buildRudiInstructionBlock('gemini');
+  assert.match(block, /capability layer for Gemini/);
+  assert.match(block, /rudi integrate gemini/);
+  assert.match(block, /rudi instructions gemini --install/);
+
+  assert.equal(
+    resolveInstructionTarget('gemini', {}, env),
+    path.join('/Users/test', '.gemini', 'GEMINI.md')
+  );
+  assert.equal(
+    resolveInstructionTarget('gemini', { project: true }, env),
+    path.join('/Users/test/project', 'GEMINI.md')
+  );
+});
+
 test('normalizeInstructionAgent keeps unknown targets generic', () => {
   assert.equal(normalizeInstructionAgent('claude-code'), 'claude');
   assert.equal(normalizeInstructionAgent('openai'), 'codex');
