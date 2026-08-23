@@ -50,3 +50,54 @@ test('removeStackFromToolIndex prunes one cached stack entry', () => {
     fs.rmSync(root, { recursive: true, force: true });
   }
 });
+
+test('discoverStackTools releases inherited stdio handles after a timeout', () => {
+  const root = fs.mkdtempSync(path.join(os.tmpdir(), 'rudi-tool-index-timeout-'));
+  const rudiHome = path.join(root, '.rudi');
+  const fakeStack = path.join(root, 'fake-stack.cjs');
+  const pidFile = path.join(root, 'fake-stack.pid');
+
+  try {
+    fs.writeFileSync(fakeStack, `
+      const fs = require('node:fs');
+      fs.writeFileSync(process.argv[2], String(process.pid));
+      process.on('SIGTERM', () => {});
+      setTimeout(() => {}, 5000);
+    `);
+
+    const script = `
+      const fs = await import('node:fs');
+      const { discoverStackTools } = await import(process.argv[1]);
+      const result = await discoverStackTools('stack:timeout-fixture', {
+        installed: true,
+        path: process.argv[2],
+        launch: { bin: process.execPath, args: [process.argv[3], process.argv[4]] },
+      }, { timeout: 500 });
+      await new Promise(resolve => setTimeout(resolve, 400));
+      const childPid = Number(fs.readFileSync(process.argv[4], 'utf8'));
+      let childAlive = false;
+      try {
+        process.kill(childPid, 0);
+        childAlive = true;
+      } catch {}
+      if (childAlive) process.kill(childPid, 'SIGKILL');
+      console.log(JSON.stringify({ childAlive, result }));
+    `;
+    const output = execFileSync(
+      process.execPath,
+      ['--input-type=module', '-e', script, toolIndexUrl, root, fakeStack, pidFile],
+      {
+        cwd: repoRoot,
+        env: { ...process.env, RUDI_HOME: rudiHome },
+        encoding: 'utf8',
+        timeout: 5000,
+      },
+    );
+    const result = JSON.parse(output);
+
+    assert.equal(result.result.error, 'Timeout after 500ms');
+    assert.equal(result.childAlive, false);
+  } finally {
+    fs.rmSync(root, { recursive: true, force: true });
+  }
+});

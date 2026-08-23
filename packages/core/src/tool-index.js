@@ -181,10 +181,37 @@ export async function discoverStackTools(stackId, stackConfig, options = {}) {
   return new Promise((resolve) => {
     let resolved = false;
     let childProcess;
+    let forceKillTimer = null;
+    let rl = null;
+
+    const releaseProcessHandles = () => {
+      rl?.close();
+      rl = null;
+      childProcess?.stdin?.destroy();
+      childProcess?.stdout?.destroy();
+      childProcess?.stderr?.destroy();
+    };
 
     const cleanup = () => {
-      if (childProcess && !childProcess.killed) {
-        childProcess.kill();
+      releaseProcessHandles();
+      if (
+        childProcess
+        && childProcess.exitCode === null
+        && childProcess.signalCode === null
+      ) {
+        childProcess.kill('SIGTERM');
+        forceKillTimer = setTimeout(() => {
+          if (
+            childProcess.exitCode === null
+            && childProcess.signalCode === null
+          ) {
+            childProcess.kill('SIGKILL');
+          }
+        }, 250);
+        childProcess.once('exit', () => {
+          clearTimeout(forceKillTimer);
+          forceKillTimer = null;
+        });
       }
     };
 
@@ -208,7 +235,7 @@ export async function discoverStackTools(stackId, stackConfig, options = {}) {
         env
       });
 
-      const rl = readline.createInterface({
+      rl = readline.createInterface({
         input: childProcess.stdout,
         terminal: false
       });
@@ -268,6 +295,11 @@ export async function discoverStackTools(stackId, stackConfig, options = {}) {
       });
 
       childProcess.on('exit', (code) => {
+        releaseProcessHandles();
+        if (forceKillTimer !== null) {
+          clearTimeout(forceKillTimer);
+          forceKillTimer = null;
+        }
         if (!resolved && code !== 0) {
           resolved = true;
           clearTimeout(timeoutId);

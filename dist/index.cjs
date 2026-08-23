@@ -11912,9 +11912,28 @@ async function discoverStackTools(stackId, stackConfig, options = {}) {
   return new Promise((resolve2) => {
     let resolved = false;
     let childProcess;
+    let forceKillTimer = null;
+    let rl = null;
+    const releaseProcessHandles = () => {
+      rl?.close();
+      rl = null;
+      childProcess?.stdin?.destroy();
+      childProcess?.stdout?.destroy();
+      childProcess?.stderr?.destroy();
+    };
     const cleanup = () => {
-      if (childProcess && !childProcess.killed) {
-        childProcess.kill();
+      releaseProcessHandles();
+      if (childProcess && childProcess.exitCode === null && childProcess.signalCode === null) {
+        childProcess.kill("SIGTERM");
+        forceKillTimer = setTimeout(() => {
+          if (childProcess.exitCode === null && childProcess.signalCode === null) {
+            childProcess.kill("SIGKILL");
+          }
+        }, 250);
+        childProcess.once("exit", () => {
+          clearTimeout(forceKillTimer);
+          forceKillTimer = null;
+        });
       }
     };
     const timeoutId = setTimeout(() => {
@@ -11934,7 +11953,7 @@ async function discoverStackTools(stackId, stackConfig, options = {}) {
         stdio: ["pipe", "pipe", "pipe"],
         env
       });
-      const rl = readline.createInterface({
+      rl = readline.createInterface({
         input: childProcess.stdout,
         terminal: false
       });
@@ -11983,6 +12002,11 @@ async function discoverStackTools(stackId, stackConfig, options = {}) {
         }
       });
       childProcess.on("exit", (code) => {
+        releaseProcessHandles();
+        if (forceKillTimer !== null) {
+          clearTimeout(forceKillTimer);
+          forceKillTimer = null;
+        }
         if (!resolved && code !== 0) {
           resolved = true;
           clearTimeout(timeoutId);
@@ -37403,7 +37427,7 @@ async function cmdLeverage(args, flags) {
 }
 
 // src/index.js
-var VERSION = true ? "1.10.20" : process.env.npm_package_version || "0.0.0";
+var VERSION = true ? "1.10.21" : process.env.npm_package_version || "0.0.0";
 var RETIRED_COMMANDS = /* @__PURE__ */ new Map([
   ["apply", "Provider transcripts remain authoritative; organization-plan execution was removed."],
   ["database", "Use Studio only if you still need the isolated compatibility database."],
