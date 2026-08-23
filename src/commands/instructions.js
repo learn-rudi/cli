@@ -14,23 +14,33 @@ import os from 'os';
 export const RUDI_INSTRUCTIONS_BEGIN = '<!-- RUDI BEGIN -->';
 export const RUDI_INSTRUCTIONS_END = '<!-- RUDI END -->';
 
-const SUPPORTED_AGENTS = new Set(['claude', 'codex', 'generic']);
+const SUPPORTED_AGENTS = new Set(['claude', 'codex', 'gemini', 'generic']);
 
 function agentDisplayName(agent) {
   if (agent === 'claude') return 'Claude';
   if (agent === 'codex') return 'Codex';
+  if (agent === 'gemini') return 'Gemini';
   return 'agent';
 }
 
 function integrationTarget(agent) {
   if (agent === 'claude') return 'claude';
   if (agent === 'codex') return 'codex';
+  if (agent === 'gemini') return 'gemini';
   return '<agent>';
 }
 
 function instructionFileName(agent) {
   if (agent === 'claude') return 'CLAUDE.md';
   if (agent === 'codex') return 'AGENTS.md';
+  if (agent === 'gemini') return 'GEMINI.md';
+  return null;
+}
+
+function instructionDirName(agent) {
+  if (agent === 'claude') return '.claude';
+  if (agent === 'codex') return '.codex';
+  if (agent === 'gemini') return '.gemini';
   return null;
 }
 
@@ -47,6 +57,7 @@ export function normalizeInstructionAgent(agent) {
   const normalized = (agent || 'generic').toLowerCase();
   if (normalized === 'claude-code' || normalized === 'claude-desktop') return 'claude';
   if (normalized === 'openai' || normalized === 'codex-cli') return 'codex';
+  if (normalized === 'gemini-cli' || normalized === 'google') return 'gemini';
   if (!SUPPORTED_AGENTS.has(normalized)) return 'generic';
   return normalized;
 }
@@ -154,7 +165,7 @@ export function resolveInstructionTarget(agent = 'generic', flags = {}, env = {}
     return path.join(cwd, fileName);
   }
 
-  return path.join(home, normalizedAgent === 'claude' ? '.claude' : '.codex', fileName);
+  return path.join(home, instructionDirName(normalizedAgent), fileName);
 }
 
 function backupInstructionFile(targetPath) {
@@ -176,6 +187,7 @@ USAGE
 AGENTS
   claude       CLAUDE.md instructions
   codex        AGENTS.md instructions
+  gemini       GEMINI.md instructions
   generic      Print a pasteable generic block
 
 OPTIONS
