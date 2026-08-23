@@ -13,36 +13,13 @@
  *   2 = installed but not authenticated (agents only)
  */
 
-import { PATHS, isPackageInstalled, getPackagePath, resolveNodeRuntimeBin, checkStackLifecycle, readRudiConfig } from '@learnrudi/core';
+import { PATHS, isPackageInstalled, getPackagePath, checkStackLifecycle, readRudiConfig } from '@learnrudi/core';
 import fs from 'fs';
 import path from 'path';
-import os from 'os';
+import { inspectAgentHost } from '../agent-host/preflight.js';
 import { createWhichCommand, runCommand, runCommandPlan } from '../utils/subprocess.js';
 
-// Agent credential checks
-const AGENT_CREDENTIALS = {
-  claude: { type: 'keychain', service: 'Claude Code-credentials' },
-  codex: { type: 'file', path: '~/.codex/auth.json' },
-  gemini: { type: 'file', path: '~/.gemini/google_accounts.json' },
-  copilot: { type: 'file', path: '~/.config/github-copilot/hosts.json' },
-};
-
-function fileExists(filePath) {
-  const resolved = filePath.replace('~', os.homedir());
-  return fs.existsSync(resolved);
-}
-
-function checkKeychain(service) {
-  if (process.platform !== 'darwin') return false;
-  try {
-    runCommand('security', ['find-generic-password', '-s', service], {
-      stdio: ['pipe', 'pipe', 'pipe'],
-    });
-    return true;
-  } catch {
-    return false;
-  }
-}
+const KNOWN_AGENT_HOSTS = new Set(['antigravity', 'claude', 'codex', 'gemini', 'google']);
 
 function getVersion(binaryPath, versionFlag = '--version') {
   try {
@@ -74,38 +51,12 @@ function findGlobalBinary(name) {
   }
 }
 
-function getAgentBins(name) {
-  const manifestPath = path.join(PATHS.agents, name, 'manifest.json');
-  if (fs.existsSync(manifestPath)) {
-    try {
-      const manifest = JSON.parse(fs.readFileSync(manifestPath, 'utf-8'));
-      const bins = manifest.bins || manifest.binaries || [];
-      if (bins.length > 0) return bins;
-    } catch {
-      // Fall through to default
-    }
-  }
-  return [name];
-}
-
-function findRudiAgentBin(name) {
-  const bins = getAgentBins(name);
-  for (const bin of bins) {
-    const binPath = resolveNodeRuntimeBin(bin);
-    if (fs.existsSync(binPath)) return binPath;
-  }
-  return null;
-}
-
 /**
  * Auto-detect package kind by checking filesystem locations
- * Priority: agent > runtime > binary > stack (checks where it exists)
+ * Agent names are recognized from the native Agent Host provider catalog.
  */
 function detectKindFromFilesystem(name) {
-  // Check RUDI agent location
-  const agentManifestPath = path.join(PATHS.agents, name, 'manifest.json');
-  if (fs.existsSync(agentManifestPath)) return 'agent';
-  if (findRudiAgentBin(name)) return 'agent';
+  if (KNOWN_AGENT_HOSTS.has(name)) return 'agent';
 
   // Check RUDI runtime location
   const runtimePath = path.join(PATHS.runtimes, name, 'bin', name);
@@ -134,6 +85,24 @@ function detectKindFromFilesystem(name) {
 
   // Default to stack for unknown (user can be explicit with stack:name)
   return 'stack';
+}
+
+export async function getAgentCheck(name, options = {}) {
+  const agentHostInspector = options.agentHostInspector || inspectAgentHost;
+  const inspected = await agentHostInspector(name);
+  const canonicalName = inspected.provider || name;
+
+  return {
+    id: `agent:${canonicalName}`,
+    kind: 'agent',
+    name: canonicalName,
+    installed: inspected.installed,
+    source: inspected.installed ? 'external' : null,
+    authenticated: inspected.authenticated,
+    ready: inspected.installed && inspected.authenticated !== false,
+    path: inspected.binaryPath || null,
+    version: inspected.version,
+  };
 }
 
 export async function cmdCheck(args, flags) {
@@ -174,41 +143,7 @@ export async function cmdCheck(args, flags) {
   // Check installation based on kind
   switch (kind) {
     case 'agent': {
-      // Check RUDI global location first (preferred)
-      const rudiPath = findRudiAgentBin(name);
-      const rudiInstalled = !!rudiPath;
-
-      // Check global PATH as fallback
-      let globalPath = null;
-      let globalInstalled = false;
-      if (!rudiInstalled) {
-        const which = findGlobalBinary(name);
-        // Make sure it's not a RUDI shim
-        if (which && !which.includes('.rudi/bins') && !which.includes('.rudi/shims')) {
-          globalPath = which;
-          globalInstalled = true;
-        }
-      }
-
-      result.installed = rudiInstalled || globalInstalled;
-      result.path = rudiInstalled ? rudiPath : globalPath;
-      result.source = rudiInstalled ? 'rudi' : (globalInstalled ? 'global' : null);
-
-      if (result.installed && result.path) {
-        result.version = getVersion(result.path);
-      }
-
-      // Check credentials
-      const cred = AGENT_CREDENTIALS[name];
-      if (cred) {
-        if (cred.type === 'keychain') {
-          result.authenticated = checkKeychain(cred.service);
-        } else if (cred.type === 'file') {
-          result.authenticated = fileExists(cred.path);
-        }
-      }
-
-      result.ready = result.installed && result.authenticated;
+      Object.assign(result, await getAgentCheck(name));
       break;
     }
 

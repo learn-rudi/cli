@@ -6,7 +6,7 @@
   "version": "1.0.0",
   "binary": {
     "name": "agy",
-    "resolvePaths": ["~/.local/bin/agy", "~/.rudi/bins/agy"],
+    "resolvePaths": ["~/.local/bin/agy", "/opt/homebrew/bin/agy", "/usr/local/bin/agy"],
     "fallback": "which",
     "checkCommand": ["agy", "--version"],
     "loginCommand": ["agy"],

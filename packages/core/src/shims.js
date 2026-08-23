@@ -301,6 +301,53 @@ export function listShims() {
   });
 }
 
+function expandStaticShellToken(token, variables) {
+  const expanded = token.replace(/\$\{([A-Za-z_][A-Za-z0-9_]*)\}|\$([A-Za-z_][A-Za-z0-9_]*)/g, (match, braced, plain) => {
+    const name = braced || plain;
+    if (Object.hasOwn(variables, name)) return variables[name];
+    if (name === 'HOME' && process.env.HOME) return process.env.HOME;
+    return match;
+  });
+  return expanded.includes('$') ? null : expanded;
+}
+
+function resolveExecutableToken(token, shimDirectory) {
+  if (!token) return null;
+  if (path.isAbsolute(token)) return fs.existsSync(token) ? token : null;
+  if (token.includes(path.sep)) {
+    const resolved = path.resolve(shimDirectory, token);
+    return fs.existsSync(resolved) ? resolved : null;
+  }
+
+  const candidates = [
+    path.join(shimDirectory, token),
+    ...(process.env.PATH || '').split(path.delimiter).filter(Boolean).map(dir => path.join(dir, token)),
+  ];
+  return candidates.find(candidate => fs.existsSync(candidate)) || null;
+}
+
+function inspectWrapperTarget(content, shimDirectory) {
+  const variables = {};
+  for (const line of content.split(/\r?\n/)) {
+    const assignment = line.match(/^\s*(?:readonly\s+)?([A-Za-z_][A-Za-z0-9_]*)=(?:"([^"]*)"|'([^']*)')\s*$/);
+    if (!assignment) continue;
+    const value = expandStaticShellToken(assignment[2] ?? assignment[3] ?? '', variables);
+    if (value !== null) variables[assignment[1]] = value;
+  }
+
+  let parsedExec = false;
+  for (const line of content.split(/\r?\n/)) {
+    const exec = line.match(/^\s*exec\s+(?:"([^"]+)"|'([^']+)'|([^\s]+))/);
+    if (!exec) continue;
+    parsedExec = true;
+    const token = expandStaticShellToken(exec[1] ?? exec[2] ?? exec[3], variables);
+    const target = resolveExecutableToken(token, shimDirectory);
+    if (target) return { parsedExec, target };
+  }
+
+  return { parsedExec, target: null };
+}
+
 /**
  * Validate a shim (check if target exists)
  * @param {string} bin - Binary name
@@ -331,15 +378,16 @@ export function validateShim(bin) {
     } else if (stat.isFile()) {
       // For wrappers, extract target from script
       const content = fs.readFileSync(shimPath, 'utf8');
-      const match = content.match(/exec "([^"]+)"/);
-      const target = match?.[1];
+      const inspection = inspectWrapperTarget(content, path.dirname(shimPath));
+      const target = inspection.target;
 
       if (!target) {
-        return { valid: false, error: 'Cannot parse wrapper script' };
-      }
-
-      if (!fs.existsSync(target)) {
-        return { valid: false, target, error: 'Wrapper target does not exist' };
+        return {
+          valid: false,
+          error: inspection.parsedExec
+            ? 'Wrapper target does not exist'
+            : 'Cannot parse wrapper script',
+        };
       }
 
       return { valid: true, target };

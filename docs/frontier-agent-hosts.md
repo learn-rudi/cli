@@ -1,6 +1,8 @@
 # Frontier Agent Hosts
 
-RUDI installs and projects capabilities into native agent hosts; it does not own their model execution or session state. The current frontier set is:
+RUDI discovers vendor-installed Agent Hosts and projects capabilities into
+them; it does not install those hosts or own their model execution, updates,
+authentication, or session state. The current frontier set is:
 
 | Vendor | Subscription-backed host | Other supported host | Current frontier models |
 | --- | --- | --- | --- |
@@ -19,7 +21,7 @@ capability differences explicit:
 rudi agent hosts
 rudi agent models claude
 rudi agent models codex
-rudi agent models google
+rudi agent models antigravity # `google` remains an accepted alias
 rudi agent models gemini
 
 rudi agent launch claude --workspace . --prompt "Fix the failing tests"
@@ -133,23 +135,24 @@ preflight.
 
 ## Install and update
 
-Claude and Antigravity use their vendors' native installers and update mechanisms. RUDI detects and registers those executables. Codex and Gemini CLI are RUDI-managed npm agents.
+All Agent Host CLIs are installed, updated, and authenticated through their
+vendors. RUDI discovers those executables and wires its MCP router and skills
+into them; it does not install an Agent Host into `~/.rudi`, its Node runtime,
+or its Python runtime.
 
 ```bash
 # Anthropic native install/update
 curl -fsSL https://claude.ai/install.sh | bash
 claude install latest
-rudi install agent:claude --force --with-shims
 
-# OpenAI managed install/update
-rudi install agent:codex --force --with-shims
+# OpenAI native install/update
+curl -fsSL https://chatgpt.com/codex/install.sh | sh
 
-# Google API/Vertex/enterprise host
-rudi install agent:gemini --force --with-shims
+# Google API/Vertex/enterprise host: follow the supported Gemini CLI installer
+# at https://geminicli.com/docs/
 
 # Google personal subscription host
 curl -fsSL https://antigravity.google/cli/install.sh | bash
-rudi install agent:antigravity --force --with-shims
 ```
 
 Check the exact executables that a login shell will run:
@@ -159,8 +162,16 @@ command -v claude && claude --version
 command -v codex && codex --version
 command -v gemini && gemini --version
 command -v agy && agy --version
-rudi list agents --json
+rudi agent hosts --json
 ```
+
+RUDI's own Node and Python runtimes remain supported infrastructure for the
+CLI, router, tools, and MCP stacks. They are intentionally not Agent Host
+installation prefixes. `rudi install agent:*` fails closed with vendor-install
+guidance, and missing hosts never trigger a different provider as a fallback.
+When RUDI launches a provider CLI, it makes the provider executable's directory
+available on `PATH` but does not inject RUDI's Node or Python runtime directory
+into the Agent Host environment.
 
 ## RUDI setup
 

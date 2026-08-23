@@ -62,6 +62,20 @@ afterEach(() => {
 });
 
 describe('Agent Host foreground launch', () => {
+  test('reports a missing vendor CLI without offering a RUDI installation fallback', async () => {
+    await assert.rejects(
+      () => launchAgent({ provider: 'codex', prompt: 'hello' }, {
+        resolveBinaryImpl: () => null,
+      }),
+      (error) => {
+        assert.match(error.message, /vendor-managed codex cli was not found/i);
+        assert.match(error.message, /rudi agent hosts --json/i);
+        assert.doesNotMatch(error.message, /rudi install agent:/i);
+        return true;
+      },
+    );
+  });
+
   test('streams normalized output and persists only the native session pointer', async () => {
     const { project, root, store } = fixture();
     const calls = [];

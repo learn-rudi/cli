@@ -4,6 +4,7 @@ import assert from 'node:assert/strict';
 import {
   cleanupRemovedStack,
   filterRemovablePackages,
+  isPackageInstalledForRemoval,
 } from '../../commands/remove.js';
 
 test('cleanupRemovedStack removes stack config, orphaned secrets, and cached tools', async () => {
@@ -73,4 +74,20 @@ test('filterRemovablePackages excludes external discovered skills', () => {
     'skill:legacy-local',
     'stack:slack',
   ]);
+});
+
+test('explicit legacy agent removal checks removal inventory instead of active package state', async () => {
+  const calls = [];
+  const installed = await isPackageInstalledForRemoval('agent:codex', {
+    isPackageInstalled() {
+      assert.fail('active package state must not govern legacy agent cleanup');
+    },
+    async listInstalled(kind) {
+      calls.push(kind);
+      return [{ id: 'agent:codex', kind: 'agent' }];
+    },
+  });
+
+  assert.equal(installed, true);
+  assert.deepEqual(calls, ['agent']);
 });

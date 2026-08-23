@@ -10,6 +10,7 @@ import { createLaunchStore } from './launch-store.js';
 import { assertAgentHostReady } from './preflight.js';
 import {
   buildProviderProcessPlan,
+  getMissingAgentProviderMessage,
   resolveAgentProviderBinary,
   resolveAgentProviderId,
 } from './providers/index.js';
@@ -48,7 +49,7 @@ export async function launchAgent(options, dependencies = {}) {
   const provider = resolveAgentProviderId(options?.provider);
   const binaryPath = resolveBinaryImpl(provider);
   if (!binaryPath) {
-    throw new Error(`${provider} host is not installed. Run: rudi install agent:${provider}`);
+    throw new Error(getMissingAgentProviderMessage(provider));
   }
   await preflightImpl({ binaryPath, provider });
   if (privateAutomationProfile) {

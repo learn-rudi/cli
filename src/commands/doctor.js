@@ -40,7 +40,6 @@ export async function cmdDoctor(args, flags) {
     { path: PATHS.workflows, name: 'Workflows' },
     { path: PATHS.runtimes, name: 'Runtimes' },
     { path: PATHS.binaries, name: 'Binaries' },
-    { path: PATHS.agents, name: 'Agents' },
     { path: PATHS.cache, name: 'Cache' }
   ];
 

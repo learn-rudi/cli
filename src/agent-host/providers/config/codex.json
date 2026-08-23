@@ -8,10 +8,9 @@
   "binary": {
     "name": "codex",
     "resolvePaths": [
-      "~/.rudi/agents/codex/bin/codex",
-      "~/.rudi/agents/codex/node_modules/.bin/codex",
-      "~/.rudi/runtimes/node/{arch}/bin/codex",
-      "~/.rudi/runtimes/node/bin/codex"
+      "~/.local/bin/codex",
+      "/opt/homebrew/bin/codex",
+      "/usr/local/bin/codex"
     ],
     "fallback": "which",
     "checkCommand": ["codex", "--version"],

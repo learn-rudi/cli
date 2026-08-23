@@ -41,8 +41,9 @@ async function withCatalog(run) {
     await writeFile(path.join(dir, 'agents', 'claude.json'), JSON.stringify({
       id: 'agent:claude',
       name: 'Claude',
-      install: { source: 'npm', package: '@anthropic-ai/claude-code' },
+      install: { source: 'system' },
       bins: ['claude'],
+      detect: { command: 'claude --version' },
     }));
     await writeFile(path.join(dir, 'agents', 'antigravity.json'), JSON.stringify({
       id: 'agent:antigravity',
@@ -83,19 +84,21 @@ test('generateManifest is deterministic for unchanged catalog content', async ()
         id: 'antigravity',
         name: 'Antigravity',
         kind: 'agent',
-        installDir: 'antigravity',
-        basePath: 'agents',
+        installDir: null,
+        basePath: 'external',
         installType: 'system',
+        external: true,
         commands: [{ name: 'agy', bin: 'agy', args: null }],
       },
       {
         id: 'claude',
         name: 'Claude',
         kind: 'agent',
-        installDir: 'node',
-        basePath: 'runtimes',
-        installType: 'npm-global',
-        commands: [{ name: 'claude', bin: 'bin/claude', args: null }],
+        installDir: null,
+        basePath: 'external',
+        installType: 'system',
+        external: true,
+        commands: [{ name: 'claude', bin: 'claude', args: null }],
       },
     ]);
   });

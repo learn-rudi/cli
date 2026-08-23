@@ -114,7 +114,6 @@ export async function cmdInit(args, flags) {
     PATHS.workflows,
     PATHS.runtimes,
     PATHS.binaries,
-    PATHS.agents,
     PATHS.cache,
     PATHS.bins
   ];

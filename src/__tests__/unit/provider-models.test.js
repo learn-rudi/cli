@@ -6,14 +6,84 @@ import {
   getApprovalArgs,
   getModelDef,
   hasCapability,
+  isExternalAgentBinaryPath,
   listProviders,
   loadProviderConfig,
+  resolveProviderBinary,
   resolveModel,
 } from '../../agent-host/providers/catalog.js';
 
 describe('frontier agent provider registry', () => {
   test('registers all native frontier host contracts', () => {
     assert.deepEqual(listProviders(), ['claude', 'codex', 'gemini', 'antigravity']);
+  });
+
+  test('resolves every frontier host from vendor or system locations only', () => {
+    const expectedUserLocalPaths = {
+      antigravity: '~/.local/bin/agy',
+      claude: '~/.local/bin/claude',
+      codex: '~/.local/bin/codex',
+      gemini: '~/.local/bin/gemini',
+    };
+
+    for (const provider of listProviders()) {
+      const resolvePaths = loadProviderConfig(provider).binary.resolvePaths;
+      assert.equal(resolvePaths[0], expectedUserLocalPaths[provider]);
+      assert.equal(resolvePaths.some(candidate => candidate.includes('/.rudi/')), false);
+    }
+  });
+
+  test('rejects legacy RUDI agent paths even when PATH fallback finds them', () => {
+    const home = '/Users/example';
+    assert.equal(isExternalAgentBinaryPath(`${home}/.local/bin/codex`, { home }), true);
+    assert.equal(isExternalAgentBinaryPath(`${home}/.rudi/bins/codex`, { home }), false);
+    assert.equal(isExternalAgentBinaryPath(`${home}/.rudi/runtimes/node/bin/codex`, { home }), false);
+    assert.equal(isExternalAgentBinaryPath('codex', { home }), false);
+    assert.equal(isExternalAgentBinaryPath('/opt/rudi-owned/bin/codex', {
+      home,
+      rudiHome: '/opt/rudi-owned',
+    }), false);
+
+    const resolved = resolveProviderBinary({
+      binary: { name: 'codex', resolvePaths: [], fallback: 'which' },
+    }, {
+      home,
+      runCommandPlanImpl: () => `${home}/.rudi/bins/codex\n`,
+    });
+    assert.equal(resolved, null);
+
+    const symlinked = resolveProviderBinary({
+      binary: { name: 'codex', resolvePaths: [], fallback: 'which' },
+    }, {
+      home,
+      realpathSyncImpl: candidate => candidate.endsWith('/.local/bin/codex')
+        ? `${home}/.rudi/agents/codex/bin/codex`
+        : candidate,
+      runCommandPlanImpl: () => `${home}/.local/bin/codex\n`,
+    });
+    assert.equal(symlinked, null);
+  });
+
+  test('skips non-executable files that mask a usable vendor binary', () => {
+    const home = '/Users/example';
+    const first = `${home}/.local/bin/codex`;
+    const second = '/opt/homebrew/bin/codex';
+    const resolved = resolveProviderBinary({
+      binary: {
+        name: 'codex',
+        resolvePaths: ['~/.local/bin/codex', second],
+        fallback: null,
+      },
+    }, {
+      accessSyncImpl(candidate) {
+        if (candidate === first) throw new Error('not executable');
+      },
+      existsSyncImpl: () => true,
+      home,
+      realpathSyncImpl: candidate => candidate,
+    });
+
+    assert.equal(resolved, second);
   });
 
   test('registers the current Claude frontier aliases', () => {

@@ -53,6 +53,15 @@ export function filterRemovablePackages(packages) {
   });
 }
 
+export async function isPackageInstalledForRemoval(fullId, dependencies = {}) {
+  const packageState = dependencies.isPackageInstalled || isPackageInstalled;
+  const removalInventory = dependencies.listInstalled || listInstalled;
+  if (!fullId.startsWith('agent:')) return packageState(fullId);
+
+  const legacyAgents = await removalInventory('agent');
+  return legacyAgents.some(pkg => pkg.id === fullId);
+}
+
 function getSecretName(secret) {
   if (typeof secret === 'string') return secret;
   return secret?.name || secret?.key || null;
@@ -142,7 +151,7 @@ export async function cmdRemove(args, flags) {
   const fullId = pkgId.includes(':') ? pkgId : `stack:${pkgId}`;
 
   // Check if installed
-  if (!isPackageInstalled(fullId)) {
+  if (!await isPackageInstalledForRemoval(fullId)) {
     console.error(`Package not installed: ${pkgId}`);
     process.exit(1);
   }

@@ -150,10 +150,11 @@ requires:
   - [x] `~/.rudi/workflows/`
   - [x] `~/.rudi/runtimes/`
   - [x] `~/.rudi/binaries/`
-  - [x] `~/.rudi/agents/`
   - [x] `~/.rudi/bins/`
   - [x] `~/.rudi/cache/`
   - [x] `~/.rudi/locks/`
+- [x] `rudi init` does not create `~/.rudi/agents/`; a pre-existing directory
+  is legacy migration state available only for explicit removal.
 - [x] `rudi search` supports `stack`, `skill`, and `workflow`.
 - [ ] `rudi install stack:<id>` installs to `~/.rudi/stacks/<id>/`.
 - [x] `rudi install skill:<id>` installs to `~/.rudi/skills/<id>.md`.

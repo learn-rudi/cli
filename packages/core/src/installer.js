@@ -17,8 +17,6 @@ import {
   ensureDirectories,
   parsePackageId,
   getNodeRuntimeRoot,
-  getNodeRuntimeBinDir,
-  resolveNodeRuntimeBin,
   getPlatformArch
 } from '@learnrudi/env';
 import {
@@ -731,12 +729,31 @@ export async function installPackage(id, options = {}) {
     onProgress
   } = options;
 
-  // Ensure directories exist
-  ensureDirectories();
+  onProgress?.({ phase: 'resolving', package: id });
+
+  if (typeof id === 'string' && id.trim().startsWith('agent:')) {
+    return {
+      success: false,
+      id: id.trim(),
+      error: 'Agent hosts are externally managed and cannot be installed by RUDI.',
+    };
+  }
 
   // Resolve package and dependencies
-  onProgress?.({ phase: 'resolving', package: id });
   const resolved = await resolvePackage(id);
+
+  if (resolved.kind === 'agent') {
+    const installHint = resolved.installHints?.manual || resolved.instructions;
+    return {
+      success: false,
+      id: resolved.id,
+      error: `Agent hosts are externally managed and cannot be installed by RUDI.${installHint ? ` ${installHint}` : ''}`,
+    };
+  }
+
+  // Create RUDI package directories only after the request is known to be a
+  // RUDI-managed package.
+  ensureDirectories();
 
   // Get install order (dependencies first)
   let toInstall = getInstallOrder(resolved);
@@ -899,40 +916,21 @@ async function installSinglePackage(pkg, options = {}) {
   } = options;
   const installPath = getInstallPathForPackage(pkg);
   const pkgName = pkg.id.replace(/^(runtime|binary|agent):/, '');
-  const isAgentNpm = pkg.kind === 'agent' && pkg.npmPackage;
+
+  if (pkg.kind === 'agent') {
+    throw new Error(`Agent hosts are externally managed and cannot be installed by RUDI: ${pkg.id}`);
+  }
 
   // Check if already installed
   if (fs.existsSync(installPath) && !force) {
-    if (!isAgentNpm) {
-      return { success: true, id: pkg.id, path: installPath, skipped: true };
-    }
-
-    // For npm-based agents, only skip if the global bin exists
-    const manifestPath = path.join(installPath, 'manifest.json');
-    let bins = pkg.bins || [];
-    if (fs.existsSync(manifestPath)) {
-      try {
-        const manifest = JSON.parse(fs.readFileSync(manifestPath, 'utf-8'));
-        bins = manifest.bins || manifest.binaries || bins;
-      } catch {
-        // Use fallback bins
-      }
-    }
-    if (bins.length === 0) {
-      bins = [pkgName];
-    }
-
-    const hasGlobalBin = bins.some(bin => fs.existsSync(resolveNodeRuntimeBin(bin)));
-    if (hasGlobalBin) {
-      return { success: true, id: pkg.id, path: installPath, skipped: true };
-    }
+    return { success: true, id: pkg.id, path: installPath, skipped: true };
   }
 
-  // Handle runtimes, binaries, agents - download from GitHub releases or install via npm
-  if (pkg.kind === 'runtime' || pkg.kind === 'binary' || pkg.kind === 'agent') {
+  // Handle RUDI-managed runtimes and binaries.
+  if (pkg.kind === 'runtime' || pkg.kind === 'binary') {
     onProgress?.({ phase: 'downloading', package: pkg.id });
 
-    // Handle native installer packages (e.g., Claude CLI)
+    // Handle registry-governed native installers for non-agent packages.
     if (pkg.installType === 'native-installer' && pkg.nativeInstaller) {
       const homedir = os.homedir();
       const nativeBin = pkg.nativeBinPath
@@ -1007,17 +1005,15 @@ async function installSinglePackage(pkg, options = {}) {
       });
     }
 
-    // Handle npm-based packages (agents, cloud CLIs)
+    // Handle RUDI-managed npm tools and cloud CLIs. Agent Hosts are rejected
+    // above because their vendors own installation and updates.
     if (pkg.npmPackage) {
       try {
-        const npmInstallRoot = isAgentNpm ? getNodeRuntimeRoot() : installPath;
-        const npmScope = isAgentNpm ? 'global' : 'local';
+        const npmInstallRoot = installPath;
+        const npmScope = 'local';
 
         if (!fs.existsSync(installPath)) {
           fs.mkdirSync(installPath, { recursive: true });
-        }
-        if (isAgentNpm && !fs.existsSync(npmInstallRoot)) {
-          fs.mkdirSync(npmInstallRoot, { recursive: true });
         }
 
         onProgress?.({ phase: 'installing', package: pkg.id, message: `npm install ${pkg.npmPackage}` });
@@ -1029,8 +1025,7 @@ async function installSinglePackage(pkg, options = {}) {
           ? path.join(resourcesPath, 'bundled-runtimes', 'node', 'bin', 'npm')
           : await findNpmExecutable();
 
-        // Initialize package.json if needed (local installs only)
-        if (!isAgentNpm && !fs.existsSync(path.join(installPath, 'package.json'))) {
+        if (!fs.existsSync(path.join(installPath, 'package.json'))) {
           runCommandPlan(createNpmInitCommand(npmCmd), {
             cwd: installPath,
             stdio: 'pipe',
@@ -1045,8 +1040,8 @@ async function installSinglePackage(pkg, options = {}) {
         runCommandPlan(createNpmInstallCommand({
           npmCmd,
           packageName: pkg.npmPackage,
-          global: isAgentNpm,
-          prefix: isAgentNpm ? npmInstallRoot : null,
+          global: false,
+          prefix: null,
           ignoreScripts: shouldIgnoreScripts,
         }), {
           cwd: installPath,
@@ -1076,9 +1071,7 @@ async function installSinglePackage(pkg, options = {}) {
         // Run postInstall if specified
         if (pkg.postInstall) {
           onProgress?.({ phase: 'postInstall', package: pkg.id, message: pkg.postInstall });
-          const binDir = isAgentNpm
-            ? getNodeRuntimeBinDir()
-            : path.join(installPath, 'node_modules', '.bin');
+          const binDir = path.join(installPath, 'node_modules', '.bin');
           runCommandPlan(createPostInstallCommand(pkg.postInstall, binDir), {
             cwd: installPath,
             stdio: 'pipe',
@@ -1111,8 +1104,7 @@ async function installSinglePackage(pkg, options = {}) {
           hasInstallScripts: scriptsDetected,
           scriptsPolicy: scriptsPolicy,
           postInstall: pkg.postInstall,
-          installType: isAgentNpm ? 'npm-global' : 'npm',
-          npmPrefix: isAgentNpm ? npmInstallRoot : undefined,
+          installType: 'npm',
           installedAt: new Date().toISOString(),
           source: pkg.source || { type: 'npm' }
         };
@@ -1127,21 +1119,13 @@ async function installSinglePackage(pkg, options = {}) {
           if (bins && bins.length > 0) {
             await createShimsForTool({
               id: pkg.id,
-              installType: isAgentNpm ? 'npm-global' : 'npm',
+              installType: 'npm',
               installDir: npmInstallRoot,
               bins: bins,
               name: pkgName
             });
           } else {
             console.warn(`[Installer] Warning: No binaries found for ${pkg.npmPackage}`);
-          }
-        }
-
-        // Remove legacy local node_modules for agents (global canonical install)
-        if (isAgentNpm) {
-          const legacyPath = path.join(installPath, 'node_modules');
-          if (fs.existsSync(legacyPath)) {
-            fs.rmSync(legacyPath, { recursive: true, force: true });
           }
         }
 
@@ -1369,7 +1353,7 @@ export async function uninstallPackage(id) {
       }
     }
 
-    // Uninstall global npm package for agents
+    // Remove the legacy global npm package before deleting retry metadata.
     if (kind === 'agent' && manifest?.npmPackage) {
       try {
         const npmCmd = await findNpmExecutable();
@@ -1383,7 +1367,10 @@ export async function uninstallPackage(id) {
           env: buildNodeToolEnv(npmCmd)
         });
       } catch (error) {
-        console.warn(`[Installer] Warning: Failed to uninstall ${manifest.npmPackage}: ${error.message}`);
+        throw new Error(
+          `Failed to uninstall legacy Agent Host package ${manifest.npmPackage}: ${error.message}`,
+          { cause: error },
+        );
       }
     }
 
@@ -1568,7 +1555,9 @@ function extractSingleFileMetadata(filePath, kind) {
  * @returns {Promise<Array>}
  */
 export async function listInstalled(kind) {
-  const kinds = kind ? [kind] : ['stack', 'skill', 'workflow', 'runtime', 'binary', 'agent'];
+  // Agent Host entries are excluded from normal package inventory. Explicit
+  // agent listing remains available only so legacy artifacts can be removed.
+  const kinds = kind ? [kind] : ['stack', 'skill', 'workflow', 'runtime', 'binary'];
   const packages = [];
 
   for (const k of kinds) {

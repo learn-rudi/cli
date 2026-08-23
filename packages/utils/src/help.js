@@ -82,7 +82,7 @@ PACKAGE TYPES
   stack:<name>         MCP server stack
   runtime:<name>       Node, Python, Deno, Bun
   binary:<name>        ffmpeg, ripgrep, etc.
-  agent:<name>         Claude, Codex, Gemini, Antigravity CLIs
+  agent:<name>         External Agent Host metadata (not RUDI-installable)
   skill:<name>         Skill (prompt with optional stack requirements)
   workflow:<name>      Repeatable workflow definition
 `);
@@ -159,8 +159,11 @@ EXAMPLES
   rudi install stack:youtube-extractor
   rudi install runtime:python
   rudi install binary:ffmpeg
-  rudi install agent:claude
   rudi install workflow:daily-brief
+
+AGENT HOSTS
+  Claude, Codex, Gemini, and Antigravity are installed by their vendors.
+  Inspect them with: rudi agent hosts --json
 `,
     run: `
 rudi run - Execute a stack
@@ -182,7 +185,7 @@ rudi agent - Run and inspect native headless agent hosts
 
 USAGE
   rudi agent hosts [--json]
-  rudi agent models <claude|codex|google|gemini> [--json]
+  rudi agent models <claude|codex|antigravity|gemini> [--json]
   rudi agent launch <provider> --prompt <text> [options] [-- <provider-args...>]
   rudi agent resume <launch-id> --prompt <text> [options] [-- <provider-args...>]
   rudi agent list [--status <status>] [--limit <n>] [--json]

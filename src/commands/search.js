@@ -20,6 +20,23 @@ function headingForKind(kind) {
   return `${kind.toUpperCase()}S`;
 }
 
+export function getSearchGuidance(packageKinds) {
+  const kinds = new Set(packageKinds);
+  const guidance = [];
+  if ([...kinds].some(kind => kind !== 'agent')) {
+    guidance.push('Install RUDI packages with: rudi install <package-id>');
+  }
+  if (kinds.has('agent')) {
+    guidance.push('Agent Hosts are installed and updated by their vendors.');
+    guidance.push('Inspect readiness with: rudi agent hosts --json');
+  }
+  return guidance;
+}
+
+function printSearchGuidance(packageKinds) {
+  for (const line of getSearchGuidance(packageKinds)) console.log(line);
+}
+
 export async function cmdSearch(args, flags) {
   const query = args[0];
   const refreshRegistry = flags.fresh || flags['no-cache'] || false;
@@ -109,7 +126,7 @@ export async function cmdSearch(args, flags) {
       }
     }
 
-    console.log(`Install with: rudi install <package-id>`);
+    printSearchGuidance(results.map(result => result.kind));
 
   } catch (error) {
     console.error(`Search failed: ${error.message}`);
@@ -177,7 +194,7 @@ async function listAllPackages(flags) {
     }
 
     console.log(`\nTotal: ${totalCount} package(s) available`);
-    console.log(`Install with: rudi install <package-id>`);
+    printSearchGuidance(kinds.filter(k => allPackages[k].length > 0));
 
   } catch (error) {
     console.error(`Failed to list packages: ${error.message}`);

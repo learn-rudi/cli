@@ -8,11 +8,9 @@
   "binary": {
     "name": "claude",
     "resolvePaths": [
-      "~/.rudi/bins/claude",
       "~/.local/bin/claude",
-      "~/.rudi/runtimes/node/{arch}/bin/claude",
-      "~/.rudi/runtimes/node/bin/claude",
-      "~/.rudi/agents/claude/node_modules/.bin/claude"
+      "/opt/homebrew/bin/claude",
+      "/usr/local/bin/claude"
     ],
     "fallback": "which",
     "checkCommand": ["claude", "--version"],

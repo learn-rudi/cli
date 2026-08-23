@@ -294,7 +294,7 @@ test('installPackage registers system binaries instead of downloading them', () 
   }
 });
 
-test('installPackage registers system agents instead of downloading them', () => {
+test('installPackage rejects externally managed agents without writing RUDI state', () => {
   const root = fs.mkdtempSync(path.join(os.tmpdir(), 'rudi-system-agent-'));
   const rudiHome = path.join(root, '.rudi');
   const registryRoot = path.join(root, 'registry');
@@ -345,9 +345,8 @@ test('installPackage registers system agents instead of downloading them', () =>
       console.log(JSON.stringify({
         success: result.success,
         error: result.error,
-        kind: manifest?.kind,
-        installType: manifest?.installType,
-        sourcePath: manifest?.source?.path,
+        rudiHomeExists: fs.existsSync(process.env.RUDI_HOME),
+        manifestExists: manifest !== null,
         shimExists: fs.existsSync(path.join(process.env.RUDI_HOME, 'bins', 'agy')),
       }));
     `;
@@ -364,12 +363,11 @@ test('installPackage registers system agents instead of downloading them', () =>
     });
 
     const result = JSON.parse(output.trim().split(/\r?\n/).at(-1));
-    assert.equal(result.success, true);
-    assert.equal(result.error, undefined);
-    assert.equal(result.kind, 'agent');
-    assert.equal(result.installType, 'system');
-    assert.equal(result.sourcePath, fakeAgent);
-    assert.equal(result.shimExists, true);
+    assert.equal(result.success, false);
+    assert.match(result.error, /externally managed/);
+    assert.equal(result.rudiHomeExists, false);
+    assert.equal(result.manifestExists, false);
+    assert.equal(result.shimExists, false);
   } finally {
     fs.rmSync(root, { recursive: true, force: true });
   }

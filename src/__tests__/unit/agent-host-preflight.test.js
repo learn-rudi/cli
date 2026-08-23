@@ -5,9 +5,9 @@ import path from 'node:path';
 import { inspectAgentHost } from '../../agent-host/preflight.js';
 
 describe('Agent Host preflight', () => {
-  test('prepends stable runtime paths for shebang-based hosts under a restricted daemon environment', async () => {
+  test('uses the provider binary directory without injecting the RUDI Node runtime', async () => {
     const calls = [];
-    const binaryPath = '/Users/example/.rudi/runtimes/node/bin/codex';
+    const binaryPath = '/Users/example/.local/bin/codex';
 
     const inspected = await inspectAgentHost('codex', {
       binaryPath,
@@ -20,6 +20,6 @@ describe('Agent Host preflight', () => {
     assert.equal(inspected.installed, true);
     const pathEntries = calls[0].options.env.PATH.split(path.delimiter);
     assert.equal(pathEntries.includes(path.dirname(binaryPath)), true);
-    assert.equal(pathEntries.includes(path.dirname(process.execPath)), true);
+    assert.equal(pathEntries.includes(path.dirname(process.execPath)), false);
   });
 });

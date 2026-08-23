@@ -1028,6 +1028,8 @@
                     "enum": [
                       "claude",
                       "codex",
+                      "antigravity",
+                      "gemini",
                       "google"
                     ]
                   },
@@ -1578,6 +1580,8 @@
                           "enum": [
                             "claude",
                             "codex",
+                            "antigravity",
+                            "gemini",
                             "google"
                           ]
                         },

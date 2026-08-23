@@ -84,8 +84,8 @@
         "id": "antigravity",
         "name": "Antigravity CLI",
         "kind": "agent",
-        "installDir": "antigravity",
-        "basePath": "agents",
+        "installDir": null,
+        "basePath": "external",
         "installType": "system",
         "commands": [
           {
@@ -93,14 +93,15 @@
             "bin": "agy",
             "args": null
           }
-        ]
+        ],
+        "external": true
       },
       {
         "id": "claude",
         "name": "Claude Code",
         "kind": "agent",
-        "installDir": "claude",
-        "basePath": "agents",
+        "installDir": null,
+        "basePath": "external",
         "installType": "system",
         "commands": [
           {
@@ -108,57 +109,40 @@
             "bin": "claude",
             "args": null
           }
-        ]
+        ],
+        "external": true
       },
       {
         "id": "codex",
         "name": "OpenAI Codex",
         "kind": "agent",
-        "installDir": "node",
-        "basePath": "runtimes",
-        "installType": "npm-global",
+        "installDir": null,
+        "basePath": "external",
+        "installType": "system",
         "commands": [
           {
             "name": "codex",
-            "bin": "bin/codex",
+            "bin": "codex",
             "args": null
           }
-        ]
-      },
-      {
-        "id": "copilot",
-        "name": "GitHub Copilot",
-        "kind": "agent",
-        "installDir": "node",
-        "basePath": "runtimes",
-        "installType": "npm-global",
-        "commands": [
-          {
-            "name": "copilot",
-            "bin": "bin/copilot",
-            "args": null
-          },
-          {
-            "name": "github-copilot-cli",
-            "bin": "bin/github-copilot-cli",
-            "args": null
-          }
-        ]
+        ],
+        "external": true
       },
       {
         "id": "gemini",
         "name": "Gemini CLI",
         "kind": "agent",
-        "installDir": "node",
-        "basePath": "runtimes",
-        "installType": "npm-global",
+        "installDir": null,
+        "basePath": "external",
+        "installType": "system",
         "commands": [
           {
             "name": "gemini",
-            "bin": "bin/gemini",
+            "bin": "gemini",
             "args": null
           }
-        ]
+        ],
+        "external": true
       }
     ],
     "binaries": [

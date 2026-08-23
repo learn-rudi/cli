@@ -79,12 +79,12 @@ const HOME_LAYOUT = [
     key: 'agents',
     name: 'agents/',
     type: 'directory',
-    section: 'Installed Packages',
+    section: 'Legacy Compatibility State',
     path: () => PATHS.agents,
-    lifecycle: 'managed-agent-install',
+    lifecycle: 'legacy-agent-install',
     sensitivity: 'normal',
-    cleanable: 'reinstallable',
-    description: 'RUDI-managed AI agent CLI installations.'
+    cleanable: 'explicit-removal-only',
+    description: 'Archived RUDI-managed agent metadata; native Agent Hosts are vendor-installed and discovered externally.'
   },
   {
     key: 'bins',

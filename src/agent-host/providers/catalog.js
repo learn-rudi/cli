@@ -1,5 +1,12 @@
-import { readFileSync, readdirSync, existsSync } from 'node:fs';
-import { join, dirname, basename } from 'node:path';
+import {
+  accessSync,
+  constants,
+  existsSync,
+  readFileSync,
+  readdirSync,
+  realpathSync,
+} from 'node:fs';
+import { join, dirname, basename, isAbsolute, relative, resolve, sep } from 'node:path';
 import { homedir } from 'node:os';
 import { createWhichCommand, runCommandPlan } from '../../utils/subprocess.js';
 
@@ -41,22 +48,86 @@ export function loadProviderConfig(providerId) {
  * Checks each path in config.binary.resolvePaths (expanding ~ to homedir),
  * then falls back to `which` if configured.
  */
-export function resolveProviderBinary(config) {
-  const home = homedir();
+function canonicalPath(candidate, realpathSyncImpl) {
+  const absolute = resolve(candidate);
+  try {
+    return realpathSyncImpl(absolute);
+  } catch {
+    return absolute;
+  }
+}
+
+function isInside(root, candidate) {
+  const child = relative(root, candidate);
+  return child === '' || (child !== '..' && !child.startsWith(`..${sep}`) && !isAbsolute(child));
+}
+
+export function isExternalAgentBinaryPath(candidate, options = {}) {
+  if (
+    typeof candidate !== 'string'
+    || !isAbsolute(candidate.trim())
+    || candidate.length > 4_096
+    || /[\r\n\0]/u.test(candidate)
+  ) return false;
+  const home = options.home || homedir();
+  const realpathSyncImpl = options.realpathSyncImpl || realpathSync;
+  const lexicalCandidate = resolve(candidate.trim());
+  const canonicalCandidate = canonicalPath(lexicalCandidate, realpathSyncImpl);
+  const rudiRoots = [join(home, '.rudi'), options.rudiHome || process.env.RUDI_HOME]
+    .filter(root => (
+      typeof root === 'string'
+      && isAbsolute(root)
+      && root.length <= 4_096
+      && !/[\r\n\0]/u.test(root)
+    ))
+    .flatMap(root => [resolve(root), canonicalPath(root, realpathSyncImpl)]);
+
+  return !rudiRoots.some(root => (
+    isInside(root, lexicalCandidate) || isInside(root, canonicalCandidate)
+  ));
+}
+
+export function resolveProviderBinary(config, dependencies = {}) {
+  const home = dependencies.home || homedir();
   const arch = process.arch;
+  const accessSyncImpl = dependencies.accessSyncImpl || accessSync;
+  const existsSyncImpl = dependencies.existsSyncImpl || existsSync;
+  const runCommandPlanImpl = dependencies.runCommandPlanImpl || runCommandPlan;
+  const externalPathCheck = dependencies.isExternalAgentBinaryPathImpl
+    || (candidate => isExternalAgentBinaryPath(candidate, {
+      home,
+      realpathSyncImpl: dependencies.realpathSyncImpl,
+      rudiHome: dependencies.rudiHome,
+    }));
+  const isExecutable = (candidate) => {
+    try {
+      accessSyncImpl(candidate, constants.X_OK);
+      return true;
+    } catch {
+      return false;
+    }
+  };
 
   for (const rawPath of config.binary.resolvePaths) {
     const resolved = rawPath
       .replace(/^~/, home)
       .replace(/\{arch\}/g, arch);
-    if (existsSync(resolved)) {
+    if (
+      existsSyncImpl(resolved)
+      && externalPathCheck(resolved)
+      && isExecutable(resolved)
+    ) {
       return resolved;
     }
   }
 
   if (config.binary.fallback === 'which') {
     try {
-      return runCommandPlan(createWhichCommand(config.binary.name), { encoding: 'utf-8' }).trim();
+      const fallback = runCommandPlanImpl(
+        createWhichCommand(config.binary.name),
+        { encoding: 'utf-8' },
+      ).trim();
+      return externalPathCheck(fallback) && isExecutable(fallback) ? fallback : null;
     } catch {
       // which failed — binary not found
     }

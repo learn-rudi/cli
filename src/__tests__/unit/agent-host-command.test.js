@@ -213,6 +213,12 @@ describe('rudi agent command', () => {
 
     const payload = JSON.parse(lines.join('\n'));
     assert.equal(payload.hosts.length, 4);
+    assert.deepEqual(payload.hosts.map(host => host.provider), [
+      'claude',
+      'codex',
+      'antigravity',
+      'gemini',
+    ]);
     assert.deepEqual(Object.keys(payload.hosts[0]).sort(), [
       'authenticated',
       'authentication',
