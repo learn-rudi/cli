@@ -40,10 +40,10 @@ export const PATHS = {
   // Installed machine-local applications
   apps: path.join(RUDI_HOME, 'apps'),
 
-  // Installed packages - shared with Studio for unified discovery
+  // Installed RUDI packages
   packages: path.join(RUDI_HOME, 'packages'),
-  stacks: path.join(RUDI_HOME, 'stacks'),     // Shared with Studio
-  skills: path.join(RUDI_HOME, 'skills'),     // Shared with Studio
+  stacks: path.join(RUDI_HOME, 'stacks'),
+  skills: path.join(RUDI_HOME, 'skills'),
   prompts: path.join(RUDI_HOME, 'skills'),    // Backward compat alias -> skills
   workflows: path.join(RUDI_HOME, 'workflows'),
 
@@ -58,7 +58,8 @@ export const PATHS = {
   // Binaries (utility CLIs: ffmpeg, imagemagick, ripgrep, etc.)
   binaries: path.join(RUDI_HOME, 'binaries'),
 
-  // Agents (AI CLI tools: claude, codex, gemini, copilot, ollama)
+  // Legacy RUDI-managed agent metadata. Retained only for explicit migration
+  // and removal; native Agent Hosts are discovered outside ~/.rudi.
   agents: path.join(RUDI_HOME, 'agents'),
 
   // Runtime binaries (content-addressed)
@@ -117,7 +118,7 @@ export function getStoreDir() {
 }
 
 /**
- * Get the Node runtime root (global npm prefix for RUDI-managed agents)
+ * Get the Node runtime root for RUDI tools and Node-backed MCP stacks.
  * @returns {string}
  */
 export function getNodeRuntimeRoot() {
@@ -351,7 +352,6 @@ export function ensureDirectories() {
     PATHS.outputs,     // Durable generated artifacts
     PATHS.runtimes,    // Language runtimes (node, python, bun, deno)
     PATHS.binaries,    // Utility binaries (ffmpeg, git, jq, etc.)
-    PATHS.agents,      // AI CLI agents (claude, codex, gemini, copilot)
     PATHS.bins,        // Shims directory (opt-in)
     PATHS.locks,       // Lock files
     PATHS.db,          // Database directory
@@ -598,6 +598,10 @@ export function isPackageInstalled(id) {
   const packagePath = getPackagePath(id);
   const [kind, name] = parsePackageId(id);
 
+  // Agent Hosts are external prerequisites, not installed RUDI packages.
+  // Their readiness is reported by `rudi agent hosts` and `rudi status`.
+  if (kind === 'agent') return false;
+
   if (kind === 'skill') {
     return Boolean(findLocalSkillPackage(name));
   }
@@ -610,27 +614,6 @@ export function isPackageInstalled(id) {
   // Check if folder exists
   if (!fs.existsSync(packagePath)) {
     return false;
-  }
-
-  // For agents (npm packages), check global npm bin in the Node runtime
-  if (kind === 'agent') {
-    const manifestPath = path.join(packagePath, 'manifest.json');
-    let bins = [];
-
-    if (fs.existsSync(manifestPath)) {
-      try {
-        const manifest = JSON.parse(fs.readFileSync(manifestPath, 'utf-8'));
-        bins = manifest.bins || manifest.binaries || [];
-      } catch {
-        bins = [];
-      }
-    }
-
-    if (bins.length === 0) {
-      bins = [name];
-    }
-
-    return bins.some(bin => fs.existsSync(resolveNodeRuntimeBin(bin)));
   }
 
   // For other package types, just check folder is non-empty
@@ -648,14 +631,15 @@ export function isPackageInstalled(id) {
  * @returns {string[]} Package names
  */
 export function getInstalledPackages(kind) {
+  if (kind === 'agent') return [];
+
   const dir = {
     stack: PATHS.stacks,
     skill: PATHS.skills,
     prompt: PATHS.skills,  // Backward compat: prompts map to skills
     workflow: PATHS.workflows,
     runtime: PATHS.runtimes,
-    binary: PATHS.binaries,
-    agent: PATHS.agents
+    binary: PATHS.binaries
   }[kind];
 
   if (!dir || !fs.existsSync(dir)) {

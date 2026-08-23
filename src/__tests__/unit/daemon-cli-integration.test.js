@@ -5,7 +5,11 @@ import {
   formatDaemonDoctorState,
   shouldReportDaemonIssue,
 } from '../../commands/doctor.js';
-import { getDaemonOnlyStatus, getFullStatus } from '../../commands/status.js';
+import {
+  formatAgentStatusDetails,
+  getDaemonOnlyStatus,
+  getFullStatus,
+} from '../../commands/status.js';
 
 describe('daemon status CLI integration', () => {
   test('getFullStatus includes daemon readiness in JSON status shape', async () => {
@@ -19,13 +23,33 @@ describe('daemon status CLI integration', () => {
       version: '1.2.3',
     };
 
+    const inspectedProviders = [];
     const status = await getFullStatus({
       daemonStatusProvider: async () => daemon,
+      agentHostInspector: async (provider) => {
+        inspectedProviders.push(provider);
+        return {
+          authenticated: provider !== 'claude',
+          binaryPath: `/Users/example/.local/bin/${provider === 'antigravity' ? 'agy' : provider}`,
+          installed: true,
+          provider,
+          version: `${provider} 1.0.0`,
+        };
+      },
     });
 
     assert.equal(status.daemon, daemon);
     assert.equal(status.summary.daemonRunning, true);
     assert.equal(status.summary.daemonReady, true);
+    assert.deepEqual(inspectedProviders, ['claude', 'codex', 'gemini', 'antigravity']);
+    assert.deepEqual(status.agents.map(agent => agent.source), [
+      'external',
+      'external',
+      'external',
+      'external',
+    ]);
+    assert.equal(status.agents[0].ready, false);
+    assert.equal(status.agents[1].path, '/Users/example/.local/bin/codex');
   });
 
   test('getDaemonOnlyStatus avoids unrelated system inventory work', async () => {
@@ -47,6 +71,14 @@ describe('daemon status CLI integration', () => {
     assert.equal(status.agents, undefined);
     assert.equal(status.runtimes, undefined);
     assert.equal(status.binaries, undefined);
+  });
+
+  test('human agent status distinguishes unobservable authentication from failure', () => {
+    assert.equal(formatAgentStatusDetails({
+      authenticated: null,
+      installed: true,
+      ready: true,
+    }), 'Installed: yes, Auth: unknown, Ready: yes');
   });
 });
 

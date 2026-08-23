@@ -45,7 +45,7 @@ rudi agent - Run and inspect native headless agent hosts
 
 USAGE
   rudi agent hosts [--json]
-  rudi agent models <claude|codex|google|gemini> [--json]
+  rudi agent models <claude|codex|antigravity|gemini> [--json]
   rudi agent launch <provider> --prompt <text> [options] [-- <provider-args...>]
   rudi agent resume <launch-id> --prompt <text> [options] [-- <provider-args...>]
   rudi agent list [--status <status>] [--limit <n>] [--json]
@@ -78,6 +78,9 @@ PROVIDER OPTIONS
   --timeout-ms <ms>            Bounded runtime (maximum 24 hours)
   --json                       Emit normalized JSONL events
   --detach                     Run through the local background service
+
+ALIASES
+  google                       Alias for the Antigravity Agent Host
 
 PRIVATE AUTOMATION (FOREGROUND ONLY)
   --private-automation         Metadata-only, zero-tool private inference profile

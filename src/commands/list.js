@@ -12,6 +12,7 @@
 
 import { listInstalled } from '@learnrudi/core';
 import { detectAllMcpServers, getInstalledAgents, getMcpServerSummary, AGENT_CONFIGS } from '@learnrudi/mcp';
+import { cmdAgent } from './agent-host.js';
 import { formatOperatorSkillLine, formatRelatedSkillsLine } from './related-skills.js';
 import { printPackageLifecycle } from './package-lifecycle.js';
 
@@ -37,6 +38,16 @@ function formatSkillSource(pkg) {
   if (pkg.format) details.push(pkg.format);
   if (pkg.source && pkg.source !== 'rudi') details.push(pkg.source);
   return details.length > 0 ? ` [${details.join(', ')}]` : '';
+}
+
+export function buildDetectedAgentConfigurationJson(configuredAgents, summary) {
+  return {
+    configuredAgents,
+    // Deprecated compatibility alias. These are configurations, not proof that
+    // an external Agent Host executable is installed.
+    installedAgents: configuredAgents,
+    summary,
+  };
 }
 
 export async function cmdList(args, flags) {
@@ -67,34 +78,45 @@ export async function cmdList(args, flags) {
     }
   }
 
-  // Handle --detected flag for agents (show which agents are installed)
+  // Compatibility view for existing MCP client configuration files. This does
+  // not establish that an external Agent Host executable is installed.
   if (flags.detected && kind === 'agent') {
-    const installedAgents = getInstalledAgents();
+    const configuredAgents = getInstalledAgents();
     const summary = getMcpServerSummary();
 
     if (flags.json) {
-      console.log(JSON.stringify({ installedAgents, summary }, null, 2));
+      console.log(JSON.stringify(
+        buildDetectedAgentConfigurationJson(configuredAgents, summary),
+        null,
+        2,
+      ));
       return;
     }
 
-    console.log(`\nDETECTED AI AGENTS (${installedAgents.length}/${AGENT_CONFIGS.length}):`);
+    console.log(`\nDETECTED AGENT CONFIGURATIONS (${configuredAgents.length}/${AGENT_CONFIGS.length}):`);
     console.log('─'.repeat(50));
 
     for (const agent of AGENT_CONFIGS) {
-      const installed = installedAgents.find(a => a.id === agent.id);
+      const configured = configuredAgents.find(a => a.id === agent.id);
       const serverCount = summary[agent.id]?.serverCount || 0;
 
-      if (installed) {
+      if (configured) {
         console.log(`  ✓ ${agent.name}`);
         console.log(`    ${serverCount} MCP server(s)`);
-        console.log(`    ${installed.configFile}`);
+        console.log(`    ${configured.configFile}`);
       } else {
-        console.log(`  ○ ${agent.name} (not installed)`);
+        console.log(`  ○ ${agent.name} (no configuration found)`);
       }
     }
 
-    console.log(`\nInstalled: ${installedAgents.length} of ${AGENT_CONFIGS.length} agents`);
+    console.log(`\nConfigured: ${configuredAgents.length} of ${AGENT_CONFIGS.length} clients`);
     return;
+  }
+
+  // Agent Hosts are not installed RUDI packages. Route the normal inventory
+  // command to the native-host readiness surface instead of legacy manifests.
+  if (kind === 'agent') {
+    return cmdAgent(['hosts'], flags);
   }
 
   // Handle --detected flag for stacks (show MCP servers from agent configs)

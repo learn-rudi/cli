@@ -260,6 +260,15 @@ export function selectRelatedSkillsForInstall(plan, includeCompanions = false) {
   return selected;
 }
 
+export function getExternalAgentInstallGuidance(resolved) {
+  if (resolved?.kind !== 'agent') return null;
+  return {
+    error: `${resolved.id} is a vendor-managed Agent Host and cannot be installed by RUDI.`,
+    install: resolved.installHints?.manual || 'Install or update it with the provider\'s supported installer.',
+    verify: 'Verify discovery and authentication with: rudi agent hosts --json',
+  };
+}
+
 export async function activateInstalledStack(stackId, options = {}, dependencies = {}) {
   const missingSecrets = Array.isArray(options.missingSecrets)
     ? [...new Set(options.missingSecrets.filter(Boolean))]
@@ -656,7 +665,11 @@ async function cleanupFailedStackInstall(stackId, stackPath, removeConfig) {
   }
 }
 
-export async function cmdInstall(args, flags) {
+export async function cmdInstall(args, flags, dependencies = {}) {
+  const fetchRegistryIndex = dependencies.fetchIndex || fetchIndex;
+  const resolveRegistryPackage = dependencies.resolvePackage || resolvePackage;
+  const exit = dependencies.exit || (code => process.exit(code));
+  const printError = dependencies.error || console.error;
   let pkgId = args[0];
 
   if (!pkgId) {
@@ -675,6 +688,13 @@ export async function cmdInstall(args, flags) {
     pkgId = 'skill:' + pkgId.slice('prompt:'.length);
   }
 
+  if (pkgId.trim().startsWith('agent:')) {
+    printError(`\n✗ ${pkgId.trim()} is a vendor-managed Agent Host and cannot be installed by RUDI.`);
+    printError('  Install, update, and authenticate it through its provider.');
+    printError('  Verify discovery and authentication with: rudi agent hosts --json');
+    return exit(1);
+  }
+
   const force = flags.force || false;
   const allowScripts = flags['allow-scripts'] || flags.allowScripts || false;
   const withShims = flags['with-shims'] || flags.withShims || false;
@@ -683,17 +703,25 @@ export async function cmdInstall(args, flags) {
 
   try {
     if (!pkgId.startsWith('npm:')) {
-      await fetchIndex({ force: true });
+      await fetchRegistryIndex({ force: true });
     }
 
     // First resolve to show what will be installed
-    const resolved = await resolvePackage(pkgId);
+    const resolved = await resolveRegistryPackage(pkgId);
     const relatedSkillPlan = buildRelatedSkillInstallPlan(resolved, flags);
 
     console.log(`\nPackage: ${resolved.name} (${resolved.id})`);
     console.log(`Version: ${resolved.version}`);
     if (resolved.description) {
       console.log(`Description: ${resolved.description}`);
+    }
+
+    const externalAgentGuidance = getExternalAgentInstallGuidance(resolved);
+    if (externalAgentGuidance) {
+      console.error(`\n✗ ${externalAgentGuidance.error}`);
+      console.error(`  ${externalAgentGuidance.install}`);
+      console.error(`  ${externalAgentGuidance.verify}`);
+      process.exit(1);
     }
 
     if (resolved.installed && !force) {

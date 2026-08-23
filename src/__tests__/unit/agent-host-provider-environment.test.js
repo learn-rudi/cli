@@ -4,10 +4,40 @@ import os from 'node:os';
 import path from 'node:path';
 import { describe, it } from 'node:test';
 
-import { buildProviderEnvironment } from '../../agent-host/providers/common.js';
+import {
+  buildAgentExecutableEnvironment,
+  buildProviderEnvironment,
+} from '../../agent-host/providers/common.js';
 import { buildGeminiProviderEnvironment } from '../../agent-host/providers/gemini.js';
 
 describe('Agent Host provider environment', () => {
+  it('removes RUDI-owned runtime paths while preserving provider and system paths', () => {
+    const environment = buildAgentExecutableEnvironment(
+      '/Users/example/.local/bin/gemini',
+      {},
+      {
+        HOME: '/Users/example',
+        PATH: [
+          '/Users/example/.rudi/bins',
+          '/Users/example/.rudi/runtimes/node/bin',
+          '/opt/rudi-managed/runtimes/python/bin',
+          '.',
+          '..',
+          'relative/bin',
+          '/vendor/node/bin',
+          '/usr/bin',
+        ].join(path.delimiter),
+        RUDI_HOME: '/opt/rudi-managed',
+      },
+    );
+
+    assert.deepEqual(environment.PATH.split(path.delimiter), [
+      '/Users/example/.local/bin',
+      '/vendor/node/bin',
+      '/usr/bin',
+    ]);
+  });
+
   it('injects only declared provider credentials from RUDI secrets', () => {
     const rudiHome = fs.mkdtempSync(path.join(os.tmpdir(), 'rudi-agent-provider-env-'));
     fs.writeFileSync(path.join(rudiHome, 'secrets.json'), JSON.stringify({

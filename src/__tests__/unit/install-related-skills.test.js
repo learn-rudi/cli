@@ -4,10 +4,39 @@ import assert from 'node:assert/strict';
 import {
   activateInstalledStack,
   buildRelatedSkillInstallPlan,
+  cmdInstall,
+  getExternalAgentInstallGuidance,
   getRelatedSkillInstallMode,
   selectRelatedSkillsForInstall,
   syncRelatedSkillWrappers,
 } from '../../commands/install.js';
+
+test('explicit agent install rejects before registry reads or cache writes', async () => {
+  const calls = [];
+  await cmdInstall(['agent:codex'], {}, {
+    error() {},
+    exit(code) {
+      calls.push(['exit', code]);
+    },
+    fetchIndex: async () => assert.fail('must not refresh the registry'),
+    resolvePackage: async () => assert.fail('must not resolve an external agent package'),
+  });
+
+  assert.deepEqual(calls, [['exit', 1]]);
+});
+
+test('agent install guidance directs users to vendor ownership and host verification', () => {
+  assert.deepEqual(getExternalAgentInstallGuidance({
+    id: 'agent:codex',
+    kind: 'agent',
+    installHints: { manual: 'Use the OpenAI installer.' },
+  }), {
+    error: 'agent:codex is a vendor-managed Agent Host and cannot be installed by RUDI.',
+    install: 'Use the OpenAI installer.',
+    verify: 'Verify discovery and authentication with: rudi agent hosts --json',
+  });
+  assert.equal(getExternalAgentInstallGuidance({ id: 'runtime:node', kind: 'runtime' }), null);
+});
 
 const resolvedStack = {
   id: 'stack:video-editor',

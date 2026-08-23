@@ -1,12 +1,15 @@
 # RUDI CLI
 
-A universal tool manager for MCP stacks, CLI tools, runtimes, and AI agents.
+A local capability and integration manager for MCP stacks, CLI tools,
+runtimes, and externally installed AI Agent Hosts.
 
-RUDI provides a unified installation and management system for:
+RUDI installs and manages its local capability infrastructure and integrates
+with provider-owned agent software:
 - **MCP Stacks** - Model Context Protocol servers for Claude, Codex, and Gemini
 - **CLI Tools** - Any npm package or upstream binary (ffmpeg, ripgrep, etc.)
 - **Runtimes** - Node.js, Python, Deno, Bun
-- **AI Agents** - Claude Code, Codex CLI, Gemini CLI, Antigravity CLI
+- **Agent Host integration** - Discovery, readiness checks, MCP wiring, and
+  launch support for vendor-installed Claude, Codex, Gemini, and Antigravity
 
 ## Installation
 
@@ -77,7 +80,7 @@ rudi list                # All installed packages
 rudi list stacks         # MCP stacks only
 rudi list binaries       # CLI tools only
 rudi list runtimes       # Language runtimes
-rudi list agents         # AI agent CLIs
+rudi list agents         # External Agent Host readiness
 ```
 
 ### Searching the Registry
@@ -99,7 +102,7 @@ rudi secrets get OPENAI_API_KEY        # Print raw value for scripts only
 rudi secrets remove SLACK_BOT_TOKEN    # Remove a secret
 ```
 
-### Integrating with AI Agents
+### Integrating with AI Agent Hosts
 
 See [Frontier Agent Hosts](docs/frontier-agent-hosts.md) for the complete
 Claude, Codex, Antigravity, and Gemini headless command matrix, current model
@@ -158,7 +161,7 @@ bounded launch/workspace projection and durable launch artifacts.
 rudi agent hosts
 rudi agent models claude
 rudi agent models codex
-rudi agent models google
+rudi agent models antigravity # `google` remains an accepted alias
 rudi agent models gemini
 
 # Writable Git projects automatically receive a dedicated worktree
@@ -267,7 +270,7 @@ Core CLI and daemon paths do not initialize, open, repair, or require
 ├── workflows/            # Installed workflow definitions
 ├── runtimes/             # Managed language runtimes
 ├── binaries/             # Managed third-party CLI tools
-├── agents/               # Managed AI agent CLI installations
+├── agents/               # Legacy agent-package migration metadata (not executable authority)
 │
 ├── bins/                 # Current command shims and router entrypoints
 ├── shims/                # Legacy shim directory for older integrations

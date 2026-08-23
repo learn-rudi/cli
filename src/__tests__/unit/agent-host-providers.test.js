@@ -8,8 +8,8 @@ import {
 } from '../../agent-host/providers/index.js';
 
 describe('Agent Host provider adapters', () => {
-  test('exposes Google as the friendly Antigravity alias without hiding Gemini CLI', () => {
-    assert.deepEqual(listAgentProviders(), ['claude', 'codex', 'google', 'gemini']);
+  test('exposes canonical host IDs while retaining Google as an Antigravity alias', () => {
+    assert.deepEqual(listAgentProviders(), ['claude', 'codex', 'antigravity', 'gemini']);
     assert.equal(resolveAgentProviderId('google'), 'antigravity');
     assert.equal(resolveAgentProviderId('antigravity'), 'antigravity');
     assert.equal(resolveAgentProviderId('gemini'), 'gemini');

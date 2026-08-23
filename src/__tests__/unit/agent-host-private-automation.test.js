@@ -541,13 +541,14 @@ describe('private Agent Host automation profile', () => {
     assert.equal(claudeCalls[0].options.input, '');
   });
 
-  test('prefers the RUDI Claude wrapper that mediates private authentication', () => {
+  test('prefers vendor-managed Codex and Claude entrypoints', () => {
     const codexResolvePaths = getAgentProviderConfig('codex').binary.resolvePaths;
-    assert.equal(codexResolvePaths[0], '~/.rudi/agents/codex/bin/codex');
+    assert.equal(codexResolvePaths[0], '~/.local/bin/codex');
+    assert.equal(codexResolvePaths.some(candidate => candidate.includes('/.rudi/')), false);
 
     const resolvePaths = getAgentProviderConfig('claude').binary.resolvePaths;
-    assert.equal(resolvePaths[0], '~/.rudi/bins/claude');
-    assert.equal(resolvePaths.includes('~/.local/bin/claude'), true);
+    assert.equal(resolvePaths[0], '~/.local/bin/claude');
+    assert.equal(resolvePaths.some(candidate => candidate.includes('/.rudi/')), false);
   });
 
   test('isolates the integrated spawn, transient result, database, and launch artifacts', async () => {

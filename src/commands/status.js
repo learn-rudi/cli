@@ -1,54 +1,31 @@
 /**
- * Status command - system status for Studio integration
+ * Status command - local RUDI and Agent Host readiness
  *
  * Returns comprehensive status of all packages, runtimes, and credentials.
- * Designed for Studio to call at startup: `rudi status --json`
+ * JSON output is available for local automation: `rudi status --json`
  *
  * Usage:
  *   rudi status           Human-readable status
- *   rudi status --json    JSON for Studio consumption
+ *   rudi status --json    JSON for local automation
  *   rudi status agents    Status of agents only
  *   rudi status runtimes  Status of runtimes only
  *   rudi status daemon    Status of the local daemon only
  */
 
-import { PATHS, getInstalledPackages, isPackageInstalled, resolveNodeRuntimeBin } from '@learnrudi/core';
+import { PATHS, getInstalledPackages, resolveNodeRuntimeBin } from '@learnrudi/core';
 import fs from 'fs';
 import path from 'path';
-import os from 'os';
+import { inspectAgentHost } from '../agent-host/preflight.js';
 import { getDaemonStatus } from '../daemon/client.js';
 import { createWhichCommand, runCommand, runCommandPlan } from '../utils/subprocess.js';
 
-// Agent definitions with credential check info
+// Native agent hosts are installed and authenticated by their vendors. RUDI only
+// discovers and integrates them; it never installs them into its own runtimes.
 const AGENTS = [
-  {
-    id: 'claude',
-    name: 'Claude Code',
-    npmPackage: '@anthropic-ai/claude-code',
-    credentialType: 'keychain',
-    keychainService: 'Claude Code-credentials',
-  },
-  {
-    id: 'codex',
-    name: 'OpenAI Codex',
-    npmPackage: '@openai/codex',
-    credentialType: 'file',
-    credentialPath: '~/.codex/auth.json',
-  },
-  {
-    id: 'gemini',
-    name: 'Gemini CLI',
-    npmPackage: '@google/gemini-cli',
-    credentialType: 'file',
-    credentialPath: '~/.gemini/google_accounts.json',
-  },
-  {
-    id: 'copilot',
-    name: 'GitHub Copilot',
-    npmPackage: '@githubnext/github-copilot-cli',
-    credentialType: 'file',
-    credentialPath: '~/.config/github-copilot/hosts.json',
-  },
+  { id: 'claude', name: 'Claude Code' },
+  { id: 'codex', name: 'OpenAI Codex' },
+  { id: 'gemini', name: 'Gemini CLI' },
+  { id: 'antigravity', name: 'Antigravity CLI' },
 ];
 
 // Runtime definitions
@@ -67,29 +44,6 @@ const BINARIES = [
   { id: 'pandoc', name: 'Pandoc', command: 'pandoc', versionFlag: '--version' },
   { id: 'jq', name: 'jq', command: 'jq', versionFlag: '--version' },
 ];
-
-/**
- * Check if a file exists
- */
-function fileExists(filePath) {
-  const resolved = filePath.replace('~', os.homedir());
-  return fs.existsSync(resolved);
-}
-
-/**
- * Check macOS keychain for credential
- */
-function checkKeychain(service) {
-  if (process.platform !== 'darwin') return false;
-  try {
-    runCommand('security', ['find-generic-password', '-s', service], {
-      stdio: ['pipe', 'pipe', 'pipe'],
-    });
-    return true;
-  } catch {
-    return false;
-  }
-}
 
 /**
  * Get version of a command
@@ -125,36 +79,12 @@ function findGlobalBinary(command, options = {}) {
   }
 }
 
-function getAgentBins(agentId) {
-  const manifestPath = path.join(PATHS.agents, agentId, 'manifest.json');
-  if (fs.existsSync(manifestPath)) {
-    try {
-      const manifest = JSON.parse(fs.readFileSync(manifestPath, 'utf-8'));
-      const bins = manifest.bins || manifest.binaries || [];
-      if (bins.length > 0) return bins;
-    } catch {
-      // Fall through to default
-    }
-  }
-  return [agentId];
-}
-
-function findRudiAgentBin(agentId) {
-  const bins = getAgentBins(agentId);
-  for (const bin of bins) {
-    const binPath = resolveNodeRuntimeBin(bin);
-    if (fs.existsSync(binPath)) return binPath;
-  }
-  return null;
-}
-
 /**
  * Check if binary exists in PATH or RUDI locations
  */
-function findBinary(command, kind = 'binary') {
+function findBinary(command) {
   // Check RUDI locations first
   const rudiPaths = [
-    path.join(PATHS.agents, command, 'node_modules', '.bin', command),
     path.join(PATHS.runtimes, command, 'bin', command),
     resolveNodeRuntimeBin(command),
     path.join(PATHS.binaries, command, command),
@@ -177,53 +107,19 @@ function findBinary(command, kind = 'binary') {
 }
 
 /**
- * Get agent status
- * Checks RUDI-managed global install (~/.rudi/runtimes/node/bin) and global PATH
+ * Get agent status from the same external provider inspection used by launches.
  */
-function getAgentStatus(agent) {
-  // Check RUDI global location first (preferred)
-  const rudiPath = findRudiAgentBin(agent.id);
-  const rudiInstalled = !!rudiPath;
-
-  // Check global PATH as fallback
-  let globalPath = null;
-  let globalInstalled = false;
-  if (!rudiInstalled) {
-    const which = findGlobalBinary(agent.id);
-    // Make sure it's not a RUDI shim
-    if (which && !which.includes('.rudi/bins') && !which.includes('.rudi/shims')) {
-      globalPath = which;
-      globalInstalled = true;
-    }
-  }
-
-  const installed = rudiInstalled || globalInstalled;
-  const activePath = rudiInstalled ? rudiPath : globalPath;
-  const source = rudiInstalled ? 'rudi' : (globalInstalled ? 'global' : null);
-
-  // Check credentials
-  let authenticated = false;
-  if (agent.credentialType === 'keychain') {
-    authenticated = checkKeychain(agent.keychainService);
-  } else if (agent.credentialType === 'file') {
-    authenticated = fileExists(agent.credentialPath);
-  }
-
-  // Get version if installed
-  let version = null;
-  if (installed && activePath) {
-    version = getVersion(activePath, '--version');
-  }
-
+async function getAgentStatus(agent, agentHostInspector) {
+  const inspected = await agentHostInspector(agent.id);
   return {
     id: agent.id,
     name: agent.name,
-    installed,
-    source,  // 'rudi' | 'global' | null
-    authenticated,
-    version,
-    path: activePath,
-    ready: installed && authenticated,
+    installed: inspected.installed,
+    source: inspected.installed ? 'external' : null,
+    authenticated: inspected.authenticated,
+    version: inspected.version,
+    path: inspected.binaryPath || null,
+    ready: inspected.installed && inspected.authenticated !== false,
   };
 }
 
@@ -265,7 +161,8 @@ function getBinaryStatus(binary) {
  * Get full system status
  */
 export async function getFullStatus(options = {}) {
-  const agents = AGENTS.map(getAgentStatus);
+  const agentHostInspector = options.agentHostInspector || inspectAgentHost;
+  const agents = await Promise.all(AGENTS.map(agent => getAgentStatus(agent, agentHostInspector)));
   const runtimes = RUNTIMES.map(getRuntimeStatus);
   const binaries = BINARIES.map(getBinaryStatus);
   const daemonStatusProvider = options.daemonStatusProvider || getDaemonStatus;
@@ -293,6 +190,7 @@ export async function getFullStatus(options = {}) {
   const directories = {
     home: { path: PATHS.home, exists: fs.existsSync(PATHS.home) },
     stacks: { path: PATHS.stacks, exists: fs.existsSync(PATHS.stacks) },
+    // Retained for visibility/recovery of legacy state; it is not an executable source.
     agents: { path: PATHS.agents, exists: fs.existsSync(PATHS.agents) },
     runtimes: { path: PATHS.runtimes, exists: fs.existsSync(PATHS.runtimes) },
     binaries: { path: PATHS.binaries, exists: fs.existsSync(PATHS.binaries) },
@@ -359,6 +257,15 @@ function formatSubStatus(status) {
   return 'unknown';
 }
 
+export function formatAgentStatusDetails(agent) {
+  const authenticated = agent.authenticated === true
+    ? 'yes'
+    : agent.authenticated === false
+      ? 'no'
+      : 'unknown';
+  return `Installed: ${agent.installed ? 'yes' : 'no'}, Auth: ${authenticated}, Ready: ${agent.ready ? 'yes' : 'no'}`;
+}
+
 /**
  * Print human-readable status
  */
@@ -401,7 +308,7 @@ function printStatus(status, filter) {
       const version = agent.version ? `v${agent.version}` : '';
       const source = agent.source ? `(${agent.source})` : '';
       console.log(`  ${installIcon} ${agent.name} ${version} ${source}`);
-      console.log(`    Installed: ${agent.installed ? 'yes' : 'no'}, Auth: ${agent.authenticated ? 'yes' : 'no'}, Ready: ${agent.ready ? 'yes' : 'no'}`);
+      console.log(`    ${formatAgentStatusDetails(agent)}`);
     }
     console.log('');
   }

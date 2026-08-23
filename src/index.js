@@ -12,7 +12,7 @@
  *   rudi skills              List installed skills
  *   rudi runtimes            List installed runtimes
  *   rudi binaries            List installed binaries
- *   rudi agents              List installed agents
+ *   rudi agents              Inspect discovered native Agent Hosts
  *   rudi prompts             List installed prompts
  *   rudi workflows           List installed workflows
  *   rudi list [kind]         List all installed packages

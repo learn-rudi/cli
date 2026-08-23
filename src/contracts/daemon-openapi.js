@@ -62,7 +62,10 @@ const launchProperties = {
   launchId: { type: 'string', minLength: 1 },
   originDirectory: { type: 'string', minLength: 1 },
   prompt: { type: 'string', minLength: 1, maxLength: 10485760 },
-  provider: { type: 'string', enum: ['claude', 'codex', 'google'] },
+  provider: {
+    type: 'string',
+    enum: ['claude', 'codex', 'antigravity', 'gemini', 'google'],
+  },
   workspace: { type: 'string', minLength: 1 },
   workspaceMode: { type: 'string', enum: ['auto', 'read-only', 'worktree', 'isolated-copy'] },
   model: { type: 'string', minLength: 1 },

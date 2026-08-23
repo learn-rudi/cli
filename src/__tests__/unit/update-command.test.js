@@ -49,6 +49,19 @@ test('resolveUpdateTarget rejects ambiguous bare package names instead of defaul
   );
 });
 
+test('resolveUpdateTarget rejects Agent Host updates before package inventory lookup', async () => {
+  const deps = createDeps({
+    async listInstalled() {
+      assert.fail('external Agent Host updates must not inspect RUDI package inventory');
+    },
+  });
+
+  await assert.rejects(
+    () => resolveUpdateTarget('agent:codex', deps),
+    /vendor-managed.*cannot be updated by RUDI.*rudi agent hosts --json/i,
+  );
+});
+
 test('runUpdate updates an explicit stack through core installer and rebuilds its tool index', async () => {
   const deps = createDeps();
 

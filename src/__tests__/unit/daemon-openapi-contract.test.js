@@ -31,6 +31,18 @@ test('daemon OpenAPI publishes every retained Agent Host and capability route', 
   }
 });
 
+test('daemon OpenAPI publishes canonical Agent Host IDs and the Google alias', () => {
+  const provider = DAEMON_OPENAPI.paths['/agent-host/v1/launches']
+    .post.requestBody.content['application/json'].schema.properties.provider;
+  assert.deepEqual(provider.enum, [
+    'claude',
+    'codex',
+    'antigravity',
+    'gemini',
+    'google',
+  ]);
+});
+
 test('daemon OpenAPI excludes retired execution, session, and embedded UI routes', () => {
   const forbiddenPrefixes = [
     '/admin/',

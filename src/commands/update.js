@@ -79,6 +79,12 @@ export async function resolveUpdateTarget(rawTarget, deps = defaultDependencies)
   }
 
   assertKnownPackagePrefix(target);
+  if (packageKindFromId(target) === 'agent') {
+    throw new Error(
+      `${target} is a vendor-managed Agent Host and cannot be updated by RUDI. `
+      + `Use the provider's supported updater, then verify with: rudi agent hosts --json`
+    );
+  }
   const installed = await getInstalledPackages(deps);
 
   if (hasKnownPackagePrefix(target)) {

@@ -12,9 +12,20 @@
  *   1 = one or more shims have issues
  */
 
-import { PATHS, createShimsForTool, ensureDirectories, getNodeRuntimeBinDir, getNodeRuntimeRoot, validateShim } from '@learnrudi/core';
+import { PATHS, createShimsForTool, ensureDirectories, getNodeRuntimeBinDir, getNodeRuntimeRoot, getShimOwner, validateShim } from '@learnrudi/core';
 import fs from 'fs';
 import path from 'path';
+
+const LEGACY_AGENT_SHIM_IDS = new Map([
+  ['agy', 'antigravity'],
+  ['antigravity', 'antigravity'],
+  ['claude', 'claude'],
+  ['claude-code', 'claude'],
+  ['codex', 'codex'],
+  ['copilot', 'copilot'],
+  ['gemini', 'gemini'],
+  ['github-copilot-cli', 'copilot'],
+]);
 
 /**
  * List all shims in ~/.rudi/bins/
@@ -48,7 +59,7 @@ function getShimType(shimPath) {
   // Check if it's a wrapper script
   try {
     const content = fs.readFileSync(shimPath, 'utf8');
-    if (content.includes('#!/usr/bin/env bash')) {
+    if (/^#![^\r\n]*(?:^|[\/\s])(?:ba|z|k)?sh(?:\s|$)/.test(content)) {
       return 'wrapper';
     }
   } catch (err) {
@@ -186,14 +197,32 @@ function inferInstallType(kind, manifest) {
 /**
  * Get package ID from shim path
  */
-function getPackageFromShim(shimName, target) {
+export function getPackageFromShim(shimName, target) {
+  const legacyAgentId = LEGACY_AGENT_SHIM_IDS.get(shimName);
+  if (legacyAgentId) {
+    const legacyPackageId = `agent:${legacyAgentId}`;
+    const recordedOwner = getShimOwner(shimName);
+    const targetIsLegacyRudiPayload = typeof target === 'string'
+      && path.isAbsolute(target)
+      && path.basename(target) === shimName
+      && [PATHS.agents, getNodeRuntimeRoot()].some(root => {
+        const relativeTarget = path.relative(root, target);
+        return relativeTarget === '' || (
+          relativeTarget !== '..'
+          && !relativeTarget.startsWith(`..${path.sep}`)
+          && !path.isAbsolute(relativeTarget)
+        );
+      });
+    if (recordedOwner?.owner === legacyPackageId || targetIsLegacyRudiPayload) {
+      return legacyPackageId;
+    }
+  }
   if (!target) return null;
 
   // Check manifest files to find which package provides this shim
   const manifestDirs = [
     path.join(PATHS.binaries),
     path.join(PATHS.runtimes),
-    path.join(PATHS.agents)
   ];
 
   for (const dir of manifestDirs) {
@@ -259,6 +288,54 @@ function formatShimStatus(shim, flags) {
   return output;
 }
 
+export function getBrokenShimGuidance(packageIds) {
+  return [...new Set([...packageIds].map(pkg => (
+    pkg.startsWith('agent:')
+      ? 'rudi shims fix'
+      : `rudi install ${pkg} --force`
+  )))];
+}
+
+export function removeBrokenLegacyAgentShims(pkg, shims, dependencies = {}) {
+  const binsPath = dependencies.binsPath || PATHS.bins;
+  const unlinkSyncImpl = dependencies.unlinkSyncImpl || fs.unlinkSync;
+  const result = { failed: [], removed: [] };
+
+  for (const shim of shims) {
+    if (shim.valid || shim.package !== pkg) continue;
+    try {
+      unlinkSyncImpl(path.join(binsPath, shim.name));
+      result.removed.push(shim.name);
+    } catch (error) {
+      result.failed.push({ error: error.message, name: shim.name });
+    }
+  }
+  return result;
+}
+
+export async function repairBrokenShimPackage(pkg, installPackageImpl) {
+  if (pkg.startsWith('agent:')) {
+    return {
+      error: 'Legacy Agent Host shims are removal-only.',
+      package: pkg,
+      removalOnly: true,
+      success: false,
+    };
+  }
+
+  try {
+    const result = await installPackageImpl(pkg, { force: true, withShims: true });
+    return {
+      ...result,
+      package: pkg,
+      success: result?.success === true,
+      ...(result?.success === true ? {} : { error: result?.error || 'Package reinstall failed.' }),
+    };
+  } catch (error) {
+    return { error: error.message, package: pkg, success: false };
+  }
+}
+
 /**
  * Main command handler
  */
@@ -296,7 +373,6 @@ export async function cmdShims(args, flags) {
 
     const manifests = [
       ...collectManifests(PATHS.binaries, 'binary'),
-      ...collectManifests(PATHS.agents, 'agent'),
     ];
 
     for (const entry of manifests) {
@@ -441,25 +517,36 @@ fi
     console.log(`\n${valid} valid, ${broken} broken`);
 
     if (hasIssues) {
-      console.log('\n\x1b[33mTo fix broken shims, reinstall the affected packages:\x1b[0m');
+      console.log('\n\x1b[33mTo resolve broken shims:\x1b[0m');
       const brokenPackages = new Set();
       results.forEach(r => {
         if (!r.valid && r.package) {
           brokenPackages.add(r.package);
         }
       });
-      brokenPackages.forEach(pkg => {
-        console.log(`  rudi install ${pkg} --force`);
+      getBrokenShimGuidance(brokenPackages).forEach(command => {
+        console.log(`  ${command}`);
       });
     }
   }
+
+  let fixUnresolved = 0;
 
   // Fix mode
   if (subcommand === 'fix') {
     console.log('\n\x1b[33mAttempting to fix broken shims...\x1b[0m\n');
 
     const brokenWithPkg = results.filter(r => !r.valid && r.package);
-    const orphaned = results.filter(r => !r.valid && !r.package);
+    const orphaned = results.filter(r => !r.valid && !r.package && r.type === 'symlink');
+    const preservedUnknown = results.filter(r => !r.valid && !r.package && r.type !== 'symlink');
+
+    // An unowned regular file may be a hand-written or generated wrapper that
+    // this CLI version does not understand. Preserve it rather than turning a
+    // parser limitation into destructive cleanup.
+    for (const shim of preservedUnknown) {
+      fixUnresolved += 1;
+      console.log(`\x1b[33m!\x1b[0m Preserved ${shim.name}: ${shim.error || 'unrecognized wrapper'}`);
+    }
 
     // Remove orphaned shims (no associated package)
     if (orphaned.length > 0) {
@@ -470,6 +557,7 @@ fi
           fs.unlinkSync(shimPath);
           console.log(`  \x1b[32m✓\x1b[0m Removed ${shim.name}`);
         } catch (err) {
+          fixUnresolved += 1;
           console.log(`  \x1b[31m✗\x1b[0m Failed to remove ${shim.name}: ${err.message}`);
         }
       }
@@ -479,7 +567,7 @@ fi
     // Reinstall broken packages
     const brokenPackages = new Set(brokenWithPkg.map(r => r.package));
 
-    if (brokenPackages.size === 0 && orphaned.length === 0) {
+    if (brokenPackages.size === 0 && orphaned.length === 0 && preservedUnknown.length === 0) {
       console.log('No broken shims to fix.');
       process.exit(0);
     }
@@ -488,18 +576,34 @@ fi
       const { installPackage } = await import('@learnrudi/core');
 
       for (const pkg of brokenPackages) {
+        if (pkg.startsWith('agent:')) {
+          const cleanup = removeBrokenLegacyAgentShims(pkg, brokenWithPkg);
+          for (const name of cleanup.removed) {
+            console.log(`\x1b[32m✓\x1b[0m Removed legacy Agent Host shim ${name}`);
+          }
+          for (const failure of cleanup.failed) {
+            fixUnresolved += 1;
+            console.log(`\x1b[31m✗\x1b[0m Failed to remove ${failure.name}: ${failure.error}`);
+          }
+          continue;
+        }
         console.log(`Reinstalling ${pkg}...`);
-        try {
-          await installPackage(pkg, { force: true, withShims: true });
+        const repair = await repairBrokenShimPackage(pkg, installPackage);
+        if (repair.success) {
           console.log(`\x1b[32m✓\x1b[0m Fixed ${pkg}`);
-        } catch (err) {
-          console.log(`\x1b[31m✗\x1b[0m Failed to fix ${pkg}: ${err.message}`);
+        } else {
+          fixUnresolved += 1;
+          console.log(`\x1b[31m✗\x1b[0m Failed to fix ${pkg}: ${repair.error}`);
         }
       }
     }
 
-    console.log('\n\x1b[32m✓\x1b[0m Fix complete');
+    if (fixUnresolved > 0) {
+      console.log(`\n\x1b[33m!\x1b[0m Fix incomplete: ${fixUnresolved} item(s) still need attention`);
+    } else {
+      console.log('\n\x1b[32m✓\x1b[0m Fix complete');
+    }
   }
 
-  process.exit(hasIssues ? 1 : 0);
+  process.exit(subcommand === 'fix' ? (fixUnresolved > 0 ? 1 : 0) : (hasIssues ? 1 : 0));
 }

@@ -129,13 +129,55 @@ export function validateImages(images) {
   return images.map((image, index) => requiredText(image, `images[${index}]`, 4096));
 }
 
+function canonicalPath(candidate) {
+  const absolute = path.resolve(candidate);
+  try {
+    return fs.realpathSync(absolute);
+  } catch {
+    return absolute;
+  }
+}
+
+function isInsidePath(root, candidate) {
+  const child = path.relative(root, candidate);
+  return child === '' || (
+    child !== '..'
+    && !child.startsWith(`..${path.sep}`)
+    && !path.isAbsolute(child)
+  );
+}
+
+function rudiOwnedPathRoots(environment) {
+  const home = environment.HOME || os.homedir();
+  return [
+    path.join(home, '.rudi'),
+    environment.RUDI_HOME,
+    process.env.RUDI_HOME,
+  ]
+    .filter(root => typeof root === 'string' && path.isAbsolute(root))
+    .flatMap(root => [path.resolve(root), canonicalPath(root)]);
+}
+
+function isRudiOwnedPathEntry(entry, roots) {
+  if (typeof entry !== 'string' || entry.length === 0) return false;
+  const lexicalEntry = path.resolve(entry);
+  const canonicalEntry = canonicalPath(entry);
+  return roots.some(root => (
+    isInsidePath(root, lexicalEntry) || isInsidePath(root, canonicalEntry)
+  ));
+}
+
 export function buildAgentExecutableEnvironment(binaryPath, overrides = {}, baseEnvironment = process.env) {
   const merged = { ...baseEnvironment, ...overrides };
+  const rudiRoots = rudiOwnedPathRoots(merged);
   const entries = [
     path.dirname(binaryPath),
-    path.dirname(process.execPath),
     ...(String(merged.PATH || '').split(path.delimiter)),
-  ].filter(Boolean);
+  ].filter(entry => (
+    entry
+    && path.isAbsolute(entry)
+    && !isRudiOwnedPathEntry(entry, rudiRoots)
+  ));
   merged.PATH = [...new Set(entries)].join(path.delimiter);
   return merged;
 }

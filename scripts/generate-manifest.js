@@ -138,17 +138,6 @@ function getCatalogDirName(kind) {
   }
 }
 
-function normalizeGlobalNpmCommands(commands) {
-  return commands.map(cmd => {
-    const binName = path.basename(cmd.bin || cmd.name);
-    return {
-      name: cmd.name,
-      bin: path.posix.join('bin', binName),
-      args: cmd.args || null,
-    };
-  });
-}
-
 /**
  * Process packages from a catalog directory
  */
@@ -163,12 +152,9 @@ function processPackages(catalogPath, kind) {
     let installType = pkg.installType || pkg.install?.source || 'binary';
     let commands = extractCommands(pkg, kind);
 
-    const isGlobalNpmAgent = kind === 'agent' && (installType === 'npm' || pkg.npmPackage);
-    if (isGlobalNpmAgent) {
-      basePath = 'runtimes';
-      installDir = 'node';
-      installType = 'npm-global';
-      commands = normalizeGlobalNpmCommands(commands);
+    if (kind === 'agent') {
+      installDir = null;
+      basePath = 'external';
     }
 
     const entry = {
@@ -180,6 +166,8 @@ function processPackages(catalogPath, kind) {
       installType,
       commands,
     };
+
+    if (kind === 'agent') entry.external = true;
 
     // Carry native installer fields for native-installer packages
     if (installType === 'native-installer') {

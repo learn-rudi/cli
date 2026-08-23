@@ -7,10 +7,9 @@
   "binary": {
     "name": "gemini",
     "resolvePaths": [
-      "~/.rudi/agents/gemini/node_modules/.bin/gemini",
-      "~/.rudi/runtimes/node/{arch}/bin/gemini",
-      "~/.rudi/runtimes/node/bin/gemini",
-      "~/.local/bin/gemini"
+      "~/.local/bin/gemini",
+      "/opt/homebrew/bin/gemini",
+      "/usr/local/bin/gemini"
     ],
     "fallback": "which",
     "checkCommand": ["gemini", "--version"],
