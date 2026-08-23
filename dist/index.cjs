@@ -11912,8 +11912,10 @@ async function discoverStackTools(stackId, stackConfig, options = {}) {
   return new Promise((resolve2) => {
     let resolved = false;
     let childProcess;
+    let childProcessStartedAtMs = null;
     let forceKillTimer = null;
     let rl = null;
+    const usePosixProcessGroup = process.platform !== "win32";
     const releaseProcessHandles = () => {
       rl?.close();
       rl = null;
@@ -11921,19 +11923,108 @@ async function discoverStackTools(stackId, stackConfig, options = {}) {
       childProcess?.stdout?.destroy();
       childProcess?.stderr?.destroy();
     };
+    const signalDirectChild = (signal) => {
+      if (!childProcess || childProcess.exitCode !== null || childProcess.signalCode !== null) {
+        return false;
+      }
+      try {
+        return childProcess.kill(signal);
+      } catch {
+        return false;
+      }
+    };
+    const sweepWindowsDescendants = (signal) => {
+      try {
+        const sweep = (0, import_child_process4.spawn)("powershell.exe", [
+          "-NoLogo",
+          "-NoProfile",
+          "-NonInteractive",
+          "-Command",
+          WINDOWS_DESCENDANT_SWEEP_SCRIPT
+        ], {
+          env: {
+            ...process.env,
+            RUDI_TOOL_INDEX_SWEEP_ROOT_PID: String(childProcess.pid),
+            RUDI_TOOL_INDEX_SWEEP_MODE: signal === "SIGKILL" ? "force" : "graceful",
+            RUDI_TOOL_INDEX_SWEEP_NOT_BEFORE_MS: String(childProcessStartedAtMs)
+          },
+          stdio: "ignore",
+          windowsHide: true
+        });
+        const sweepTimeout = setTimeout(() => {
+          sweep.kill();
+          log(`  Windows descendant sweep timed out for ${stackId}`);
+        }, WINDOWS_CLEANUP_TIMEOUT_MS);
+        sweep.once("error", (err) => {
+          clearTimeout(sweepTimeout);
+          log(`  Windows descendant sweep failed for ${stackId}: ${err.message}`);
+        });
+        sweep.once("close", (code) => {
+          clearTimeout(sweepTimeout);
+          if (code !== 0) {
+            log(`  Windows descendant sweep exited with code ${code} for ${stackId}`);
+          }
+        });
+        return true;
+      } catch (err) {
+        log(`  Windows descendant sweep failed for ${stackId}: ${err.message}`);
+        return false;
+      }
+    };
+    const signalProcessTree = (signal) => {
+      if (!childProcess?.pid) return false;
+      if (usePosixProcessGroup) {
+        try {
+          process.kill(-childProcess.pid, signal);
+          return true;
+        } catch (err) {
+          if (err.code === "ESRCH") return false;
+          log(`  Failed to signal process group for ${stackId}: ${err.message}`);
+        }
+      } else {
+        try {
+          const args = ["/pid", String(childProcess.pid), "/t"];
+          if (signal === "SIGKILL") args.push("/f");
+          const taskkill = (0, import_child_process4.spawn)("taskkill", args, {
+            stdio: "ignore",
+            windowsHide: true
+          });
+          let fallbackHandled = false;
+          const fallbackToDirectChild = () => {
+            if (fallbackHandled) return;
+            fallbackHandled = true;
+            signalDirectChild(signal);
+            sweepWindowsDescendants(signal);
+          };
+          const taskkillTimeout = setTimeout(() => {
+            taskkill.kill();
+            log(`  taskkill timed out for ${stackId}`);
+            fallbackToDirectChild();
+          }, WINDOWS_CLEANUP_TIMEOUT_MS);
+          taskkill.once("error", () => {
+            clearTimeout(taskkillTimeout);
+            fallbackToDirectChild();
+          });
+          taskkill.once("close", (code) => {
+            clearTimeout(taskkillTimeout);
+            if (code !== 0) {
+              log(`  taskkill exited with code ${code} for ${stackId}`);
+              fallbackToDirectChild();
+            }
+          });
+          return true;
+        } catch {
+        }
+      }
+      return signalDirectChild(signal);
+    };
     const cleanup = () => {
       releaseProcessHandles();
-      if (childProcess && childProcess.exitCode === null && childProcess.signalCode === null) {
-        childProcess.kill("SIGTERM");
+      if (signalProcessTree("SIGTERM") && forceKillTimer === null) {
         forceKillTimer = setTimeout(() => {
-          if (childProcess.exitCode === null && childProcess.signalCode === null) {
-            childProcess.kill("SIGKILL");
-          }
-        }, 250);
-        childProcess.once("exit", () => {
-          clearTimeout(forceKillTimer);
+          signalProcessTree("SIGKILL");
           forceKillTimer = null;
-        });
+        }, 250);
       }
     };
     const timeoutId = setTimeout(() => {
@@ -11948,10 +12039,12 @@ async function discoverStackTools(stackId, stackConfig, options = {}) {
       }
     }, timeout);
     try {
+      childProcessStartedAtMs = Date.now();
       childProcess = (0, import_child_process4.spawn)(launch.bin, launch.args || [], {
         cwd: launch.cwd || stackConfig.path,
         stdio: ["pipe", "pipe", "pipe"],
-        env
+        env,
+        detached: usePosixProcessGroup
       });
       rl = readline.createInterface({
         input: childProcess.stdout,
@@ -12003,13 +12096,10 @@ async function discoverStackTools(stackId, stackConfig, options = {}) {
       });
       childProcess.on("exit", (code) => {
         releaseProcessHandles();
-        if (forceKillTimer !== null) {
-          clearTimeout(forceKillTimer);
-          forceKillTimer = null;
-        }
         if (!resolved && code !== 0) {
           resolved = true;
           clearTimeout(timeoutId);
+          cleanup();
           resolve2({
             tools: [],
             error: `Process exited with code ${code}`,
@@ -12149,7 +12239,7 @@ async function indexAllStacks(options = {}) {
   writeToolIndex(index);
   return { indexed, failed, index };
 }
-var import_child_process4, fs8, path9, readline, TOOL_INDEX_PATH, TOOL_INDEX_TMP, SECRETS_PATH, REQUEST_TIMEOUT_MS, PROTOCOL_VERSION;
+var import_child_process4, fs8, path9, readline, TOOL_INDEX_PATH, TOOL_INDEX_TMP, SECRETS_PATH, REQUEST_TIMEOUT_MS, PROTOCOL_VERSION, WINDOWS_CLEANUP_TIMEOUT_MS, WINDOWS_DESCENDANT_SWEEP_SCRIPT;
 var init_tool_index = __esm({
   "packages/core/src/tool-index.js"() {
     import_child_process4 = require("child_process");
@@ -12163,6 +12253,37 @@ var init_tool_index = __esm({
     SECRETS_PATH = path9.join(RUDI_HOME, "secrets.json");
     REQUEST_TIMEOUT_MS = 15e3;
     PROTOCOL_VERSION = "2024-11-05";
+    WINDOWS_CLEANUP_TIMEOUT_MS = 2e3;
+    WINDOWS_DESCENDANT_SWEEP_SCRIPT = `
+$ErrorActionPreference = 'SilentlyContinue'
+$rootProcessId = 0
+$notBeforeMs = 0L
+$rootProcessIdText = [Environment]::GetEnvironmentVariable('RUDI_TOOL_INDEX_SWEEP_ROOT_PID')
+$notBeforeText = [Environment]::GetEnvironmentVariable('RUDI_TOOL_INDEX_SWEEP_NOT_BEFORE_MS')
+if (-not [int]::TryParse($rootProcessIdText, [ref]$rootProcessId)) { exit 2 }
+if (-not [long]::TryParse($notBeforeText, [ref]$notBeforeMs)) { exit 2 }
+$force = [Environment]::GetEnvironmentVariable('RUDI_TOOL_INDEX_SWEEP_MODE') -eq 'force'
+$notBefore = [DateTimeOffset]::FromUnixTimeMilliseconds($notBeforeMs).UtcDateTime
+$pending = [System.Collections.Generic.Queue[int]]::new()
+$visited = [System.Collections.Generic.HashSet[int]]::new()
+$descendants = [System.Collections.Generic.List[int]]::new()
+$pending.Enqueue($rootProcessId)
+$visited.Add($rootProcessId) | Out-Null
+while ($pending.Count -gt 0) {
+  $parentProcessId = $pending.Dequeue()
+  Get-CimInstance Win32_Process -Filter "ParentProcessId = $parentProcessId" | ForEach-Object {
+    $childProcessId = [int]$_.ProcessId
+    $createdAt = $_.CreationDate.ToUniversalTime()
+    if ($createdAt -ge $notBefore -and $visited.Add($childProcessId)) {
+      $descendants.Add($childProcessId)
+      $pending.Enqueue($childProcessId)
+    }
+  }
+}
+for ($index = $descendants.Count - 1; $index -ge 0; $index -= 1) {
+  Stop-Process -Id $descendants[$index] -Force:$force
+}
+`.trim();
   }
 });
 
@@ -37427,7 +37548,7 @@ async function cmdLeverage(args, flags) {
 }
 
 // src/index.js
-var VERSION = true ? "1.10.21" : process.env.npm_package_version || "0.0.0";
+var VERSION = true ? "1.10.22" : process.env.npm_package_version || "0.0.0";
 var RETIRED_COMMANDS = /* @__PURE__ */ new Map([
   ["apply", "Provider transcripts remain authoritative; organization-plan execution was removed."],
   ["database", "Use Studio only if you still need the isolated compatibility database."],
