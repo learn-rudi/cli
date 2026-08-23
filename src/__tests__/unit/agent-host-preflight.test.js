@@ -1,5 +1,6 @@
 import { describe, test } from 'node:test';
 import assert from 'node:assert/strict';
+import os from 'node:os';
 import path from 'node:path';
 
 import { inspectAgentHost } from '../../agent-host/preflight.js';
@@ -19,7 +20,10 @@ describe('Agent Host preflight', () => {
 
     assert.equal(inspected.installed, true);
     const pathEntries = calls[0].options.env.PATH.split(path.delimiter);
+    const rudiRoot = path.resolve(process.env.RUDI_HOME || path.join(os.homedir(), '.rudi'));
     assert.equal(pathEntries.includes(path.dirname(binaryPath)), true);
-    assert.equal(pathEntries.includes(path.dirname(process.execPath)), false);
+    assert.equal(pathEntries.some(entry => (
+      entry === rudiRoot || entry.startsWith(`${rudiRoot}${path.sep}`)
+    )), false);
   });
 });
