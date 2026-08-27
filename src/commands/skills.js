@@ -391,16 +391,117 @@ export async function syncAntigravitySkills(options = {}) {
   };
 }
 
+function normalizeRequestedSkillId(value) {
+  const id = String(value || '').trim();
+  if (!id.startsWith('skill:') || id.length === 'skill:'.length) {
+    throw new Error(`Invalid skill package id "${id}". Expected skill:<name>`);
+  }
+  return id;
+}
+
+export async function resolveSkillSyncSelection(requestedIds, dependencies = {}) {
+  const getInstalled = dependencies.listInstalled || listInstalled;
+  const installed = await getInstalled('skill');
+  const rudiSkills = (Array.isArray(installed) ? installed : [])
+    .filter((skill) => !skill?.source || skill.source === 'rudi');
+  const byId = new Map(rudiSkills.map((skill) => [skill.id, skill]));
+  const selected = [];
+  const seen = new Set();
+
+  for (const value of requestedIds || []) {
+    const id = normalizeRequestedSkillId(value);
+    if (seen.has(id)) continue;
+    seen.add(id);
+
+    const skill = byId.get(id);
+    if (!skill) {
+      throw new Error(`Installed RUDI skill not found: ${id}`);
+    }
+    selected.push(skill);
+  }
+
+  return selected;
+}
+
+const NATIVE_SKILL_SYNC_TARGETS = ['codex', 'claude', 'gemini', 'antigravity'];
+
+export function parseNativeSkillSyncTargets(value) {
+  if (value === undefined || value === null || value === false) return [];
+  if (Array.isArray(value) && value.length === 0) return [];
+  if (value === true) {
+    throw new Error('--sync-skills requires a host name');
+  }
+
+  const requested = (Array.isArray(value) ? value : [value])
+    .flatMap((item) => String(item).split(','))
+    .map((item) => item.trim().toLowerCase())
+    .filter(Boolean);
+  if (requested.length === 0) {
+    throw new Error('--sync-skills requires a host name');
+  }
+  if (requested.includes('all')) {
+    if (requested.length !== 1) {
+      throw new Error('Use --sync-skills=all by itself');
+    }
+    return [...NATIVE_SKILL_SYNC_TARGETS];
+  }
+
+  const targets = [];
+  const seen = new Set();
+  for (const target of requested) {
+    if (!NATIVE_SKILL_SYNC_TARGETS.includes(target)) {
+      throw new Error(`Unsupported native skill host "${target}"`);
+    }
+    if (seen.has(target)) continue;
+    seen.add(target);
+    targets.push(target);
+  }
+  return targets;
+}
+
+export async function syncSelectedSkillsToNativeHosts(options = {}, dependencies = {}) {
+  const targets = parseNativeSkillSyncTargets(options.targets);
+  const skillIds = Array.isArray(options.skillIds) ? options.skillIds : [];
+  if (targets.length === 0 || skillIds.length === 0) {
+    return { targets, skillIds: [], results: {} };
+  }
+
+  const skills = await resolveSkillSyncSelection(skillIds, dependencies);
+  const syncers = {
+    codex: dependencies.syncCodexSkills || syncCodexSkills,
+    claude: dependencies.syncClaudeSkills || syncClaudeSkills,
+    gemini: dependencies.syncGeminiSkills || syncGeminiSkills,
+    antigravity: dependencies.syncAntigravitySkills || syncAntigravitySkills,
+  };
+  const results = {};
+
+  for (const target of targets) {
+    results[target] = await syncers[target]({
+      skills,
+      force: options.force === true,
+      dryRun: options.dryRun === true,
+    });
+  }
+
+  return {
+    targets,
+    skillIds: skills.map((skill) => skill.id),
+    results,
+  };
+}
+
 function printSkillsHelp() {
   console.log(`
 rudi skills - List or sync installed RUDI skills
 
 USAGE
   rudi skills
-  rudi skills sync <codex|claude|gemini|antigravity> [--force] [--dry-run] [--json]
+  rudi skills sync <codex|claude|gemini|antigravity> <skill:id>... [options]
+  rudi skills sync <codex|claude|gemini|antigravity> [--all] [options]
 
 OPTIONS
-  --force      Overwrite existing native skill wrappers
+  --all        Explicitly select the whole installed RUDI skill inventory
+  --force      Overwrite existing native skill wrappers; whole-inventory force requires --all
   --dry-run    Preview sync results without writing files
   --json       Output JSON
 
@@ -410,11 +511,13 @@ EXAMPLES
   rudi skills sync claude
   rudi skills sync gemini
   rudi skills sync antigravity
-  rudi skills sync codex --force
+  rudi skills sync codex skill:rudi-change-map skill:rudi-engineering-gate --force
+  rudi skills sync codex --all --force
 `);
 }
 
-export async function cmdSkills(args = [], flags = {}) {
+export async function cmdSkills(args = [], flags = {}, dependencies = {}) {
+  const log = dependencies.log || console.log;
   const subcommand = args[0];
 
   if (subcommand === 'help' || flags.help || flags.h) {
@@ -431,37 +534,50 @@ export async function cmdSkills(args = [], flags = {}) {
   }
 
   const target = args[1];
+  const requestedSkillIds = args.slice(2);
+  const force = flags.force === true;
+  const all = flags.all === true;
+  if (requestedSkillIds.length > 0 && all) {
+    throw new Error('Choose exact skill IDs or --all, not both');
+  }
+  if (requestedSkillIds.length === 0 && force && !all) {
+    throw new Error('Refusing to force-sync the whole skill inventory without explicit --all');
+  }
   const targets = {
-    codex: { name: 'Codex', sync: syncCodexSkills, rootKey: 'codexRoot' },
-    claude: { name: 'Claude', sync: syncClaudeSkills, rootKey: 'claudeRoot' },
-    gemini: { name: 'Gemini', sync: syncGeminiSkills, rootKey: 'geminiRoot' },
-    antigravity: { name: 'Antigravity', sync: syncAntigravitySkills, rootKey: 'antigravityRoot' },
+    codex: { name: 'Codex', sync: dependencies.syncCodexSkills || syncCodexSkills, rootKey: 'codexRoot' },
+    claude: { name: 'Claude', sync: dependencies.syncClaudeSkills || syncClaudeSkills, rootKey: 'claudeRoot' },
+    gemini: { name: 'Gemini', sync: dependencies.syncGeminiSkills || syncGeminiSkills, rootKey: 'geminiRoot' },
+    antigravity: { name: 'Antigravity', sync: dependencies.syncAntigravitySkills || syncAntigravitySkills, rootKey: 'antigravityRoot' },
   };
   const targetConfig = targets[target];
   if (!targetConfig) {
-    throw new Error('Usage: rudi skills sync <codex|claude|gemini|antigravity> [--force] [--dry-run] [--json]');
+    throw new Error('Usage: rudi skills sync <codex|claude|gemini|antigravity> <skill:id>... [--all] [--force] [--dry-run] [--json]');
   }
 
+  const skills = requestedSkillIds.length > 0
+    ? await resolveSkillSyncSelection(requestedSkillIds, dependencies)
+    : null;
   const result = await targetConfig.sync({
-    force: flags.force === true,
+    skills,
+    force,
     dryRun: flags['dry-run'] === true || flags.dryRun === true,
   });
 
   if (flags.json) {
-    console.log(JSON.stringify(result, null, 2));
+    log(JSON.stringify(result, null, 2));
     return;
   }
 
   const targetName = targetConfig.name;
   const skillsRoot = result[targetConfig.rootKey];
-  console.log(`${targetName} skills root: ${skillsRoot}`);
+  log(`${targetName} skills root: ${skillsRoot}`);
   for (const item of result.results) {
     if (item.action === 'failed') {
-      console.log(`  x ${item.id}: ${item.error}`);
+      log(`  x ${item.id}: ${item.error}`);
     } else if (item.action === 'skipped') {
-      console.log(`  - ${item.id}: skipped (${item.reason})`);
+      log(`  - ${item.id}: skipped (${item.reason})`);
     } else {
-      console.log(`  ok ${item.id}: ${item.action} ${item.targetDir}`);
+      log(`  ok ${item.id}: ${item.action} ${item.targetDir}`);
     }
   }
 
@@ -474,5 +590,5 @@ export async function cmdSkills(args = [], flags = {}) {
   const prefix = result.results.some(item => item.action.startsWith('would_'))
     ? 'Would sync'
     : 'Synced';
-  console.log(`\n${prefix} ${syncedCount} skill(s). Restart ${targetName} to pick up native skill changes.`);
+  log(`\n${prefix} ${syncedCount} skill(s). Restart ${targetName} to pick up native skill changes.`);
 }

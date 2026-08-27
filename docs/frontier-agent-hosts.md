@@ -183,10 +183,11 @@ rudi integrate codex
 rudi integrate gemini
 rudi integrate antigravity
 
-rudi skills sync claude --force
-rudi skills sync codex --force
-rudi skills sync gemini --force
-rudi skills sync antigravity --force
+# Explicit whole-inventory overwrite; name exact skill:<id> targets for bounded updates.
+rudi skills sync claude --all --force
+rudi skills sync codex --all --force
+rudi skills sync gemini --all --force
+rudi skills sync antigravity --all --force
 ```
 
 Each host then discovers the same `rudi` MCP router and the installed portable RUDI skills. Google clients receive stable portable tool aliases because their MCP implementation rejects the namespace punctuation accepted by Claude and Codex; the router maps those aliases back to the same canonical stack tools. Native subagents run inside their owning host. This does not create an automatic Claude-to-Codex-to-Google delegation mesh; cross-provider dispatch uses `rudi agent group launch` and still preserves each host's native session boundary.

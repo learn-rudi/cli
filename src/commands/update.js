@@ -2,8 +2,18 @@
  * Update command - update installed packages from the registry.
  */
 
-import { indexAllStacks, listInstalled, updatePackage as coreUpdatePackage } from '@learnrudi/core';
+import {
+  indexAllStacks,
+  listInstalled,
+  resolvePackage as coreResolvePackage,
+  updatePackage as coreUpdatePackage,
+} from '@learnrudi/core';
 import { fetchIndex } from '@learnrudi/registry-client';
+import { buildRelatedSkillUpdatePlan } from './related-skills.js';
+import {
+  parseNativeSkillSyncTargets,
+  syncSelectedSkillsToNativeHosts,
+} from './skills.js';
 
 const KNOWN_PACKAGE_KINDS = new Set(['stack', 'skill', 'prompt', 'workflow', 'runtime', 'binary', 'agent', 'npm']);
 
@@ -18,6 +28,7 @@ function rebuildToolIndex(options = {}) {
 const defaultDependencies = {
   fetchIndex,
   listInstalled,
+  resolvePackage: coreResolvePackage,
   updatePackage: coreUpdatePackage,
   rebuildToolIndex,
   log: console.log,
@@ -129,14 +140,16 @@ function getUpdatedSkillIds(updatedPackages) {
 function logNativeSkillSyncHint(skillIds, deps) {
   if (skillIds.length === 0) return;
 
+  const exactSkillIds = skillIds.join(' ');
+
   deps.log('');
   deps.log(`Updated ${skillIds.length} skill package(s). Native frontier-host skill wrappers are not overwritten automatically.`);
   deps.log('To sync native wrappers for updated RUDI skills, run:');
-  deps.log('  rudi skills sync codex --force');
-  deps.log('  rudi skills sync claude --force');
-  deps.log('  rudi skills sync gemini --force');
-  deps.log('  rudi skills sync antigravity --force');
-  deps.log('These commands overwrite existing native wrappers; omit --force to create only missing wrappers.');
+  deps.log(`  rudi skills sync codex ${exactSkillIds} --force`);
+  deps.log(`  rudi skills sync claude ${exactSkillIds} --force`);
+  deps.log(`  rudi skills sync gemini ${exactSkillIds} --force`);
+  deps.log(`  rudi skills sync antigravity ${exactSkillIds} --force`);
+  deps.log('These commands overwrite only the named native wrappers; omit --force to create only missing wrappers.');
 }
 
 async function updateOnePackage(pkg, flags, deps) {
@@ -155,25 +168,105 @@ async function updateOnePackage(pkg, flags, deps) {
 }
 
 export async function runUpdate(args = [], flags = {}, deps = defaultDependencies) {
+  if (args.length > 1) {
+    throw new Error('Update accepts one package id or --all');
+  }
   const pkgId = args[0];
+  const all = flags.all === true;
+  const dryRun = isTruthyFlag(flags['dry-run']) || isTruthyFlag(flags.dryRun);
+  const skillSyncTargets = parseNativeSkillSyncTargets(flags['sync-skills'] ?? flags.syncSkills);
+  if (!pkgId && !all) {
+    throw new Error('Package id is required. Use --all to update the whole installed inventory');
+  }
+  if (pkgId && all) {
+    throw new Error('Choose one package id or --all, not both');
+  }
   const updatedPackages = [];
   const failedPackages = [];
   const skippedPackages = [];
   let target = null;
   let installed = null;
+  let updateTargets = [];
+  let relatedSkills = { selected: [], notInstalled: [] };
 
   if (pkgId) {
     target = await resolveUpdateTarget(pkgId, deps);
+    updateTargets = [target];
   } else {
     installed = await getInstalledPackages(deps);
+    updateTargets = installed;
   }
 
   deps.log('Refreshing registry...');
   await deps.fetchIndex({ force: true });
 
+  if (pkgId && (flags['with-related-skills'] === true || flags.withRelatedSkills === true)) {
+    if (target.kind !== 'stack') {
+      throw new Error('--with-related-skills requires an installed stack target');
+    }
+    installed = await getInstalledPackages(deps);
+    const resolved = await deps.resolvePackage(target.id);
+    relatedSkills = buildRelatedSkillUpdatePlan(resolved, installed);
+    updateTargets.push(...relatedSkills.selected);
+    for (const id of relatedSkills.notInstalled) {
+      skippedPackages.push({ id, error: 'Related skill is not installed' });
+      deps.log(`  - ${id}: related skill is not installed; skipped`);
+    }
+  }
+
+  const plannedPackages = updateTargets.map((pkg) => pkg.id);
+  const plannedIndexedStacks = updateTargets
+    .filter((pkg) => (pkg.kind || packageKindFromId(pkg.id)) === 'stack')
+    .map((pkg) => pkg.id);
+  const plannedSkillIds = updateTargets
+    .filter((pkg) => (pkg.kind || packageKindFromId(pkg.id)) === 'skill')
+    .map((pkg) => pkg.id)
+    .sort();
+
+  if (dryRun) {
+    deps.log(`Dry run: would update ${plannedPackages.length} package(s)`);
+    for (const id of plannedPackages) {
+      deps.log(`  - ${id}`);
+    }
+    if (plannedIndexedStacks.length > 0) {
+      deps.log(`Dry run: would rebuild the tool index for ${plannedIndexedStacks.join(', ')}`);
+    }
+    const skillProjection = await syncSelectedSkillsToNativeHosts({
+      targets: skillSyncTargets,
+      skillIds: plannedSkillIds,
+      force: true,
+      dryRun: true,
+    }, deps);
+    return {
+      dryRun: true,
+      updated: 0,
+      failed: 0,
+      skipped: relatedSkills.notInstalled.length,
+      packages: [],
+      failures: [],
+      skippedPackages: relatedSkills.notInstalled.map((id) => ({
+        id,
+        error: 'Related skill is not installed',
+      })),
+      indexedStacks: [],
+      updatedSkills: [],
+      plannedPackages,
+      plannedIndexedStacks,
+      plannedSkillIds,
+      skillProjection,
+      relatedSkills: {
+        selected: relatedSkills.selected.map((pkg) => pkg.id),
+        notInstalled: relatedSkills.notInstalled,
+      },
+      indexResult: null,
+    };
+  }
+
   if (pkgId) {
-    const updated = await updateOnePackage(target, flags, deps);
-    updatedPackages.push(updated);
+    for (const pkg of updateTargets) {
+      const updated = await updateOnePackage(pkg, flags, deps);
+      updatedPackages.push(updated);
+    }
   } else {
     deps.log('Checking installed packages for updates...');
 
@@ -198,15 +291,24 @@ export async function runUpdate(args = [], flags = {}, deps = defaultDependencie
     .map(pkg => pkg.id);
   const updatedSkillIds = getUpdatedSkillIds(updatedPackages);
   const indexResult = await rebuildUpdatedStackIndex(updatedStackIds, flags, deps);
+  const skillProjection = await syncSelectedSkillsToNativeHosts({
+    targets: skillSyncTargets,
+    skillIds: updatedSkillIds,
+    force: true,
+    dryRun: false,
+  }, deps);
 
   if (pkgId) {
     deps.log(`Updated ${updatedPackages[0].id}`);
   } else {
     deps.log(`\nUpdated ${updatedPackages.length} package(s)${failedPackages.length > 0 ? `, ${failedPackages.length} failed` : ''}${skippedPackages.length > 0 ? `, ${skippedPackages.length} skipped` : ''}`);
   }
-  logNativeSkillSyncHint(updatedSkillIds, deps);
+  if (skillProjection.targets.length === 0) {
+    logNativeSkillSyncHint(updatedSkillIds, deps);
+  }
 
   return {
+    dryRun: false,
     updated: updatedPackages.length,
     failed: failedPackages.length,
     skipped: skippedPackages.length,
@@ -215,18 +317,42 @@ export async function runUpdate(args = [], flags = {}, deps = defaultDependencie
     skippedPackages,
     indexedStacks: updatedStackIds,
     updatedSkills: updatedSkillIds,
+    plannedPackages,
+    plannedIndexedStacks,
+    plannedSkillIds,
+    skillProjection,
+    relatedSkills: {
+      selected: relatedSkills.selected.map((pkg) => pkg.id),
+      notInstalled: relatedSkills.notInstalled,
+    },
     indexResult,
   };
 }
 
-export async function cmdUpdate(args, flags) {
+export async function cmdUpdate(args, flags, dependencies = {}) {
+  const json = flags.json === true;
+  const executeUpdate = dependencies.runUpdate || ((updateArgs, updateFlags) => runUpdate(
+    updateArgs,
+    updateFlags,
+    json ? { ...defaultDependencies, log: () => {} } : defaultDependencies,
+  ));
+  const log = dependencies.log || console.log;
+  const printError = dependencies.error || console.error;
+  const exit = dependencies.exit || ((code) => process.exit(code));
   try {
-    const result = await runUpdate(args, flags);
+    const result = await executeUpdate(args, flags);
+    if (json) {
+      log(JSON.stringify(result, null, 2));
+    }
     if (result.failed > 0) {
-      process.exit(1);
+      return exit(1);
     }
   } catch (error) {
-    console.error(`Update failed: ${error.message}`);
-    process.exit(1);
+    if (json) {
+      log(JSON.stringify({ success: false, error: error.message }, null, 2));
+    } else {
+      printError(`Update failed: ${error.message}`);
+    }
+    return exit(1);
   }
 }

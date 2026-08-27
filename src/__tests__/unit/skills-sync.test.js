@@ -7,6 +7,8 @@ import path from 'node:path';
 import {
   buildClaudeSkillFiles,
   buildCodexSkillFiles,
+  cmdSkills,
+  parseNativeSkillSyncTargets,
   syncAntigravitySkills,
   syncClaudeSkills,
   syncCodexSkills,
@@ -16,6 +18,115 @@ import {
 function makeTempRoot(prefix) {
   return fs.mkdtempSync(path.join(os.tmpdir(), prefix));
 }
+
+test('parseNativeSkillSyncTargets rejects an explicitly empty host selection', () => {
+  assert.throws(
+    () => parseNativeSkillSyncTargets(''),
+    /requires a host name/,
+  );
+});
+
+test('cmdSkills projects only explicitly requested installed RUDI skill IDs', async () => {
+  const calls = [];
+  const installedSkills = [
+    { id: 'skill:rudi-change-map', kind: 'skill', source: 'rudi', entryPath: '/tmp/change-map.md' },
+    { id: 'skill:rudi-engineering-gate', kind: 'skill', source: 'rudi', entryPath: '/tmp/engineering-gate.md' },
+    { id: 'skill:external-only', kind: 'skill', source: 'claude', entryPath: '/tmp/external.md' },
+  ];
+
+  await cmdSkills(
+    ['sync', 'codex', 'skill:rudi-change-map'],
+    { 'dry-run': true },
+    {
+      async listInstalled(kind) {
+        calls.push(['listInstalled', kind]);
+        return installedSkills;
+      },
+      async syncCodexSkills(options) {
+        calls.push(['syncCodexSkills', options]);
+        return { codexRoot: '/tmp/codex-skills', results: [] };
+      },
+      log() {},
+    },
+  );
+
+  assert.deepEqual(calls[0], ['listInstalled', 'skill']);
+  assert.deepEqual(
+    calls[1][1].skills.map((skill) => skill.id),
+    ['skill:rudi-change-map'],
+  );
+});
+
+test('cmdSkills requires --all before force-syncing the whole installed skill inventory', async () => {
+  const calls = [];
+
+  await assert.rejects(
+    () => cmdSkills(
+      ['sync', 'codex'],
+      { force: true },
+      {
+        async syncCodexSkills(options) {
+          calls.push(options);
+          return { codexRoot: '/tmp/codex-skills', results: [] };
+        },
+        log() {},
+      },
+    ),
+    /--all/,
+  );
+
+  assert.deepEqual(calls, []);
+});
+
+test('cmdSkills rejects unknown or external skill IDs before native projection', async () => {
+  const calls = [];
+
+  await assert.rejects(
+    () => cmdSkills(
+      ['sync', 'codex', 'skill:external-only'],
+      { 'dry-run': true },
+      {
+        async listInstalled() {
+          return [{
+            id: 'skill:external-only',
+            kind: 'skill',
+            source: 'claude',
+            entryPath: '/tmp/external.md',
+          }];
+        },
+        async syncCodexSkills(options) {
+          calls.push(options);
+          return { codexRoot: '/tmp/codex-skills', results: [] };
+        },
+        log() {},
+      },
+    ),
+    /Installed RUDI skill not found/,
+  );
+
+  assert.deepEqual(calls, []);
+});
+
+test('cmdSkills allows an explicitly acknowledged whole-inventory force sync', async () => {
+  const calls = [];
+
+  await cmdSkills(
+    ['sync', 'codex'],
+    { all: true, force: true, 'dry-run': true },
+    {
+      async syncCodexSkills(options) {
+        calls.push(options);
+        return { codexRoot: '/tmp/codex-skills', results: [] };
+      },
+      log() {},
+    },
+  );
+
+  assert.equal(calls.length, 1);
+  assert.equal(calls[0].skills, null);
+  assert.equal(calls[0].force, true);
+  assert.equal(calls[0].dryRun, true);
+});
 
 test('buildCodexSkillFiles normalizes RUDI skill metadata for Codex', () => {
   const files = buildCodexSkillFiles(

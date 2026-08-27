@@ -45,3 +45,36 @@ test('retired command help is a migration notice without legacy usage instructio
   assert.match(result.stdout, /rudi agent group/);
   assert.doesNotMatch(result.stdout, /rudi parallel "<task1>"/);
 });
+
+test('update --help routes to truthful command-specific safety and suite options', () => {
+  const result = runCli(['update', '--help']);
+
+  assert.equal(result.status, 0, result.stderr || result.stdout);
+  assert.match(result.stdout, /rudi update - Update installed packages/);
+  assert.match(result.stdout, /--all/);
+  assert.match(result.stdout, /--with-related-skills/);
+  assert.match(result.stdout, /--sync-skills/);
+  assert.match(result.stdout, /--dry-run/);
+  assert.match(result.stdout, /--json/);
+  assert.doesNotMatch(result.stdout, /CORE COMMANDS/);
+});
+
+test('install --help documents related-skill controls without advertising unsupported JSON', () => {
+  const result = runCli(['install', '--help']);
+
+  assert.equal(result.status, 0, result.stderr || result.stdout);
+  assert.match(result.stdout, /--with-related-skills/);
+  assert.match(result.stdout, /--no-related-skills/);
+  const options = result.stdout.match(/OPTIONS([\s\S]*?)(?:OUTPUT|EXAMPLES)/)?.[1] || '';
+  assert.doesNotMatch(options, /--json/);
+});
+
+test('guarded skills failures emit one structured JSON error document', () => {
+  const result = runCli(['skills', 'sync', 'codex', '--all=false', '--force', '--dry-run', '--json']);
+
+  assert.equal(result.status, 1, result.stderr || result.stdout);
+  assert.doesNotMatch(result.stderr, /^Error:/m);
+  const payload = JSON.parse(result.stdout);
+  assert.equal(payload.success, false);
+  assert.match(payload.error, /--all/);
+});

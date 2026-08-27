@@ -304,19 +304,26 @@ export async function syncRelatedSkillWrappers(
     .filter((skill) => successful.has(skill.id))
     .map((skill) => {
       const installed = successful.get(skill.id);
+      const entryPath = fsSync.existsSync(installed.path)
+        && fsSync.statSync(installed.path).isDirectory()
+        ? path.join(installed.path, 'SKILL.md')
+        : installed.path;
       return {
         ...skill,
         source: 'rudi',
         path: installed.path,
-        entryPath: installed.path,
+        entryPath,
       };
     });
-  if (skills.length === 0) return { targets: [], results: {}, errors: {} };
+  if (skills.length === 0) {
+    return { targets: [], skillIds: [], results: {}, errors: {}, outcomes: {} };
+  }
 
   const agentIds = new Set((installedAgents || []).map((agent) => agent.id));
   const targets = [];
   const results = {};
   const errors = {};
+  const outcomes = {};
   const codexSync = dependencies.syncCodexSkills || syncCodexSkills;
   const claudeSync = dependencies.syncClaudeSkills || syncClaudeSkills;
 
@@ -337,7 +344,32 @@ export async function syncRelatedSkillWrappers(
     }
   }
 
-  return { targets, results, errors };
+  for (const target of targets) {
+    const items = Array.isArray(results[target]?.results) ? results[target].results : [];
+    const changed = items.filter((item) => ['created', 'updated'].includes(item.action)).length;
+    const skipped = items.filter((item) => item.action === 'skipped').length;
+    const failed = items.filter((item) => item.action === 'failed').length;
+    outcomes[target] = {
+      status: failed > 0
+        ? 'failed'
+        : changed > 0
+          ? 'changed'
+          : skipped > 0
+            ? 'preserved'
+            : 'unchanged',
+      changed,
+      skipped,
+      failed,
+    };
+  }
+
+  return {
+    targets,
+    skillIds: skills.map((skill) => skill.id),
+    results,
+    errors,
+    outcomes,
+  };
 }
 
 function printRelatedSkillSummary(plan) {
@@ -458,9 +490,14 @@ async function installAndSyncStackSkills(plan, options = {}) {
   for (const target of wrapperSync.targets) {
     if (wrapperSync.errors[target]) {
       console.log(`    - ${target} native skill sync failed: ${wrapperSync.errors[target]}`);
-      console.log(`      Retry with: rudi skills sync ${target}`);
+      console.log(`      Retry with: rudi skills sync ${target} ${wrapperSync.skillIds.join(' ')}`);
+    } else if (wrapperSync.outcomes[target]?.status === 'preserved') {
+      console.log(`    - ${target} native skill wrapper preserved (${wrapperSync.outcomes[target].skipped} existing)`);
+      console.log(`      Update only these wrappers with: rudi skills sync ${target} ${wrapperSync.skillIds.join(' ')} --force`);
+    } else if (wrapperSync.outcomes[target]?.status === 'failed') {
+      console.log(`    - ${target} native skill sync reported ${wrapperSync.outcomes[target].failed} failure(s)`);
     } else {
-      console.log(`    - ${target} native skill wrapper synced`);
+      console.log(`    - ${target} native skill wrapper synced (${wrapperSync.outcomes[target]?.changed || 0} changed)`);
     }
   }
 
@@ -671,6 +708,11 @@ export async function cmdInstall(args, flags, dependencies = {}) {
   const exit = dependencies.exit || (code => process.exit(code));
   const printError = dependencies.error || console.error;
   let pkgId = args[0];
+
+  if (flags.json === true) {
+    printError('rudi install does not support --json; use rudi update ... --dry-run --json for machine-readable planning');
+    return exit(1);
+  }
 
   if (!pkgId) {
     console.error('Usage: rudi install <package>');

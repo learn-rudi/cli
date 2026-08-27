@@ -138,15 +138,18 @@ names.
 
 Each native host has its own skill directory. After installing RUDI skills,
 sync editable native wrappers when you want them to appear in the host's
-skill/slash UI:
+skill/slash UI. A sync without `--force` remains a non-destructive way to create
+missing wrappers. To overwrite existing wrappers, name the exact installed
+RUDI skill IDs or explicitly select the whole inventory with `--all`:
 
 ```bash
 rudi skills sync codex
 rudi skills sync claude
 rudi skills sync gemini
 rudi skills sync antigravity
-rudi skills sync codex --force   # overwrite existing generated wrappers
-rudi skills sync claude --force  # overwrite existing generated wrappers
+rudi skills sync codex skill:rudi-change-map skill:rudi-engineering-gate --force
+rudi skills sync claude skill:rudi-change-map --force
+rudi skills sync codex --all --force  # explicit whole-inventory overwrite
 ```
 
 ### Running Headless Agent Hosts
@@ -237,12 +240,31 @@ rudi shims check         # Validate shim targets exist
 ### Maintenance
 
 ```bash
-rudi update              # Update all packages
-rudi update stack:slack  # Reinstall a specific stack and rebuild its tool index
+rudi update stack:slack             # Update one stack and rebuild its tool index
 rudi update stack:slack --preserve-state  # Opt in to preserving install-local state paths
+rudi update --all                    # Explicitly update the whole installed inventory
 rudi remove slack        # Uninstall a package
 rudi doctor              # Check system health
 ```
+
+For a stack that declares a suite through Registry `related.skills`, use
+`--with-related-skills` to update the stack plus only those related skill
+packages that are already installed. Missing related skills are reported and
+skipped; `update` never turns them into implicit installs. `--sync-skills`
+then projects only the skill IDs updated by this command:
+
+```bash
+# Resolve the exact package, index, and Codex projection plan without those writes.
+# Registry metadata may still refresh so the plan uses current relationships.
+rudi update stack:swe-engineering --with-related-skills --sync-skills=codex --dry-run --json
+
+# Apply the same bounded suite update and overwrite only its affected Codex wrappers.
+rudi update stack:swe-engineering --with-related-skills --sync-skills=codex
+```
+
+`rudi update` without a package now fails closed; use `--all` when broad scope
+is intentional. Update JSON mode emits one structured document. Install keeps
+human progress output and rejects `--json` instead of mixing formats.
 
 ### Retired Commands
 
