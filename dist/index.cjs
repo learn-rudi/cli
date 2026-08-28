@@ -19720,6 +19720,7 @@ var require_dist2 = __commonJS({
 });
 
 // packages/utils/src/args.js
+var BOOLEAN_LONG_FLAGS = /* @__PURE__ */ new Set(["all", "force", "dry-run", "json"]);
 function parseArgs(argv) {
   const flags = {};
   const args = [];
@@ -19746,7 +19747,9 @@ function parseArgs(argv) {
       } else {
         const key = arg.slice(2);
         const nextArg = argv[i + 1];
-        if (nextArg && !nextArg.startsWith("-")) {
+        if (BOOLEAN_LONG_FLAGS.has(key)) {
+          setLongFlag(key, true);
+        } else if (nextArg && !nextArg.startsWith("-")) {
           setLongFlag(key, nextArg);
           i++;
         } else {
@@ -27488,7 +27491,7 @@ function getRelatedSkillIds(pkg) {
 }
 function buildRelatedSkillUpdatePlan(resolved, installedPackages = []) {
   const installedById = new Map(
-    (Array.isArray(installedPackages) ? installedPackages : []).filter((pkg) => typeof pkg?.id === "string").map((pkg) => [pkg.id, pkg])
+    (Array.isArray(installedPackages) ? installedPackages : []).filter((pkg) => typeof pkg?.id === "string" && pkg.kind === "skill" && pkg.source === "rudi").map((pkg) => [pkg.id, pkg])
   );
   const relatedSkills = Array.isArray(resolved?.relatedSkills) ? resolved.relatedSkills : [];
   const selected = [];
@@ -28106,7 +28109,7 @@ async function syncSelectedSkillsToNativeHosts(options = {}, dependencies = {}) 
   const targets = parseNativeSkillSyncTargets(options.targets);
   const skillIds = Array.isArray(options.skillIds) ? options.skillIds : [];
   if (targets.length === 0 || skillIds.length === 0) {
-    return { targets, skillIds: [], results: {} };
+    return { targets, skillIds: [], results: {}, failed: 0, failures: [] };
   }
   const skills = await resolveSkillSyncSelection(skillIds, dependencies);
   const syncers = {
@@ -28116,17 +28119,40 @@ async function syncSelectedSkillsToNativeHosts(options = {}, dependencies = {}) 
     antigravity: dependencies.syncAntigravitySkills || syncAntigravitySkills
   };
   const results = {};
+  const failures = [];
   for (const target of targets) {
-    results[target] = await syncers[target]({
-      skills,
-      force: options.force === true,
-      dryRun: options.dryRun === true
-    });
+    try {
+      results[target] = await syncers[target]({
+        skills,
+        force: options.force === true,
+        dryRun: options.dryRun === true
+      });
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error);
+      results[target] = {
+        total: skills.length,
+        results: skills.map((skill) => ({
+          id: skill.id,
+          action: "failed",
+          error: message
+        }))
+      };
+    }
+    for (const item of Array.isArray(results[target]?.results) ? results[target].results : []) {
+      if (item.action !== "failed") continue;
+      failures.push({
+        target,
+        id: item.id || null,
+        error: item.error || "Native skill projection failed"
+      });
+    }
   }
   return {
     targets,
     skillIds: skills.map((skill) => skill.id),
-    results
+    results,
+    failed: failures.length,
+    failures
   };
 }
 function printSkillsHelp() {
@@ -28154,6 +28180,13 @@ EXAMPLES
   rudi skills sync codex --all --force
 `);
 }
+function assertBooleanSkillSyncFlags(flags) {
+  for (const name of ["all", "force", "dry-run", "json"]) {
+    if (flags[name] !== void 0 && typeof flags[name] !== "boolean") {
+      throw new Error(`--${name} does not accept a value`);
+    }
+  }
+}
 async function cmdSkills(args = [], flags = {}, dependencies = {}) {
   const log = dependencies.log || console.log;
   const subcommand = args[0];
@@ -28167,6 +28200,7 @@ async function cmdSkills(args = [], flags = {}, dependencies = {}) {
   if (subcommand !== "sync") {
     return await cmdList(["skills", ...args], flags);
   }
+  assertBooleanSkillSyncFlags(flags);
   const target = args[1];
   const requestedSkillIds = args.slice(2);
   const force = flags.force === true;
@@ -31425,6 +31459,11 @@ function logNativeSkillSyncHint(skillIds, deps) {
   deps.log(`  rudi skills sync antigravity ${exactSkillIds} --force`);
   deps.log("These commands overwrite only the named native wrappers; omit --force to create only missing wrappers.");
 }
+function logSkillProjectionFailures(skillProjection, deps) {
+  for (const failure of skillProjection.failures) {
+    deps.error(`  x ${failure.target} ${failure.id || "skill wrapper"}: ${failure.error}`);
+  }
+}
 async function updateOnePackage(pkg, flags, deps) {
   deps.log(`Updating ${pkg.id}...`);
   const result = await deps.updatePackage(pkg.id, {
@@ -31499,13 +31538,17 @@ async function runUpdate(args = [], flags = {}, deps = defaultDependencies) {
       force: true,
       dryRun: true
     }, deps);
+    logSkillProjectionFailures(skillProjection2, deps);
     return {
       dryRun: true,
       updated: 0,
-      failed: 0,
+      failed: skillProjection2.failed,
+      packageFailed: 0,
+      projectionFailed: skillProjection2.failed,
       skipped: relatedSkills.notInstalled.length,
       packages: [],
       failures: [],
+      projectionFailures: skillProjection2.failures,
       skippedPackages: relatedSkills.notInstalled.map((id) => ({
         id,
         error: "Related skill is not installed"
@@ -31525,8 +31568,13 @@ async function runUpdate(args = [], flags = {}, deps = defaultDependencies) {
   }
   if (pkgId) {
     for (const pkg of updateTargets) {
-      const updated = await updateOnePackage(pkg, flags, deps);
-      updatedPackages.push(updated);
+      try {
+        const updated = await updateOnePackage(pkg, flags, deps);
+        updatedPackages.push(updated);
+      } catch (error) {
+        failedPackages.push({ id: pkg.id, error: error.message });
+        deps.error(`  x ${pkg.id}: ${error.message}`);
+      }
     }
   } else {
     deps.log("Checking installed packages for updates...");
@@ -31554,7 +31602,8 @@ async function runUpdate(args = [], flags = {}, deps = defaultDependencies) {
     force: true,
     dryRun: false
   }, deps);
-  if (pkgId) {
+  logSkillProjectionFailures(skillProjection, deps);
+  if (pkgId && updateTargets.length === 1 && failedPackages.length === 0) {
     deps.log(`Updated ${updatedPackages[0].id}`);
   } else {
     deps.log(`
@@ -31566,10 +31615,13 @@ Updated ${updatedPackages.length} package(s)${failedPackages.length > 0 ? `, ${f
   return {
     dryRun: false,
     updated: updatedPackages.length,
-    failed: failedPackages.length,
+    failed: failedPackages.length + skillProjection.failed,
+    packageFailed: failedPackages.length,
+    projectionFailed: skillProjection.failed,
     skipped: skippedPackages.length,
     packages: updatedPackages,
     failures: failedPackages,
+    projectionFailures: skillProjection.failures,
     skippedPackages,
     indexedStacks: updatedStackIds,
     updatedSkills: updatedSkillIds,

@@ -41,7 +41,11 @@ export function getRelatedSkillIds(pkg) {
 export function buildRelatedSkillUpdatePlan(resolved, installedPackages = []) {
   const installedById = new Map(
     (Array.isArray(installedPackages) ? installedPackages : [])
-      .filter((pkg) => typeof pkg?.id === 'string')
+      .filter((pkg) => (
+        typeof pkg?.id === 'string'
+        && pkg.kind === 'skill'
+        && pkg.source === 'rudi'
+      ))
       .map((pkg) => [pkg.id, pkg]),
   );
   const relatedSkills = Array.isArray(resolved?.relatedSkills)

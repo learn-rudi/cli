@@ -152,6 +152,12 @@ function logNativeSkillSyncHint(skillIds, deps) {
   deps.log('These commands overwrite only the named native wrappers; omit --force to create only missing wrappers.');
 }
 
+function logSkillProjectionFailures(skillProjection, deps) {
+  for (const failure of skillProjection.failures) {
+    deps.error(`  x ${failure.target} ${failure.id || 'skill wrapper'}: ${failure.error}`);
+  }
+}
+
 async function updateOnePackage(pkg, flags, deps) {
   deps.log(`Updating ${pkg.id}...`);
   const result = await deps.updatePackage(pkg.id, {
@@ -237,13 +243,17 @@ export async function runUpdate(args = [], flags = {}, deps = defaultDependencie
       force: true,
       dryRun: true,
     }, deps);
+    logSkillProjectionFailures(skillProjection, deps);
     return {
       dryRun: true,
       updated: 0,
-      failed: 0,
+      failed: skillProjection.failed,
+      packageFailed: 0,
+      projectionFailed: skillProjection.failed,
       skipped: relatedSkills.notInstalled.length,
       packages: [],
       failures: [],
+      projectionFailures: skillProjection.failures,
       skippedPackages: relatedSkills.notInstalled.map((id) => ({
         id,
         error: 'Related skill is not installed',
@@ -264,8 +274,13 @@ export async function runUpdate(args = [], flags = {}, deps = defaultDependencie
 
   if (pkgId) {
     for (const pkg of updateTargets) {
-      const updated = await updateOnePackage(pkg, flags, deps);
-      updatedPackages.push(updated);
+      try {
+        const updated = await updateOnePackage(pkg, flags, deps);
+        updatedPackages.push(updated);
+      } catch (error) {
+        failedPackages.push({ id: pkg.id, error: error.message });
+        deps.error(`  x ${pkg.id}: ${error.message}`);
+      }
     }
   } else {
     deps.log('Checking installed packages for updates...');
@@ -297,8 +312,9 @@ export async function runUpdate(args = [], flags = {}, deps = defaultDependencie
     force: true,
     dryRun: false,
   }, deps);
+  logSkillProjectionFailures(skillProjection, deps);
 
-  if (pkgId) {
+  if (pkgId && updateTargets.length === 1 && failedPackages.length === 0) {
     deps.log(`Updated ${updatedPackages[0].id}`);
   } else {
     deps.log(`\nUpdated ${updatedPackages.length} package(s)${failedPackages.length > 0 ? `, ${failedPackages.length} failed` : ''}${skippedPackages.length > 0 ? `, ${skippedPackages.length} skipped` : ''}`);
@@ -310,10 +326,13 @@ export async function runUpdate(args = [], flags = {}, deps = defaultDependencie
   return {
     dryRun: false,
     updated: updatedPackages.length,
-    failed: failedPackages.length,
+    failed: failedPackages.length + skillProjection.failed,
+    packageFailed: failedPackages.length,
+    projectionFailed: skillProjection.failed,
     skipped: skippedPackages.length,
     packages: updatedPackages,
     failures: failedPackages,
+    projectionFailures: skillProjection.failures,
     skippedPackages,
     indexedStacks: updatedStackIds,
     updatedSkills: updatedSkillIds,

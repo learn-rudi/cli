@@ -463,7 +463,7 @@ export async function syncSelectedSkillsToNativeHosts(options = {}, dependencies
   const targets = parseNativeSkillSyncTargets(options.targets);
   const skillIds = Array.isArray(options.skillIds) ? options.skillIds : [];
   if (targets.length === 0 || skillIds.length === 0) {
-    return { targets, skillIds: [], results: {} };
+    return { targets, skillIds: [], results: {}, failed: 0, failures: [] };
   }
 
   const skills = await resolveSkillSyncSelection(skillIds, dependencies);
@@ -474,19 +474,43 @@ export async function syncSelectedSkillsToNativeHosts(options = {}, dependencies
     antigravity: dependencies.syncAntigravitySkills || syncAntigravitySkills,
   };
   const results = {};
+  const failures = [];
 
   for (const target of targets) {
-    results[target] = await syncers[target]({
-      skills,
-      force: options.force === true,
-      dryRun: options.dryRun === true,
-    });
+    try {
+      results[target] = await syncers[target]({
+        skills,
+        force: options.force === true,
+        dryRun: options.dryRun === true,
+      });
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error);
+      results[target] = {
+        total: skills.length,
+        results: skills.map((skill) => ({
+          id: skill.id,
+          action: 'failed',
+          error: message,
+        })),
+      };
+    }
+
+    for (const item of Array.isArray(results[target]?.results) ? results[target].results : []) {
+      if (item.action !== 'failed') continue;
+      failures.push({
+        target,
+        id: item.id || null,
+        error: item.error || 'Native skill projection failed',
+      });
+    }
   }
 
   return {
     targets,
     skillIds: skills.map((skill) => skill.id),
     results,
+    failed: failures.length,
+    failures,
   };
 }
 
@@ -516,6 +540,14 @@ EXAMPLES
 `);
 }
 
+function assertBooleanSkillSyncFlags(flags) {
+  for (const name of ['all', 'force', 'dry-run', 'json']) {
+    if (flags[name] !== undefined && typeof flags[name] !== 'boolean') {
+      throw new Error(`--${name} does not accept a value`);
+    }
+  }
+}
+
 export async function cmdSkills(args = [], flags = {}, dependencies = {}) {
   const log = dependencies.log || console.log;
   const subcommand = args[0];
@@ -532,6 +564,8 @@ export async function cmdSkills(args = [], flags = {}, dependencies = {}) {
   if (subcommand !== 'sync') {
     return await cmdList(['skills', ...args], flags);
   }
+
+  assertBooleanSkillSyncFlags(flags);
 
   const target = args[1];
   const requestedSkillIds = args.slice(2);

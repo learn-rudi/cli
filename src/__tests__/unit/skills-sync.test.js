@@ -3,12 +3,14 @@ import assert from 'node:assert/strict';
 import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
+import { parseArgs } from '@learnrudi/utils/args';
 
 import {
   buildClaudeSkillFiles,
   buildCodexSkillFiles,
   cmdSkills,
   parseNativeSkillSyncTargets,
+  syncSelectedSkillsToNativeHosts,
   syncAntigravitySkills,
   syncClaudeSkills,
   syncCodexSkills,
@@ -55,6 +57,43 @@ test('cmdSkills projects only explicitly requested installed RUDI skill IDs', as
     calls[1][1].skills.map((skill) => skill.id),
     ['skill:rudi-change-map'],
   );
+});
+
+test('CLI boolean sync flags preserve following exact skill IDs and dry-run scope', async () => {
+  const parsed = parseArgs([
+    'skills',
+    'sync',
+    'codex',
+    '--dry-run',
+    'skill:rudi-change-map',
+    '--json',
+  ]);
+  const calls = [];
+
+  assert.equal(parsed.command, 'skills');
+  assert.deepEqual(parsed.args, ['sync', 'codex', 'skill:rudi-change-map']);
+  assert.equal(parsed.flags['dry-run'], true);
+  assert.equal(parsed.flags.json, true);
+
+  await cmdSkills(parsed.args, parsed.flags, {
+    async listInstalled() {
+      return [{
+        id: 'skill:rudi-change-map',
+        kind: 'skill',
+        source: 'rudi',
+        entryPath: '/tmp/rudi-change-map.md',
+      }];
+    },
+    async syncCodexSkills(options) {
+      calls.push(options);
+      return { codexRoot: '/tmp/codex-skills', total: 0, results: [] };
+    },
+    log() {},
+  });
+
+  assert.equal(calls.length, 1);
+  assert.deepEqual(calls[0].skills.map((skill) => skill.id), ['skill:rudi-change-map']);
+  assert.equal(calls[0].dryRun, true);
 });
 
 test('cmdSkills requires --all before force-syncing the whole installed skill inventory', async () => {
@@ -126,6 +165,41 @@ test('cmdSkills allows an explicitly acknowledged whole-inventory force sync', a
   assert.equal(calls[0].skills, null);
   assert.equal(calls[0].force, true);
   assert.equal(calls[0].dryRun, true);
+});
+
+test('syncSelectedSkillsToNativeHosts converts thrown host failures into structured results', async () => {
+  const result = await syncSelectedSkillsToNativeHosts(
+    {
+      targets: ['codex', 'claude'],
+      skillIds: ['skill:rudi-change-map'],
+      force: true,
+    },
+    {
+      async listInstalled() {
+        return [{
+          id: 'skill:rudi-change-map',
+          kind: 'skill',
+          source: 'rudi',
+          entryPath: '/tmp/rudi-change-map.md',
+        }];
+      },
+      async syncCodexSkills() {
+        throw new Error('fixture host failure');
+      },
+      async syncClaudeSkills() {
+        return { claudeRoot: '/tmp/claude-skills', total: 0, results: [] };
+      },
+    },
+  );
+
+  assert.equal(result.failed, 1);
+  assert.deepEqual(result.failures, [{
+    target: 'codex',
+    id: 'skill:rudi-change-map',
+    error: 'fixture host failure',
+  }]);
+  assert.equal(result.results.codex.results[0].action, 'failed');
+  assert.deepEqual(result.results.claude.results, []);
 });
 
 test('buildCodexSkillFiles normalizes RUDI skill metadata for Codex', () => {

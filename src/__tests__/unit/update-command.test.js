@@ -185,8 +185,8 @@ test('runUpdate expands an installed stack through Registry related.skills when 
     async listInstalled() {
       return [
         { id: 'stack:swe-engineering', kind: 'stack', name: 'swe-engineering' },
-        { id: 'skill:swe-compliance-checklist', kind: 'skill', name: 'swe-compliance-checklist' },
-        { id: 'skill:horizontal-engineering-review', kind: 'skill', name: 'horizontal-engineering-review' },
+        { id: 'skill:swe-compliance-checklist', kind: 'skill', name: 'swe-compliance-checklist', source: 'rudi' },
+        { id: 'skill:horizontal-engineering-review', kind: 'skill', name: 'horizontal-engineering-review', source: 'rudi' },
         { id: 'runtime:node', kind: 'runtime', name: 'node' },
       ];
     },
@@ -230,12 +230,200 @@ test('runUpdate expands an installed stack through Registry related.skills when 
   ]);
 });
 
+test('runUpdate skips external native skills that are not installed in RUDI', async () => {
+  const deps = createDeps({
+    async listInstalled() {
+      return [
+        { id: 'stack:swe-engineering', kind: 'stack', name: 'swe-engineering' },
+        {
+          id: 'skill:external-companion',
+          kind: 'skill',
+          name: 'external-companion',
+          source: 'claude',
+        },
+      ];
+    },
+    async resolvePackage(id) {
+      return {
+        id,
+        kind: 'stack',
+        relatedSkills: [
+          { id: 'skill:external-companion', kind: 'skill', isOperator: false },
+        ],
+      };
+    },
+  });
+
+  const result = await runUpdate(
+    ['stack:swe-engineering'],
+    { 'with-related-skills': true },
+    deps,
+  );
+
+  assert.deepEqual(
+    deps.calls.filter((call) => call[0] === 'updatePackage').map((call) => call[1]),
+    ['stack:swe-engineering'],
+  );
+  assert.deepEqual(result.relatedSkills.notInstalled, ['skill:external-companion']);
+  assert.deepEqual(result.skippedPackages, [{
+    id: 'skill:external-companion',
+    error: 'Related skill is not installed',
+  }]);
+});
+
+test('runUpdate finalizes successful stack work and reports a related-skill failure', async () => {
+  const deps = createDeps({
+    async listInstalled() {
+      return [
+        { id: 'stack:swe-engineering', kind: 'stack', name: 'swe-engineering' },
+        {
+          id: 'skill:rudi-engineering-gate',
+          kind: 'skill',
+          name: 'rudi-engineering-gate',
+          source: 'rudi',
+        },
+      ];
+    },
+    async resolvePackage(id) {
+      return {
+        id,
+        kind: 'stack',
+        relatedSkills: [
+          { id: 'skill:rudi-engineering-gate', kind: 'skill', isOperator: false },
+        ],
+      };
+    },
+    async updatePackage(id, options) {
+      deps.calls.push(['updatePackage', id, options]);
+      if (id === 'skill:rudi-engineering-gate') {
+        return { success: false, error: 'fixture related update failed' };
+      }
+      return { success: true, id, path: `/tmp/${id.replace(':', '-')}` };
+    },
+  });
+
+  const result = await runUpdate(
+    ['stack:swe-engineering'],
+    { 'with-related-skills': true },
+    deps,
+  );
+
+  assert.equal(result.updated, 1);
+  assert.equal(result.failed, 1);
+  assert.deepEqual(result.packages.map((pkg) => pkg.id), ['stack:swe-engineering']);
+  assert.deepEqual(result.failures, [{
+    id: 'skill:rudi-engineering-gate',
+    error: 'fixture related update failed',
+  }]);
+  assert.deepEqual(result.indexedStacks, ['stack:swe-engineering']);
+  assert.equal(
+    deps.calls.filter((call) => call[0] === 'rebuildToolIndex').length,
+    1,
+  );
+});
+
+test('runUpdate makes requested native projection failures visible and nonzero', async () => {
+  const deps = createDeps({
+    async listInstalled() {
+      return [{
+        id: 'skill:rudi-engineering-gate',
+        kind: 'skill',
+        name: 'rudi-engineering-gate',
+        source: 'rudi',
+      }];
+    },
+    async syncCodexSkills() {
+      return {
+        codexRoot: '/tmp/codex-skills',
+        total: 1,
+        results: [{
+          id: 'skill:rudi-engineering-gate',
+          action: 'failed',
+          error: 'fixture wrapper projection failed',
+        }],
+      };
+    },
+  });
+
+  const result = await runUpdate(
+    ['skill:rudi-engineering-gate'],
+    { 'sync-skills': 'codex' },
+    deps,
+  );
+
+  assert.equal(result.updated, 1);
+  assert.equal(result.packageFailed, 0);
+  assert.equal(result.projectionFailed, 1);
+  assert.equal(result.failed, 1);
+  assert.deepEqual(result.projectionFailures, [{
+    target: 'codex',
+    id: 'skill:rudi-engineering-gate',
+    error: 'fixture wrapper projection failed',
+  }]);
+
+  const output = [];
+  const exits = [];
+  await cmdUpdate([], { json: true }, {
+    async runUpdate() {
+      return result;
+    },
+    log(line) {
+      output.push(line);
+    },
+    exit(code) {
+      exits.push(code);
+    },
+  });
+
+  assert.deepEqual(exits, [1]);
+  assert.equal(JSON.parse(output[0]).projectionFailed, 1);
+});
+
+test('runUpdate dry-run logs requested native projection failures for human users', async () => {
+  const deps = createDeps({
+    async listInstalled() {
+      return [{
+        id: 'skill:rudi-engineering-gate',
+        kind: 'skill',
+        name: 'rudi-engineering-gate',
+        source: 'rudi',
+      }];
+    },
+    async syncCodexSkills() {
+      return {
+        codexRoot: '/tmp/codex-skills',
+        total: 1,
+        results: [{
+          id: 'skill:rudi-engineering-gate',
+          action: 'failed',
+          error: 'fixture dry-run projection failed',
+        }],
+      };
+    },
+  });
+
+  const result = await runUpdate(
+    ['skill:rudi-engineering-gate'],
+    { 'sync-skills': 'codex', 'dry-run': true },
+    deps,
+  );
+
+  assert.equal(result.failed, 1);
+  assert.match(
+    deps.calls
+      .filter((call) => call[0] === 'error')
+      .map((call) => call[1])
+      .join('\n'),
+    /codex.*skill:rudi-engineering-gate.*fixture dry-run projection failed/,
+  );
+});
+
 test('runUpdate dry-run returns the exact suite plan without package or index mutations', async () => {
   const deps = createDeps({
     async listInstalled() {
       return [
         { id: 'stack:swe-engineering', kind: 'stack', name: 'swe-engineering' },
-        { id: 'skill:swe-compliance-checklist', kind: 'skill', name: 'swe-compliance-checklist' },
+        { id: 'skill:swe-compliance-checklist', kind: 'skill', name: 'swe-compliance-checklist', source: 'rudi' },
       ];
     },
     async resolvePackage(id) {
@@ -273,8 +461,8 @@ test('runUpdate suite dry-run projects only planned skills to explicitly selecte
     async listInstalled() {
       return [
         { id: 'stack:swe-engineering', kind: 'stack', name: 'swe-engineering' },
-        { id: 'skill:swe-compliance-checklist', kind: 'skill', name: 'swe-compliance-checklist' },
-        { id: 'skill:unrelated', kind: 'skill', name: 'unrelated' },
+        { id: 'skill:swe-compliance-checklist', kind: 'skill', name: 'swe-compliance-checklist', source: 'rudi' },
+        { id: 'skill:unrelated', kind: 'skill', name: 'unrelated', source: 'rudi' },
       ];
     },
     async resolvePackage(id) {

@@ -138,3 +138,46 @@ Next approval phrase:
 ## Definition Of Done
 
 Gate 1 is complete only when the approved behavior exists in the isolated worktree, focused and repository-prescribed verification passes, the tracked bundle is regenerated, proof is recorded truthfully, and the task stops before commit, installation, publication, synchronization, or cleanup.
+
+## Issue #32 Independent Review Remediation
+
+This append-only record covers the later approved issue-and-PR loop for [GitHub issue #32](https://github.com/learnrudi/cli/issues/32). It supplements, but does not rewrite, the historical Gate 1 evidence above.
+
+### Initial independent findings
+
+A fresh-context read-only review of commit `7e0b73bf1e73afa30bdb6291a16b36b0c95df2c0` blocked publication on four findings:
+
+- boolean long flags could consume the following exact skill ID, allowing `--dry-run` to lose its target and potentially widen into an actual whole-inventory sync;
+- an externally managed Claude-native skill could be mistaken for an installed RUDI skill during related-skill expansion;
+- a related-package failure aborted the suite loop before successful stack index finalization and discarded the partial outcome;
+- a requested native-projection failure did not contribute to the update failure count or nonzero exit behavior.
+
+### Red-green remediation
+
+- [x] Parser-level tests for `--all`, `--force`, `--dry-run`, and `--json` first reproduced the lost positional target; boolean long flags now never consume the following exact ID.
+- [x] A related-skill test first reproduced selection of an external native skill; suite resolution now requires both `kind === 'skill'` and RUDI provenance.
+- [x] A partial-suite test first reproduced the thrown related-package failure; successful stack work is now finalized and the structured receipt preserves per-package failures.
+- [x] A projection-failure test first reproduced the false-success result; requested native projection failures now contribute to the returned failure count and nonzero command outcome.
+- [x] A human dry-run test first reproduced missing error detail; dry-run and actual human output now report projection target, skill ID, and error consistently.
+- [x] A thrown native-host sync exception test proves the failure is normalized into the structured receipt and later hosts are still attempted.
+
+### Final proof
+
+- [x] Focused suite: 136/136 passed.
+- [x] Full suite: `pnpm test` — 689/689 passed, 0 failed.
+- [x] Repeated `pnpm build` output was deterministic; `dist/index.cjs` SHA-256 is `985acd742bf5fbf6c05cce0cadf8899ef68043748409d7d13e79510fe5f18cbd`.
+- [x] Changed-file debt scan: status `ok`, 0 findings.
+- [x] `npm pack --dry-run --json`: passed with the intended six publish entries.
+- [x] `git diff --check`: passed.
+- [x] Final fresh-context review: PASS, with no blocking finding or regression.
+
+### Publication boundary
+
+- [x] Issue #32 is the public task ledger.
+- [ ] Review-remediation commit created.
+- [ ] Branch pushed without force.
+- [ ] Pull request opened with this checklist, risk, proof, and review record.
+- [ ] Required `quality` check green.
+- [ ] Merge, release, installation, primary-Mac synchronization, and branch/worktree cleanup remain outside this loop until separately approved.
+
+The first attempted issue-comment write through the structured GitHub tool was rejected with HTTP 403. That comment is not treated as published evidence; the pull request and a verified issue-ledger update must carry the final record.

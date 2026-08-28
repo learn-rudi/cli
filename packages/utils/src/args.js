@@ -2,6 +2,8 @@
  * Argument parsing utilities
  */
 
+const BOOLEAN_LONG_FLAGS = new Set(['all', 'force', 'dry-run', 'json']);
+
 /**
  * Parse command line arguments
  * @param {string[]} argv - Arguments from process.argv.slice(2)
@@ -41,7 +43,9 @@ export function parseArgs(argv) {
         // --key value format (check if next arg is a value)
         const key = arg.slice(2);
         const nextArg = argv[i + 1];
-        if (nextArg && !nextArg.startsWith('-')) {
+        if (BOOLEAN_LONG_FLAGS.has(key)) {
+          setLongFlag(key, true);
+        } else if (nextArg && !nextArg.startsWith('-')) {
           setLongFlag(key, nextArg);
           i++; // Skip the value
         } else {
