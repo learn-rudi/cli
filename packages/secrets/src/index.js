@@ -55,6 +55,17 @@ export function loadSecrets() {
   }
 }
 
+function loadSecretsWithoutMutation() {
+  try {
+    if (!fs.existsSync(SECRETS_FILE)) return {};
+    const content = fs.readFileSync(SECRETS_FILE, 'utf-8');
+    const secrets = JSON.parse(content);
+    return isSecretsObject(secrets) ? secrets : {};
+  } catch {
+    return {};
+  }
+}
+
 /**
  * Save secrets to file (atomic write)
  */
@@ -125,8 +136,9 @@ export async function listSecrets() {
  * Check if a secret exists
  */
 export async function hasSecret(name) {
-  const secrets = loadSecrets();
-  return secrets[name] !== undefined && secrets[name] !== null && secrets[name] !== '';
+  const secrets = loadSecretsWithoutMutation();
+  const value = secrets[name];
+  return typeof value === 'string' && value.trim() !== '';
 }
 
 /**
@@ -137,12 +149,12 @@ export async function getMaskedSecrets() {
   const masked = {};
 
   for (const [name, value] of Object.entries(secrets)) {
-    if (value && typeof value === 'string' && value.length > 8) {
-      masked[name] = value.slice(0, 4) + '...' + value.slice(-4);
-    } else if (value && typeof value === 'string' && value.length > 0) {
-      masked[name] = '****';
-    } else {
+    if (typeof value !== 'string' || value.trim() === '') {
       masked[name] = '(pending)';
+    } else if (value.length > 8) {
+      masked[name] = value.slice(0, 4) + '...' + value.slice(-4);
+    } else {
+      masked[name] = '****';
     }
   }
 

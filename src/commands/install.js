@@ -21,7 +21,7 @@ import { syncClaudeSkills, syncCodexSkills } from './skills.js';
 /**
  * Load manifest from installed stack path
  */
-async function loadManifest(installPath) {
+export async function loadManifest(installPath) {
   const manifestPath = path.join(installPath, 'manifest.json');
   try {
     const content = await fs.readFile(manifestPath, 'utf-8');
@@ -62,11 +62,11 @@ function getBundledBinary(runtime, binary) {
   return binary;
 }
 
-function getStackRuntime(manifest) {
+export function getStackRuntime(manifest) {
   return manifest?.runtime || manifest?.mcp?.runtime || 'node';
 }
 
-function getStackCommand(manifest) {
+export function getStackCommand(manifest) {
   let command = manifest?.command;
 
   if (!command || command.length === 0) {
@@ -184,7 +184,7 @@ async function installDependencies(stackPath, manifest, options = {}) {
   }
 }
 
-function getManifestSecrets(manifest) {
+export function getManifestSecrets(manifest) {
   return manifest?.requires?.secrets || manifest?.secrets || [];
 }
 
@@ -507,7 +507,7 @@ function getStackEntryPoint(stackPath, manifest) {
  * Validate that a stack's entry point exists
  * @returns {{ valid: boolean, error?: string }}
  */
-function validateStackEntryPoint(stackPath, manifest) {
+export function validateStackEntryPoint(stackPath, manifest) {
   const runtime = getStackRuntime(manifest);
 
   // Binary stacks: validate binary exists and is executable
@@ -547,8 +547,14 @@ function validateStackEntryPoint(stackPath, manifest) {
   return { valid: true };
 }
 
-async function buildStackIfNeeded(stackPath, manifest, options = {}) {
-  const { nodeProject, verbose = false } = options;
+export async function buildStackIfNeeded(stackPath, manifest, options = {}) {
+  const {
+    force = false,
+    nodeProject,
+    npmCommand,
+    runBuildCommand = runCommand,
+    verbose = false,
+  } = options;
   const runtime = getStackRuntime(manifest);
 
   if (runtime !== 'node') {
@@ -560,7 +566,10 @@ async function buildStackIfNeeded(stackPath, manifest, options = {}) {
     return { built: false, reason: entryPoint.error };
   }
 
-  if (!entryPoint.entryPath || fsSync.existsSync(entryPoint.entryPath)) {
+  if (
+    !entryPoint.entryPath ||
+    (fsSync.existsSync(entryPoint.entryPath) && !force)
+  ) {
     return { built: false, reason: 'Entry point already present' };
   }
 
@@ -577,11 +586,11 @@ async function buildStackIfNeeded(stackPath, manifest, options = {}) {
     return { built: false, reason: 'No build script' };
   }
 
-  const npmCmd = getBundledBinary('node', 'npm');
+  const npmCmd = npmCommand || getBundledBinary('node', 'npm');
   console.log(`  Building stack...`);
 
   try {
-    runCommand(npmCmd, ['run', 'build'], {
+    runBuildCommand(npmCmd, ['run', 'build'], {
       cwd: project.root,
       stdio: verbose ? 'inherit' : 'pipe',
     });
