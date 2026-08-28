@@ -174,10 +174,10 @@ A fresh-context read-only review of commit `7e0b73bf1e73afa30bdb6291a16b36b0c95d
 ### Publication boundary
 
 - [x] Issue #32 is the public task ledger.
-- [ ] Review-remediation commit created.
-- [ ] Branch pushed without force.
-- [ ] Pull request opened with this checklist, risk, proof, and review record.
-- [ ] Required `quality` check green.
+- [x] Review-remediation commit `963538715acedec5bef54c7f5d6dc7c5f717a12f` created.
+- [x] Branch pushed without force.
+- [x] [Pull request #33](https://github.com/learnrudi/cli/pull/33) opened with this checklist, risk, proof, and review record.
+- [x] Required `quality` check passed for the reviewed code head.
 - [ ] Merge, release, installation, primary-Mac synchronization, and branch/worktree cleanup remain outside this loop until separately approved.
 
 The first attempted issue-comment write through the structured GitHub tool was rejected with HTTP 403. That comment is not treated as published evidence; the pull request and a verified issue-ledger update must carry the final record.
