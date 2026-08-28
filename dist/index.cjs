@@ -19720,6 +19720,7 @@ var require_dist2 = __commonJS({
 });
 
 // packages/utils/src/args.js
+var BOOLEAN_LONG_FLAGS = /* @__PURE__ */ new Set(["all", "force", "dry-run", "json"]);
 function parseArgs(argv) {
   const flags = {};
   const args = [];
@@ -19746,7 +19747,9 @@ function parseArgs(argv) {
       } else {
         const key = arg.slice(2);
         const nextArg = argv[i + 1];
-        if (nextArg && !nextArg.startsWith("-")) {
+        if (BOOLEAN_LONG_FLAGS.has(key)) {
+          setLongFlag(key, true);
+        } else if (nextArg && !nextArg.startsWith("-")) {
           setLongFlag(key, nextArg);
           i++;
         } else {
@@ -19787,7 +19790,7 @@ CORE COMMANDS
   search <query>        Search registry for packages
   install <pkg>         Install a package
   remove <pkg>          Remove a package
-  update [pkg]          Update packages
+  update <pkg>|--all    Update one package or the explicit whole inventory
   list [kind]           List installed packages
   skills                List skills or sync installed skills to native agents
   home                  Show ~/.rudi structure and status
@@ -19912,8 +19915,13 @@ USAGE
   rudi install <package> [options]
 
 OPTIONS
-  --force          Force reinstall
-  --json           Output as JSON
+  --force                  Force reinstall
+  --with-related-skills    Include optional companion skills declared by a stack
+  --no-related-skills      Install the required operator skill only
+
+OUTPUT
+  Install currently emits human progress output. Machine-readable JSON is
+  available for planning and updates through: rudi update ... --dry-run --json
 
 EXAMPLES
   rudi install pdf-creator
@@ -19925,6 +19933,34 @@ EXAMPLES
 AGENT HOSTS
   Claude, Codex, Gemini, and Antigravity are installed by their vendors.
   Inspect them with: rudi agent hosts --json
+`,
+    update: `
+rudi update - Update installed packages
+
+USAGE
+  rudi update <package> [options]
+  rudi update --all [options]
+
+OPTIONS
+  --all                         Explicitly select the whole installed inventory
+  --with-related-skills         For a stack, also update installed Registry related.skills
+  --sync-skills=<host[,host]>   Project only updated skills to codex, claude, gemini,
+                                antigravity, or all
+  --preserve-state              Preserve install-local state during package replacement
+  --dry-run                     Resolve and report the plan without package, index, or
+                                native-wrapper writes; Registry metadata may refresh
+  --json                        Emit exactly one structured result document
+
+SAFETY
+  A package id or --all is required. Related skills that are not installed are
+  reported and skipped; update never installs them.
+
+EXAMPLES
+  rudi update stack:swe-engineering
+  rudi update stack:swe-engineering --with-related-skills
+  rudi update stack:swe-engineering --with-related-skills --sync-skills=codex
+  rudi update stack:swe-engineering --with-related-skills --sync-skills=codex --dry-run --json
+  rudi update --all
 `,
     run: `
 rudi run - Execute a stack
@@ -20127,7 +20163,8 @@ rudi skills - List or sync installed RUDI skills
 
 USAGE
   rudi skills
-  rudi skills sync <codex|claude|gemini|antigravity> [--force] [--dry-run] [--json]
+  rudi skills sync <codex|claude|gemini|antigravity> <skill:id>... [options]
+  rudi skills sync <codex|claude|gemini|antigravity> [--all] [options]
 
 COMMANDS
   sync codex       Create native ~/.codex/skills wrappers for installed RUDI skills
@@ -20136,7 +20173,9 @@ COMMANDS
   sync antigravity Create native ~/.gemini/antigravity-cli/skills wrappers for installed RUDI skills
 
 OPTIONS
-  --force          Overwrite existing native skill wrappers
+  --all            Explicitly select the whole installed RUDI skill inventory
+  --force          Overwrite existing native skill wrappers; whole-inventory force
+                   requires --all
   --dry-run        Preview sync results without writing files
   --json           Output JSON
 
@@ -20146,7 +20185,8 @@ EXAMPLES
   rudi skills sync claude
   rudi skills sync gemini
   rudi skills sync antigravity
-  rudi skills sync codex --force
+  rudi skills sync codex skill:rudi-change-map skill:rudi-engineering-gate --force
+  rudi skills sync codex --all --force
 `,
     secrets: `
 rudi secrets - Manage secrets
@@ -27449,6 +27489,30 @@ function getRelatedSkillIds(pkg) {
   }
   return ids;
 }
+function buildRelatedSkillUpdatePlan(resolved, installedPackages = []) {
+  const installedById = new Map(
+    (Array.isArray(installedPackages) ? installedPackages : []).filter((pkg) => typeof pkg?.id === "string" && pkg.kind === "skill" && pkg.source === "rudi").map((pkg) => [pkg.id, pkg])
+  );
+  const relatedSkills = Array.isArray(resolved?.relatedSkills) ? resolved.relatedSkills : [];
+  const selected = [];
+  const notInstalled = [];
+  const seen = /* @__PURE__ */ new Set();
+  for (const relatedSkill of relatedSkills) {
+    const id = normalizeSkillId(relatedSkill?.id);
+    if (!id || seen.has(id)) continue;
+    seen.add(id);
+    const installed = installedById.get(id);
+    if (installed) {
+      selected.push(installed);
+    } else {
+      notInstalled.push(id);
+    }
+  }
+  return {
+    selected,
+    notInstalled
+  };
+}
 function formatRelatedSkillsLine(pkg, options = {}) {
   const { label = "Related skills" } = options;
   const operatorSkill = getOperatorSkillId(pkg);
@@ -27986,16 +28050,123 @@ async function syncAntigravitySkills(options = {}) {
     })
   };
 }
+function normalizeRequestedSkillId(value) {
+  const id = String(value || "").trim();
+  if (!id.startsWith("skill:") || id.length === "skill:".length) {
+    throw new Error(`Invalid skill package id "${id}". Expected skill:<name>`);
+  }
+  return id;
+}
+async function resolveSkillSyncSelection(requestedIds, dependencies = {}) {
+  const getInstalled = dependencies.listInstalled || listInstalled;
+  const installed = await getInstalled("skill");
+  const rudiSkills = (Array.isArray(installed) ? installed : []).filter((skill) => !skill?.source || skill.source === "rudi");
+  const byId = new Map(rudiSkills.map((skill) => [skill.id, skill]));
+  const selected = [];
+  const seen = /* @__PURE__ */ new Set();
+  for (const value of requestedIds || []) {
+    const id = normalizeRequestedSkillId(value);
+    if (seen.has(id)) continue;
+    seen.add(id);
+    const skill = byId.get(id);
+    if (!skill) {
+      throw new Error(`Installed RUDI skill not found: ${id}`);
+    }
+    selected.push(skill);
+  }
+  return selected;
+}
+var NATIVE_SKILL_SYNC_TARGETS = ["codex", "claude", "gemini", "antigravity"];
+function parseNativeSkillSyncTargets(value) {
+  if (value === void 0 || value === null || value === false) return [];
+  if (Array.isArray(value) && value.length === 0) return [];
+  if (value === true) {
+    throw new Error("--sync-skills requires a host name");
+  }
+  const requested = (Array.isArray(value) ? value : [value]).flatMap((item) => String(item).split(",")).map((item) => item.trim().toLowerCase()).filter(Boolean);
+  if (requested.length === 0) {
+    throw new Error("--sync-skills requires a host name");
+  }
+  if (requested.includes("all")) {
+    if (requested.length !== 1) {
+      throw new Error("Use --sync-skills=all by itself");
+    }
+    return [...NATIVE_SKILL_SYNC_TARGETS];
+  }
+  const targets = [];
+  const seen = /* @__PURE__ */ new Set();
+  for (const target of requested) {
+    if (!NATIVE_SKILL_SYNC_TARGETS.includes(target)) {
+      throw new Error(`Unsupported native skill host "${target}"`);
+    }
+    if (seen.has(target)) continue;
+    seen.add(target);
+    targets.push(target);
+  }
+  return targets;
+}
+async function syncSelectedSkillsToNativeHosts(options = {}, dependencies = {}) {
+  const targets = parseNativeSkillSyncTargets(options.targets);
+  const skillIds = Array.isArray(options.skillIds) ? options.skillIds : [];
+  if (targets.length === 0 || skillIds.length === 0) {
+    return { targets, skillIds: [], results: {}, failed: 0, failures: [] };
+  }
+  const skills = await resolveSkillSyncSelection(skillIds, dependencies);
+  const syncers = {
+    codex: dependencies.syncCodexSkills || syncCodexSkills,
+    claude: dependencies.syncClaudeSkills || syncClaudeSkills,
+    gemini: dependencies.syncGeminiSkills || syncGeminiSkills,
+    antigravity: dependencies.syncAntigravitySkills || syncAntigravitySkills
+  };
+  const results = {};
+  const failures = [];
+  for (const target of targets) {
+    try {
+      results[target] = await syncers[target]({
+        skills,
+        force: options.force === true,
+        dryRun: options.dryRun === true
+      });
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error);
+      results[target] = {
+        total: skills.length,
+        results: skills.map((skill) => ({
+          id: skill.id,
+          action: "failed",
+          error: message
+        }))
+      };
+    }
+    for (const item of Array.isArray(results[target]?.results) ? results[target].results : []) {
+      if (item.action !== "failed") continue;
+      failures.push({
+        target,
+        id: item.id || null,
+        error: item.error || "Native skill projection failed"
+      });
+    }
+  }
+  return {
+    targets,
+    skillIds: skills.map((skill) => skill.id),
+    results,
+    failed: failures.length,
+    failures
+  };
+}
 function printSkillsHelp() {
   console.log(`
 rudi skills - List or sync installed RUDI skills
 
 USAGE
   rudi skills
-  rudi skills sync <codex|claude|gemini|antigravity> [--force] [--dry-run] [--json]
+  rudi skills sync <codex|claude|gemini|antigravity> <skill:id>... [options]
+  rudi skills sync <codex|claude|gemini|antigravity> [--all] [options]
 
 OPTIONS
-  --force      Overwrite existing native skill wrappers
+  --all        Explicitly select the whole installed RUDI skill inventory
+  --force      Overwrite existing native skill wrappers; whole-inventory force requires --all
   --dry-run    Preview sync results without writing files
   --json       Output JSON
 
@@ -28005,10 +28176,19 @@ EXAMPLES
   rudi skills sync claude
   rudi skills sync gemini
   rudi skills sync antigravity
-  rudi skills sync codex --force
+  rudi skills sync codex skill:rudi-change-map skill:rudi-engineering-gate --force
+  rudi skills sync codex --all --force
 `);
 }
-async function cmdSkills(args = [], flags = {}) {
+function assertBooleanSkillSyncFlags(flags) {
+  for (const name of ["all", "force", "dry-run", "json"]) {
+    if (flags[name] !== void 0 && typeof flags[name] !== "boolean") {
+      throw new Error(`--${name} does not accept a value`);
+    }
+  }
+}
+async function cmdSkills(args = [], flags = {}, dependencies = {}) {
+  const log = dependencies.log || console.log;
   const subcommand = args[0];
   if (subcommand === "help" || flags.help || flags.h) {
     printSkillsHelp();
@@ -28020,40 +28200,52 @@ async function cmdSkills(args = [], flags = {}) {
   if (subcommand !== "sync") {
     return await cmdList(["skills", ...args], flags);
   }
+  assertBooleanSkillSyncFlags(flags);
   const target = args[1];
+  const requestedSkillIds = args.slice(2);
+  const force = flags.force === true;
+  const all = flags.all === true;
+  if (requestedSkillIds.length > 0 && all) {
+    throw new Error("Choose exact skill IDs or --all, not both");
+  }
+  if (requestedSkillIds.length === 0 && force && !all) {
+    throw new Error("Refusing to force-sync the whole skill inventory without explicit --all");
+  }
   const targets = {
-    codex: { name: "Codex", sync: syncCodexSkills, rootKey: "codexRoot" },
-    claude: { name: "Claude", sync: syncClaudeSkills, rootKey: "claudeRoot" },
-    gemini: { name: "Gemini", sync: syncGeminiSkills, rootKey: "geminiRoot" },
-    antigravity: { name: "Antigravity", sync: syncAntigravitySkills, rootKey: "antigravityRoot" }
+    codex: { name: "Codex", sync: dependencies.syncCodexSkills || syncCodexSkills, rootKey: "codexRoot" },
+    claude: { name: "Claude", sync: dependencies.syncClaudeSkills || syncClaudeSkills, rootKey: "claudeRoot" },
+    gemini: { name: "Gemini", sync: dependencies.syncGeminiSkills || syncGeminiSkills, rootKey: "geminiRoot" },
+    antigravity: { name: "Antigravity", sync: dependencies.syncAntigravitySkills || syncAntigravitySkills, rootKey: "antigravityRoot" }
   };
   const targetConfig = targets[target];
   if (!targetConfig) {
-    throw new Error("Usage: rudi skills sync <codex|claude|gemini|antigravity> [--force] [--dry-run] [--json]");
+    throw new Error("Usage: rudi skills sync <codex|claude|gemini|antigravity> <skill:id>... [--all] [--force] [--dry-run] [--json]");
   }
+  const skills = requestedSkillIds.length > 0 ? await resolveSkillSyncSelection(requestedSkillIds, dependencies) : null;
   const result = await targetConfig.sync({
-    force: flags.force === true,
+    skills,
+    force,
     dryRun: flags["dry-run"] === true || flags.dryRun === true
   });
   if (flags.json) {
-    console.log(JSON.stringify(result, null, 2));
+    log(JSON.stringify(result, null, 2));
     return;
   }
   const targetName = targetConfig.name;
   const skillsRoot2 = result[targetConfig.rootKey];
-  console.log(`${targetName} skills root: ${skillsRoot2}`);
+  log(`${targetName} skills root: ${skillsRoot2}`);
   for (const item of result.results) {
     if (item.action === "failed") {
-      console.log(`  x ${item.id}: ${item.error}`);
+      log(`  x ${item.id}: ${item.error}`);
     } else if (item.action === "skipped") {
-      console.log(`  - ${item.id}: skipped (${item.reason})`);
+      log(`  - ${item.id}: skipped (${item.reason})`);
     } else {
-      console.log(`  ok ${item.id}: ${item.action} ${item.targetDir}`);
+      log(`  ok ${item.id}: ${item.action} ${item.targetDir}`);
     }
   }
   const syncedCount = result.results.filter((item) => item.action === "created" || item.action === "updated" || item.action === "would_created" || item.action === "would_updated").length;
   const prefix = result.results.some((item) => item.action.startsWith("would_")) ? "Would sync" : "Synced";
-  console.log(`
+  log(`
 ${prefix} ${syncedCount} skill(s). Restart ${targetName} to pick up native skill changes.`);
 }
 
@@ -28259,18 +28451,22 @@ async function syncRelatedSkillWrappers(relatedSkills, installResults, installed
   );
   const skills = (relatedSkills || []).filter((skill) => successful.has(skill.id)).map((skill) => {
     const installed = successful.get(skill.id);
+    const entryPath = fsSync.existsSync(installed.path) && fsSync.statSync(installed.path).isDirectory() ? path30.join(installed.path, "SKILL.md") : installed.path;
     return {
       ...skill,
       source: "rudi",
       path: installed.path,
-      entryPath: installed.path
+      entryPath
     };
   });
-  if (skills.length === 0) return { targets: [], results: {}, errors: {} };
+  if (skills.length === 0) {
+    return { targets: [], skillIds: [], results: {}, errors: {}, outcomes: {} };
+  }
   const agentIds = new Set((installedAgents || []).map((agent) => agent.id));
   const targets = [];
   const results = {};
   const errors = {};
+  const outcomes = {};
   const codexSync = dependencies.syncCodexSkills || syncCodexSkills;
   const claudeSync = dependencies.syncClaudeSkills || syncClaudeSkills;
   if (agentIds.has("codex")) {
@@ -28289,7 +28485,25 @@ async function syncRelatedSkillWrappers(relatedSkills, installResults, installed
       errors.claude = error instanceof Error ? error.message : String(error);
     }
   }
-  return { targets, results, errors };
+  for (const target of targets) {
+    const items = Array.isArray(results[target]?.results) ? results[target].results : [];
+    const changed = items.filter((item) => ["created", "updated"].includes(item.action)).length;
+    const skipped = items.filter((item) => item.action === "skipped").length;
+    const failed = items.filter((item) => item.action === "failed").length;
+    outcomes[target] = {
+      status: failed > 0 ? "failed" : changed > 0 ? "changed" : skipped > 0 ? "preserved" : "unchanged",
+      changed,
+      skipped,
+      failed
+    };
+  }
+  return {
+    targets,
+    skillIds: skills.map((skill) => skill.id),
+    results,
+    errors,
+    outcomes
+  };
 }
 function printRelatedSkillSummary(plan) {
   if (!plan || plan.relatedSkills.length === 0) return;
@@ -28395,9 +28609,14 @@ async function installAndSyncStackSkills(plan, options = {}) {
   for (const target of wrapperSync.targets) {
     if (wrapperSync.errors[target]) {
       console.log(`    - ${target} native skill sync failed: ${wrapperSync.errors[target]}`);
-      console.log(`      Retry with: rudi skills sync ${target}`);
+      console.log(`      Retry with: rudi skills sync ${target} ${wrapperSync.skillIds.join(" ")}`);
+    } else if (wrapperSync.outcomes[target]?.status === "preserved") {
+      console.log(`    - ${target} native skill wrapper preserved (${wrapperSync.outcomes[target].skipped} existing)`);
+      console.log(`      Update only these wrappers with: rudi skills sync ${target} ${wrapperSync.skillIds.join(" ")} --force`);
+    } else if (wrapperSync.outcomes[target]?.status === "failed") {
+      console.log(`    - ${target} native skill sync reported ${wrapperSync.outcomes[target].failed} failure(s)`);
     } else {
-      console.log(`    - ${target} native skill wrapper synced`);
+      console.log(`    - ${target} native skill wrapper synced (${wrapperSync.outcomes[target]?.changed || 0} changed)`);
     }
   }
   return { selectedSkills, installResults, wrapperSync };
@@ -28561,6 +28780,10 @@ async function cmdInstall(args, flags, dependencies = {}) {
   const exit = dependencies.exit || ((code) => process.exit(code));
   const printError = dependencies.error || console.error;
   let pkgId = args[0];
+  if (flags.json === true) {
+    printError("rudi install does not support --json; use rudi update ... --dry-run --json for machine-readable planning");
+    return exit(1);
+  }
   if (!pkgId) {
     console.error("Usage: rudi install <package>");
     console.error("Example: rudi install slack");
@@ -31137,6 +31360,7 @@ function rebuildToolIndex(options = {}) {
 var defaultDependencies = {
   fetchIndex,
   listInstalled,
+  resolvePackage,
   updatePackage,
   rebuildToolIndex,
   log: console.log,
@@ -31225,14 +31449,20 @@ function getUpdatedSkillIds(updatedPackages) {
 }
 function logNativeSkillSyncHint(skillIds, deps) {
   if (skillIds.length === 0) return;
+  const exactSkillIds = skillIds.join(" ");
   deps.log("");
   deps.log(`Updated ${skillIds.length} skill package(s). Native frontier-host skill wrappers are not overwritten automatically.`);
   deps.log("To sync native wrappers for updated RUDI skills, run:");
-  deps.log("  rudi skills sync codex --force");
-  deps.log("  rudi skills sync claude --force");
-  deps.log("  rudi skills sync gemini --force");
-  deps.log("  rudi skills sync antigravity --force");
-  deps.log("These commands overwrite existing native wrappers; omit --force to create only missing wrappers.");
+  deps.log(`  rudi skills sync codex ${exactSkillIds} --force`);
+  deps.log(`  rudi skills sync claude ${exactSkillIds} --force`);
+  deps.log(`  rudi skills sync gemini ${exactSkillIds} --force`);
+  deps.log(`  rudi skills sync antigravity ${exactSkillIds} --force`);
+  deps.log("These commands overwrite only the named native wrappers; omit --force to create only missing wrappers.");
+}
+function logSkillProjectionFailures(skillProjection, deps) {
+  for (const failure of skillProjection.failures) {
+    deps.error(`  x ${failure.target} ${failure.id || "skill wrapper"}: ${failure.error}`);
+  }
 }
 async function updateOnePackage(pkg, flags, deps) {
   deps.log(`Updating ${pkg.id}...`);
@@ -31249,22 +31479,103 @@ async function updateOnePackage(pkg, flags, deps) {
   };
 }
 async function runUpdate(args = [], flags = {}, deps = defaultDependencies) {
+  if (args.length > 1) {
+    throw new Error("Update accepts one package id or --all");
+  }
   const pkgId = args[0];
+  const all = flags.all === true;
+  const dryRun = isTruthyFlag(flags["dry-run"]) || isTruthyFlag(flags.dryRun);
+  const skillSyncTargets = parseNativeSkillSyncTargets(flags["sync-skills"] ?? flags.syncSkills);
+  if (!pkgId && !all) {
+    throw new Error("Package id is required. Use --all to update the whole installed inventory");
+  }
+  if (pkgId && all) {
+    throw new Error("Choose one package id or --all, not both");
+  }
   const updatedPackages = [];
   const failedPackages = [];
   const skippedPackages = [];
   let target = null;
   let installed = null;
+  let updateTargets = [];
+  let relatedSkills = { selected: [], notInstalled: [] };
   if (pkgId) {
     target = await resolveUpdateTarget(pkgId, deps);
+    updateTargets = [target];
   } else {
     installed = await getInstalledPackages2(deps);
+    updateTargets = installed;
   }
   deps.log("Refreshing registry...");
   await deps.fetchIndex({ force: true });
+  if (pkgId && (flags["with-related-skills"] === true || flags.withRelatedSkills === true)) {
+    if (target.kind !== "stack") {
+      throw new Error("--with-related-skills requires an installed stack target");
+    }
+    installed = await getInstalledPackages2(deps);
+    const resolved = await deps.resolvePackage(target.id);
+    relatedSkills = buildRelatedSkillUpdatePlan(resolved, installed);
+    updateTargets.push(...relatedSkills.selected);
+    for (const id of relatedSkills.notInstalled) {
+      skippedPackages.push({ id, error: "Related skill is not installed" });
+      deps.log(`  - ${id}: related skill is not installed; skipped`);
+    }
+  }
+  const plannedPackages = updateTargets.map((pkg) => pkg.id);
+  const plannedIndexedStacks = updateTargets.filter((pkg) => (pkg.kind || packageKindFromId(pkg.id)) === "stack").map((pkg) => pkg.id);
+  const plannedSkillIds = updateTargets.filter((pkg) => (pkg.kind || packageKindFromId(pkg.id)) === "skill").map((pkg) => pkg.id).sort();
+  if (dryRun) {
+    deps.log(`Dry run: would update ${plannedPackages.length} package(s)`);
+    for (const id of plannedPackages) {
+      deps.log(`  - ${id}`);
+    }
+    if (plannedIndexedStacks.length > 0) {
+      deps.log(`Dry run: would rebuild the tool index for ${plannedIndexedStacks.join(", ")}`);
+    }
+    const skillProjection2 = await syncSelectedSkillsToNativeHosts({
+      targets: skillSyncTargets,
+      skillIds: plannedSkillIds,
+      force: true,
+      dryRun: true
+    }, deps);
+    logSkillProjectionFailures(skillProjection2, deps);
+    return {
+      dryRun: true,
+      updated: 0,
+      failed: skillProjection2.failed,
+      packageFailed: 0,
+      projectionFailed: skillProjection2.failed,
+      skipped: relatedSkills.notInstalled.length,
+      packages: [],
+      failures: [],
+      projectionFailures: skillProjection2.failures,
+      skippedPackages: relatedSkills.notInstalled.map((id) => ({
+        id,
+        error: "Related skill is not installed"
+      })),
+      indexedStacks: [],
+      updatedSkills: [],
+      plannedPackages,
+      plannedIndexedStacks,
+      plannedSkillIds,
+      skillProjection: skillProjection2,
+      relatedSkills: {
+        selected: relatedSkills.selected.map((pkg) => pkg.id),
+        notInstalled: relatedSkills.notInstalled
+      },
+      indexResult: null
+    };
+  }
   if (pkgId) {
-    const updated = await updateOnePackage(target, flags, deps);
-    updatedPackages.push(updated);
+    for (const pkg of updateTargets) {
+      try {
+        const updated = await updateOnePackage(pkg, flags, deps);
+        updatedPackages.push(updated);
+      } catch (error) {
+        failedPackages.push({ id: pkg.id, error: error.message });
+        deps.error(`  x ${pkg.id}: ${error.message}`);
+      }
+    }
   } else {
     deps.log("Checking installed packages for updates...");
     for (const pkg of installed) {
@@ -31285,34 +31596,72 @@ async function runUpdate(args = [], flags = {}, deps = defaultDependencies) {
   const updatedStackIds = updatedPackages.filter((pkg) => pkg.kind === "stack").map((pkg) => pkg.id);
   const updatedSkillIds = getUpdatedSkillIds(updatedPackages);
   const indexResult = await rebuildUpdatedStackIndex(updatedStackIds, flags, deps);
-  if (pkgId) {
+  const skillProjection = await syncSelectedSkillsToNativeHosts({
+    targets: skillSyncTargets,
+    skillIds: updatedSkillIds,
+    force: true,
+    dryRun: false
+  }, deps);
+  logSkillProjectionFailures(skillProjection, deps);
+  if (pkgId && updateTargets.length === 1 && failedPackages.length === 0) {
     deps.log(`Updated ${updatedPackages[0].id}`);
   } else {
     deps.log(`
 Updated ${updatedPackages.length} package(s)${failedPackages.length > 0 ? `, ${failedPackages.length} failed` : ""}${skippedPackages.length > 0 ? `, ${skippedPackages.length} skipped` : ""}`);
   }
-  logNativeSkillSyncHint(updatedSkillIds, deps);
+  if (skillProjection.targets.length === 0) {
+    logNativeSkillSyncHint(updatedSkillIds, deps);
+  }
   return {
+    dryRun: false,
     updated: updatedPackages.length,
-    failed: failedPackages.length,
+    failed: failedPackages.length + skillProjection.failed,
+    packageFailed: failedPackages.length,
+    projectionFailed: skillProjection.failed,
     skipped: skippedPackages.length,
     packages: updatedPackages,
     failures: failedPackages,
+    projectionFailures: skillProjection.failures,
     skippedPackages,
     indexedStacks: updatedStackIds,
     updatedSkills: updatedSkillIds,
+    plannedPackages,
+    plannedIndexedStacks,
+    plannedSkillIds,
+    skillProjection,
+    relatedSkills: {
+      selected: relatedSkills.selected.map((pkg) => pkg.id),
+      notInstalled: relatedSkills.notInstalled
+    },
     indexResult
   };
 }
-async function cmdUpdate(args, flags) {
+async function cmdUpdate(args, flags, dependencies = {}) {
+  const json = flags.json === true;
+  const executeUpdate = dependencies.runUpdate || ((updateArgs, updateFlags) => runUpdate(
+    updateArgs,
+    updateFlags,
+    json ? { ...defaultDependencies, log: () => {
+    } } : defaultDependencies
+  ));
+  const log = dependencies.log || console.log;
+  const printError = dependencies.error || console.error;
+  const exit = dependencies.exit || ((code) => process.exit(code));
   try {
-    const result = await runUpdate(args, flags);
+    const result = await executeUpdate(args, flags);
+    if (json) {
+      log(JSON.stringify(result, null, 2));
+    }
     if (result.failed > 0) {
-      process.exit(1);
+      return exit(1);
     }
   } catch (error) {
-    console.error(`Update failed: ${error.message}`);
-    process.exit(1);
+    if (json) {
+      log(JSON.stringify({ success: false, error: error.message }, null, 2));
+    } else {
+      printError(`Update failed: ${error.message}`);
+    }
+    return exit(1);
   }
 }
 
@@ -37577,7 +37926,8 @@ async function main() {
     process.exit(0);
   }
   if (flags.help || flags.h) {
-    printHelp();
+    const helpTopic = command === "upgrade" ? "update" : command;
+    printHelp(helpTopic);
     process.exit(0);
   }
   try {
@@ -37725,7 +38075,11 @@ async function main() {
         }
     }
   } catch (error) {
-    console.error(`Error: ${error.message}`);
+    if (flags.json === true) {
+      console.log(JSON.stringify({ success: false, error: error.message }, null, 2));
+    } else {
+      console.error(`Error: ${error.message}`);
+    }
     if (flags.verbose) {
       console.error(error.stack);
     }

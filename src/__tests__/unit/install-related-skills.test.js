@@ -1,5 +1,8 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
+import fs from 'node:fs';
+import os from 'node:os';
+import path from 'node:path';
 
 import {
   activateInstalledStack,
@@ -23,6 +26,23 @@ test('explicit agent install rejects before registry reads or cache writes', asy
   });
 
   assert.deepEqual(calls, [['exit', 1]]);
+});
+
+test('install rejects unsupported --json before registry reads or package mutation', async () => {
+  const calls = [];
+  await cmdInstall(['stack:video-editor'], { json: true }, {
+    error(message) {
+      calls.push(['error', message]);
+    },
+    exit(code) {
+      calls.push(['exit', code]);
+    },
+    fetchIndex: async () => assert.fail('must not refresh the registry'),
+    resolvePackage: async () => assert.fail('must not resolve packages'),
+  });
+
+  assert.match(calls[0][1], /does not support --json/);
+  assert.deepEqual(calls.at(-1), ['exit', 1]);
 });
 
 test('agent install guidance directs users to vendor ownership and host verification', () => {
@@ -156,4 +176,62 @@ test('syncRelatedSkillWrappers creates non-destructive Codex and Claude wrappers
   assert.equal(calls[0][1].force, false);
   assert.equal(calls[0][1].skills[0].entryPath, '/tmp/shortform-your-words-script.md');
   assert.deepEqual(result.targets, ['codex', 'claude']);
+});
+
+test('syncRelatedSkillWrappers reports skipped existing wrappers without claiming they changed', async () => {
+  const result = await syncRelatedSkillWrappers(
+    resolvedStack.relatedSkills,
+    [{
+      id: 'skill:shortform-your-words-script',
+      success: true,
+      path: '/tmp/shortform-your-words-script.md',
+    }],
+    [{ id: 'codex' }],
+    {
+      async syncCodexSkills() {
+        return {
+          results: [{
+            id: 'skill:shortform-your-words-script',
+            action: 'skipped',
+            reason: 'Codex skill already exists; use --force to update',
+          }],
+        };
+      },
+    },
+  );
+
+  assert.deepEqual(result.outcomes.codex, {
+    status: 'preserved',
+    changed: 0,
+    skipped: 1,
+    failed: 0,
+  });
+});
+
+test('syncRelatedSkillWrappers projects bundled installs from their SKILL.md entry file', async () => {
+  const root = fs.mkdtempSync(path.join(os.tmpdir(), 'rudi-related-skill-bundle-'));
+  const packageDir = path.join(root, 'rudi-worktree-closeout');
+  fs.mkdirSync(packageDir, { recursive: true });
+  fs.writeFileSync(path.join(packageDir, 'SKILL.md'), '---\nname: rudi-worktree-closeout\n---\n');
+
+  try {
+    const result = await syncRelatedSkillWrappers(
+      [{ id: 'skill:rudi-worktree-closeout', kind: 'skill' }],
+      [{ id: 'skill:rudi-worktree-closeout', success: true, path: packageDir }],
+      [{ id: 'codex' }],
+      {
+        async syncCodexSkills(options) {
+          assert.equal(
+            options.skills[0].entryPath,
+            path.join(packageDir, 'SKILL.md'),
+          );
+          return { results: [{ action: 'created' }] };
+        },
+      },
+    );
+
+    assert.equal(result.outcomes.codex.status, 'changed');
+  } finally {
+    fs.rmSync(root, { recursive: true, force: true });
+  }
 });

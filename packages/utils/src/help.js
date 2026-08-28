@@ -23,7 +23,7 @@ CORE COMMANDS
   search <query>        Search registry for packages
   install <pkg>         Install a package
   remove <pkg>          Remove a package
-  update [pkg]          Update packages
+  update <pkg>|--all    Update one package or the explicit whole inventory
   list [kind]           List installed packages
   skills                List skills or sync installed skills to native agents
   home                  Show ~/.rudi structure and status
@@ -151,8 +151,13 @@ USAGE
   rudi install <package> [options]
 
 OPTIONS
-  --force          Force reinstall
-  --json           Output as JSON
+  --force                  Force reinstall
+  --with-related-skills    Include optional companion skills declared by a stack
+  --no-related-skills      Install the required operator skill only
+
+OUTPUT
+  Install currently emits human progress output. Machine-readable JSON is
+  available for planning and updates through: rudi update ... --dry-run --json
 
 EXAMPLES
   rudi install pdf-creator
@@ -164,6 +169,34 @@ EXAMPLES
 AGENT HOSTS
   Claude, Codex, Gemini, and Antigravity are installed by their vendors.
   Inspect them with: rudi agent hosts --json
+`,
+    update: `
+rudi update - Update installed packages
+
+USAGE
+  rudi update <package> [options]
+  rudi update --all [options]
+
+OPTIONS
+  --all                         Explicitly select the whole installed inventory
+  --with-related-skills         For a stack, also update installed Registry related.skills
+  --sync-skills=<host[,host]>   Project only updated skills to codex, claude, gemini,
+                                antigravity, or all
+  --preserve-state              Preserve install-local state during package replacement
+  --dry-run                     Resolve and report the plan without package, index, or
+                                native-wrapper writes; Registry metadata may refresh
+  --json                        Emit exactly one structured result document
+
+SAFETY
+  A package id or --all is required. Related skills that are not installed are
+  reported and skipped; update never installs them.
+
+EXAMPLES
+  rudi update stack:swe-engineering
+  rudi update stack:swe-engineering --with-related-skills
+  rudi update stack:swe-engineering --with-related-skills --sync-skills=codex
+  rudi update stack:swe-engineering --with-related-skills --sync-skills=codex --dry-run --json
+  rudi update --all
 `,
     run: `
 rudi run - Execute a stack
@@ -366,7 +399,8 @@ rudi skills - List or sync installed RUDI skills
 
 USAGE
   rudi skills
-  rudi skills sync <codex|claude|gemini|antigravity> [--force] [--dry-run] [--json]
+  rudi skills sync <codex|claude|gemini|antigravity> <skill:id>... [options]
+  rudi skills sync <codex|claude|gemini|antigravity> [--all] [options]
 
 COMMANDS
   sync codex       Create native ~/.codex/skills wrappers for installed RUDI skills
@@ -375,7 +409,9 @@ COMMANDS
   sync antigravity Create native ~/.gemini/antigravity-cli/skills wrappers for installed RUDI skills
 
 OPTIONS
-  --force          Overwrite existing native skill wrappers
+  --all            Explicitly select the whole installed RUDI skill inventory
+  --force          Overwrite existing native skill wrappers; whole-inventory force
+                   requires --all
   --dry-run        Preview sync results without writing files
   --json           Output JSON
 
@@ -385,7 +421,8 @@ EXAMPLES
   rudi skills sync claude
   rudi skills sync gemini
   rudi skills sync antigravity
-  rudi skills sync codex --force
+  rudi skills sync codex skill:rudi-change-map skill:rudi-engineering-gate --force
+  rudi skills sync codex --all --force
 `,
     secrets: `
 rudi secrets - Manage secrets

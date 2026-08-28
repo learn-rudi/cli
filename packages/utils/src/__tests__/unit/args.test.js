@@ -73,6 +73,21 @@ test('parseArgs: boolean flag when next arg is another flag', () => {
   assert.strictEqual(result.flags.json, true);
 });
 
+test('parseArgs: known boolean flags never consume following positional arguments', () => {
+  for (const flag of ['all', 'force', 'dry-run', 'json']) {
+    const result = parseArgs([
+      'skills',
+      'sync',
+      'codex',
+      `--${flag}`,
+      'skill:rudi-change-map',
+    ]);
+
+    assert.strictEqual(result.flags[flag], true);
+    assert.deepStrictEqual(result.args, ['sync', 'codex', 'skill:rudi-change-map']);
+  }
+});
+
 test('parseArgs: preserves repeated long flags as an ordered array', () => {
   const result = parseArgs([
     'agent',

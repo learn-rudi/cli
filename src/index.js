@@ -100,7 +100,8 @@ async function main() {
   }
 
   if (flags.help || flags.h) {
-    printHelp();
+    const helpTopic = command === 'upgrade' ? 'update' : command;
+    printHelp(helpTopic);
     process.exit(0);
   }
 
@@ -289,7 +290,11 @@ async function main() {
         }
     }
   } catch (error) {
-    console.error(`Error: ${error.message}`);
+    if (flags.json === true) {
+      console.log(JSON.stringify({ success: false, error: error.message }, null, 2));
+    } else {
+      console.error(`Error: ${error.message}`);
+    }
     if (flags.verbose) {
       console.error(error.stack);
     }

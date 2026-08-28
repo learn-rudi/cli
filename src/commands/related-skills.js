@@ -38,6 +38,42 @@ export function getRelatedSkillIds(pkg) {
   return ids;
 }
 
+export function buildRelatedSkillUpdatePlan(resolved, installedPackages = []) {
+  const installedById = new Map(
+    (Array.isArray(installedPackages) ? installedPackages : [])
+      .filter((pkg) => (
+        typeof pkg?.id === 'string'
+        && pkg.kind === 'skill'
+        && pkg.source === 'rudi'
+      ))
+      .map((pkg) => [pkg.id, pkg]),
+  );
+  const relatedSkills = Array.isArray(resolved?.relatedSkills)
+    ? resolved.relatedSkills
+    : [];
+  const selected = [];
+  const notInstalled = [];
+  const seen = new Set();
+
+  for (const relatedSkill of relatedSkills) {
+    const id = normalizeSkillId(relatedSkill?.id);
+    if (!id || seen.has(id)) continue;
+    seen.add(id);
+
+    const installed = installedById.get(id);
+    if (installed) {
+      selected.push(installed);
+    } else {
+      notInstalled.push(id);
+    }
+  }
+
+  return {
+    selected,
+    notInstalled,
+  };
+}
+
 export function formatRelatedSkillsLine(pkg, options = {}) {
   const { label = 'Related skills' } = options;
   const operatorSkill = getOperatorSkillId(pkg);
