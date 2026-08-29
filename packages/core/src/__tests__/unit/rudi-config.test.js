@@ -66,3 +66,50 @@ test('stack config normalizes secret key definitions and preserves shared metada
     fs.rmSync(root, { recursive: true, force: true });
   }
 });
+
+test('stack config refreshes owned secret requirement metadata on upgrade', () => {
+  const root = fs.mkdtempSync(path.join(os.tmpdir(), 'rudi-config-upgrade-'));
+  const rudiHome = path.join(root, '.rudi');
+
+  try {
+    fs.mkdirSync(rudiHome, { recursive: true });
+
+    const script = `
+      const { addStack, readRudiConfig } = await import(process.argv[1]);
+
+      addStack('stack:github', {
+        path: '/tmp/github',
+        runtime: 'node',
+        command: ['node', 'dist/index.js'],
+        secrets: [{ name: 'GITHUB_TOKEN', required: true }],
+        version: '1.0.0'
+      });
+      addStack('stack:github', {
+        path: '/tmp/github',
+        runtime: 'node',
+        command: ['node', 'dist/index.js'],
+        secrets: [{ name: 'GITHUB_TOKEN', required: false }],
+        version: '1.0.1'
+      });
+      console.log(JSON.stringify(readRudiConfig()));
+    `;
+
+    const output = execFileSync(process.execPath, ['--input-type=module', '-e', script, rudiConfigUrl], {
+      cwd: repoRoot,
+      env: {
+        ...process.env,
+        RUDI_HOME: rudiHome,
+      },
+      encoding: 'utf8',
+    });
+
+    const config = JSON.parse(output);
+    assert.deepEqual(config.stacks['stack:github'].secrets, [
+      { name: 'GITHUB_TOKEN', required: false },
+    ]);
+    assert.equal(config.stacks['stack:github'].version, '1.0.1');
+    assert.equal(config.secrets.GITHUB_TOKEN.required, false);
+  } finally {
+    fs.rmSync(root, { recursive: true, force: true });
+  }
+});

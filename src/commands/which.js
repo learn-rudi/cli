@@ -11,6 +11,7 @@ import * as fs from 'fs/promises';
 import * as path from 'path';
 import { listInstalled } from '@learnrudi/core';
 import { PATHS } from '@learnrudi/env';
+import { hasSecret as defaultHasSecret } from '@learnrudi/secrets';
 import { formatOperatorSkillLine, formatRelatedSkillsLine } from './related-skills.js';
 import { runCommand as defaultRunCommand } from '../utils/subprocess.js';
 
@@ -52,7 +53,7 @@ export async function cmdWhich(args, flags) {
     const runtimeInfo = await detectRuntime(stackPath);
 
     // Check auth status
-    const authStatus = await checkAuth(stackPath, runtimeInfo.runtime);
+    const authStatus = await checkAuth(stackPath, runtimeInfo.runtime, { stack });
 
     // Check if MCP server is running
     const isRunning = checkIfRunning(stack.name || stack.id.replace('stack:', ''));
@@ -238,24 +239,90 @@ export async function checkAuth(stackPath, runtime, options = {}) {
     `state/stacks/${stackName}`,
   );
 
-  // Check for .env file (API key stacks)
+  const envCredentialNames = new Set();
   const envPath = path.join(stackPath, '.env');
   try {
     const envContent = await fs.readFile(envPath, 'utf-8');
-    // Check if .env has actual values (not just placeholders)
-    const hasValues = envContent.split('\n').some(line => {
+    for (const line of envContent.split('\n')) {
       const trimmed = line.trim();
-      if (!trimmed || trimmed.startsWith('#')) return false;
-      const [key, value] = trimmed.split('=');
-      return value && value.trim() && !value.includes('YOUR_') && !value.includes('your_');
-    });
+      if (!trimmed || trimmed.startsWith('#')) continue;
 
-    if (hasValues) {
-      authFiles.push('.env');
-      configured = true;
+      const separatorIndex = trimmed.indexOf('=');
+      if (separatorIndex <= 0) continue;
+
+      const name = trimmed.slice(0, separatorIndex).trim();
+      let value = trimmed.slice(separatorIndex + 1).trim();
+      const quotedValue = value.match(/^(["'])(.*?)\1(?:\s*#.*)?$/);
+      if (quotedValue) {
+        value = quotedValue[2].trim();
+      } else {
+        value = value.replace(/\s+#.*$/, '').trim();
+      }
+      if (
+        /^[A-Za-z_][A-Za-z0-9_]*$/.test(name) &&
+        value &&
+        !value.includes('YOUR_') &&
+        !value.includes('your_')
+      ) {
+        envCredentialNames.add(name);
+      }
     }
   } catch {
-    // No .env file
+    // No readable .env file.
+  }
+
+  const manifestSecrets = options.stack?.requires?.secrets || options.stack?.secrets || [];
+  if (Array.isArray(manifestSecrets) && manifestSecrets.length > 0) {
+    const hasSecret = options.hasSecret || defaultHasSecret;
+    let requiredCount = 0;
+    let requiredPresent = 0;
+    let presentCount = 0;
+    let envCredentialPresent = false;
+
+    for (const [index, secret] of manifestSecrets.entries()) {
+      const rawName = typeof secret === 'string'
+        ? secret
+        : secret?.name || secret?.key;
+      if (
+        typeof rawName !== 'string' ||
+        !rawName ||
+        rawName !== rawName.trim()
+      ) {
+        throw new Error(`Invalid stack secret name at index ${index}`);
+      }
+
+      const name = rawName;
+      if (!/^[A-Za-z_][A-Za-z0-9_]*$/.test(name)) {
+        throw new Error(`Invalid stack secret name at index ${index}`);
+      }
+
+      const required = typeof secret !== 'object' || secret === null || secret.required !== false;
+      if (required) requiredCount += 1;
+
+      const storedCredentialPresent = await hasSecret(name);
+      const localEnvCredentialPresent = envCredentialNames.has(name);
+      if (storedCredentialPresent || localEnvCredentialPresent) {
+        presentCount += 1;
+        if (required) requiredPresent += 1;
+        if (storedCredentialPresent) {
+          authFiles.push(`RUDI secrets (${name})`);
+        }
+        if (localEnvCredentialPresent) {
+          envCredentialPresent = true;
+        }
+      }
+    }
+
+    if (
+      (requiredCount > 0 && requiredPresent === requiredCount) ||
+      (requiredCount === 0 && presentCount === manifestSecrets.length)
+    ) {
+      configured = true;
+      if (envCredentialPresent) authFiles.push('.env');
+    }
+  } else if (envCredentialNames.size > 0) {
+    authFiles.push('.env');
+    configured = true;
   }
 
   if (configured) {

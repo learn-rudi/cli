@@ -2,13 +2,28 @@
  * Update command - update installed packages from the registry.
  */
 
+import { createHash } from 'node:crypto';
+import { constants as fsConstants } from 'node:fs';
+import * as fs from 'node:fs/promises';
+import * as path from 'path';
 import {
+  addStack,
+  getLockfilePath,
   indexAllStacks,
   listInstalled,
   resolvePackage as coreResolvePackage,
   updatePackage as coreUpdatePackage,
 } from '@learnrudi/core';
+import { PATHS } from '@learnrudi/env';
 import { fetchIndex } from '@learnrudi/registry-client';
+import {
+  buildStackIfNeeded,
+  getManifestSecrets,
+  getStackCommand,
+  getStackRuntime,
+  loadManifest,
+  validateStackEntryPoint,
+} from './install.js';
 import { buildRelatedSkillUpdatePlan } from './related-skills.js';
 import {
   parseNativeSkillSyncTargets,
@@ -25,11 +40,476 @@ function rebuildToolIndex(options = {}) {
   });
 }
 
+async function resolveManagedPath(candidate, rootInput, options) {
+  const { candidateLabel, rootLabel, createRoot = false } = options;
+  if (typeof candidate !== 'string' || candidate.trim() !== candidate || !candidate) {
+    throw new Error(`${candidateLabel} is required for transactional update`);
+  }
+
+  const root = path.resolve(rootInput);
+  const targetPath = path.resolve(candidate);
+  if (targetPath === root || !targetPath.startsWith(`${root}${path.sep}`)) {
+    throw new Error(`Refusing to snapshot ${candidateLabel.toLowerCase()} outside the managed ${rootLabel}: ${candidate}`);
+  }
+
+  if (createRoot) {
+    await fs.mkdir(root, { recursive: true });
+  }
+  const rootStat = await fs.lstat(root);
+  if (!rootStat.isDirectory() || rootStat.isSymbolicLink()) {
+    throw new Error(`Managed ${rootLabel} must be a real directory: ${root}`);
+  }
+
+  const relative = path.relative(root, targetPath);
+  let current = root;
+  for (const segment of relative.split(path.sep)) {
+    current = path.join(current, segment);
+    try {
+      const stat = await fs.lstat(current);
+      if (stat.isSymbolicLink()) {
+        throw new Error(`Refusing symlinked path within managed ${rootLabel}: ${current}`);
+      }
+    } catch (error) {
+      if (error.code === 'ENOENT') break;
+      throw error;
+    }
+  }
+
+  return { root, targetPath };
+}
+
+function resolveManagedStackPath(stackPath, stacksRoot = PATHS.stacks, options = {}) {
+  return resolveManagedPath(stackPath, stacksRoot, {
+    candidateLabel: 'Installed stack path',
+    rootLabel: 'stack root',
+    ...options,
+  });
+}
+
+function resolveManagedLockfilePath(lockfilePath, locksRoot = PATHS.locks, options = {}) {
+  return resolveManagedPath(lockfilePath, locksRoot, {
+    candidateLabel: 'Stack lockfile path',
+    rootLabel: 'lock root',
+    ...options,
+  });
+}
+
+function resolveManagedStackStatePath(
+  stateRoot,
+  stateStacksRoot = path.join(PATHS.home, 'state', 'stacks'),
+  options = {},
+) {
+  return resolveManagedPath(stateRoot, stateStacksRoot, {
+    candidateLabel: 'Stack state path',
+    rootLabel: 'stack state root',
+    ...options,
+  });
+}
+
+async function buildTreeManifest(rootPath, prefix = '') {
+  const entries = [];
+
+  async function visit(currentPath, relativePath) {
+    let stat;
+    try {
+      stat = await fs.lstat(currentPath);
+    } catch (error) {
+      if (error.code === 'ENOENT' && relativePath === prefix) return;
+      throw error;
+    }
+
+    const manifestPath = relativePath || '.';
+    if (stat.isSymbolicLink()) {
+      entries.push([manifestPath, 'symlink', await fs.readlink(currentPath)]);
+      return;
+    }
+    if (stat.isDirectory()) {
+      entries.push([manifestPath, 'directory', '']);
+      const names = await fs.readdir(currentPath);
+      names.sort();
+      for (const name of names) {
+        const childRelative = relativePath ? path.join(relativePath, name) : name;
+        await visit(path.join(currentPath, name), childRelative);
+      }
+      return;
+    }
+    if (stat.isFile()) {
+      const digest = createHash('sha256').update(await fs.readFile(currentPath)).digest('hex');
+      entries.push([manifestPath, 'file', digest]);
+      return;
+    }
+    throw new Error(`Unsupported state entry type: ${currentPath}`);
+  }
+
+  await visit(rootPath, prefix);
+  return entries.sort((left, right) => left[0].localeCompare(right[0]));
+}
+
+function mergeExpectedStateManifest(initialManifest, migratedRunsManifest) {
+  if (migratedRunsManifest.length === 0) return initialManifest;
+  const byPath = new Map(initialManifest.map(entry => [entry[0], entry]));
+  if (!byPath.has('.')) byPath.set('.', ['.', 'directory', '']);
+
+  for (const entry of migratedRunsManifest) {
+    const existing = byPath.get(entry[0]);
+    if (existing) {
+      if (existing[1] !== 'directory' || entry[1] !== 'directory') return null;
+      continue;
+    }
+    byPath.set(entry[0], entry);
+  }
+
+  return [...byPath.values()].sort((left, right) => left[0].localeCompare(right[0]));
+}
+
+function validTreeManifest(value) {
+  return Array.isArray(value) && value.every(entry => (
+    Array.isArray(entry) &&
+    entry.length === 3 &&
+    entry.every(part => typeof part === 'string')
+  ));
+}
+
+function treeManifestsEqual(left, right) {
+  return JSON.stringify(left) === JSON.stringify(right);
+}
+
+async function assertSnapshotComponent(componentPath, type, label) {
+  let stat;
+  try {
+    stat = await fs.lstat(componentPath);
+  } catch (error) {
+    if (error.code === 'ENOENT') throw new Error(`Missing ${label}: ${componentPath}`);
+    throw error;
+  }
+  const validType = type === 'directory' ? stat.isDirectory() : stat.isFile();
+  if (!validType || stat.isSymbolicLink()) {
+    throw new Error(`Invalid ${label}: ${componentPath}`);
+  }
+}
+
+export async function copyPathWithoutOverwrite(sourcePath, destinationPath, label) {
+  const sourceStat = await fs.lstat(sourcePath);
+  if (sourceStat.isSymbolicLink()) {
+    throw new Error(`Refusing to copy symlinked ${label}: ${sourcePath}`);
+  }
+  await fs.mkdir(path.dirname(destinationPath), { recursive: true });
+
+  const expectedManifest = await buildTreeManifest(sourcePath);
+  if (sourceStat.isFile()) {
+    await fs.copyFile(sourcePath, destinationPath, fsConstants.COPYFILE_EXCL);
+  } else if (sourceStat.isDirectory()) {
+    await fs.cp(sourcePath, destinationPath, {
+      errorOnExist: true,
+      force: false,
+      preserveTimestamps: true,
+      recursive: true,
+    });
+  } else {
+    throw new Error(`Unsupported ${label} type: ${sourcePath}`);
+  }
+
+  const copiedManifest = await buildTreeManifest(destinationPath);
+  if (!treeManifestsEqual(copiedManifest, expectedManifest)) {
+    throw new Error(
+      `Concurrent ${label} mutation detected at ${destinationPath}; `
+      + `exact source retained at ${sourcePath}`,
+    );
+  }
+}
+
+async function validateStackUpdateSnapshot(snapshot, options = {}) {
+  if (!snapshot || typeof snapshot !== 'object') {
+    throw new Error('Invalid stack update snapshot');
+  }
+
+  const { root, targetPath } = await resolveManagedStackPath(
+    snapshot.targetPath,
+    options.stacksRoot || PATHS.stacks,
+  );
+  const { targetPath: lockfilePath } = await resolveManagedLockfilePath(
+    snapshot.lockfilePath,
+    snapshot.locksRoot || PATHS.locks,
+  );
+  const { targetPath: stateRoot } = await resolveManagedStackStatePath(
+    snapshot.stateRoot,
+    options.stateStacksRoot || snapshot.stateStacksRoot || path.join(PATHS.home, 'state', 'stacks'),
+  );
+  const backupRoot = path.resolve(String(snapshot.backupRoot || ''));
+  const snapshotPath = path.resolve(String(snapshot.snapshotPath || ''));
+  const lockfileSnapshotPath = path.resolve(String(snapshot.lockfileSnapshotPath || ''));
+  const stateSnapshotPath = path.resolve(String(snapshot.stateSnapshotPath || ''));
+  const expectedPrefix = `.${path.basename(targetPath)}.update-backup-`;
+  if (
+    path.dirname(backupRoot) !== root ||
+    !path.basename(backupRoot).startsWith(expectedPrefix) ||
+    snapshotPath !== path.join(backupRoot, 'snapshot') ||
+    lockfileSnapshotPath !== path.join(backupRoot, 'lockfile') ||
+    stateSnapshotPath !== path.join(backupRoot, 'state')
+  ) {
+    throw new Error('Invalid stack update snapshot paths');
+  }
+  await assertSnapshotComponent(backupRoot, 'directory', 'stack update backup root');
+  if (!validTreeManifest(snapshot.stateInitialManifest)) {
+    throw new Error('Invalid initial state manifest in stack update snapshot');
+  }
+  if (snapshot.stateExpectedManifest !== null && !validTreeManifest(snapshot.stateExpectedManifest)) {
+    throw new Error('Invalid expected state manifest in stack update snapshot');
+  }
+
+  return {
+    backupRoot,
+    lockfileExisted: snapshot.lockfileExisted === true,
+    lockfilePath,
+    lockfileSnapshotPath,
+    snapshotPath,
+    stateRoot,
+    stateRootExisted: snapshot.stateRootExisted === true,
+    stateExpectedManifest: snapshot.stateExpectedManifest,
+    stateInitialManifest: snapshot.stateInitialManifest,
+    stateSnapshotPath,
+    targetPath,
+  };
+}
+
+export async function createStackUpdateSnapshot(stackPath, options = {}) {
+  const { root, targetPath } = await resolveManagedStackPath(stackPath, options.stacksRoot);
+  const locksRoot = path.resolve(options.locksRoot || PATHS.locks);
+  const { targetPath: lockfilePath } = await resolveManagedLockfilePath(
+    options.lockfilePath,
+    locksRoot,
+    { createRoot: true },
+  );
+  const stateStacksRoot = path.resolve(
+    options.stateStacksRoot || (
+      options.stacksRoot
+        ? path.join(path.dirname(root), 'state', 'stacks')
+        : path.join(PATHS.home, 'state', 'stacks')
+    ),
+  );
+  const { targetPath: stateRoot } = await resolveManagedStackStatePath(
+    options.stateRoot || path.join(stateStacksRoot, path.basename(targetPath)),
+    stateStacksRoot,
+    { createRoot: true },
+  );
+  const stackStat = await fs.lstat(targetPath);
+  if (!stackStat.isDirectory() || stackStat.isSymbolicLink()) {
+    throw new Error(`Installed stack path must be a real directory: ${stackPath}`);
+  }
+
+  const backupRoot = await fs.mkdtemp(
+    path.join(root, `.${path.basename(targetPath)}.update-backup-`),
+  );
+  const snapshotPath = path.join(backupRoot, 'snapshot');
+  const lockfileSnapshotPath = path.join(backupRoot, 'lockfile');
+  const stateSnapshotPath = path.join(backupRoot, 'state');
+  let lockfileExisted = false;
+  let stateRootExisted = false;
+  const stateInitialManifest = await buildTreeManifest(stateRoot);
+  const migratedRunsManifest = await buildTreeManifest(path.join(targetPath, 'runs'), 'runs');
+  const stateExpectedManifest = mergeExpectedStateManifest(
+    stateInitialManifest,
+    migratedRunsManifest,
+  );
+  try {
+    await fs.chmod(backupRoot, 0o700);
+    await fs.cp(targetPath, snapshotPath, {
+      errorOnExist: true,
+      force: false,
+      preserveTimestamps: true,
+      recursive: true,
+    });
+    try {
+      const lockfileStat = await fs.lstat(lockfilePath);
+      if (!lockfileStat.isFile() || lockfileStat.isSymbolicLink()) {
+        throw new Error(`Stack lockfile path must be a real file: ${lockfilePath}`);
+      }
+      await fs.copyFile(lockfilePath, lockfileSnapshotPath);
+      lockfileExisted = true;
+    } catch (error) {
+      if (error.code !== 'ENOENT') throw error;
+    }
+    try {
+      const stateStat = await fs.lstat(stateRoot);
+      if (!stateStat.isDirectory() || stateStat.isSymbolicLink()) {
+        throw new Error(`Stack state path must be a real directory: ${stateRoot}`);
+      }
+      await fs.cp(stateRoot, stateSnapshotPath, {
+        errorOnExist: true,
+        force: false,
+        preserveTimestamps: true,
+        recursive: true,
+      });
+      stateRootExisted = true;
+    } catch (error) {
+      if (error.code !== 'ENOENT') throw error;
+    }
+  } catch (error) {
+    await fs.rm(backupRoot, { force: true, recursive: true });
+    throw error;
+  }
+
+  return {
+    backupRoot,
+    lockfileExisted,
+    lockfilePath,
+    lockfileSnapshotPath,
+    locksRoot,
+    snapshotPath,
+    stateRoot,
+    stateRootExisted,
+    stateExpectedManifest,
+    stateInitialManifest,
+    stateSnapshotPath,
+    stateStacksRoot,
+    targetPath,
+  };
+}
+
+export async function restoreStackUpdateSnapshot(snapshot, options = {}) {
+  const {
+    backupRoot,
+    lockfileExisted,
+    lockfilePath,
+    lockfileSnapshotPath,
+    snapshotPath,
+    stateRoot,
+    stateRootExisted,
+    stateExpectedManifest,
+    stateInitialManifest,
+    stateSnapshotPath,
+    targetPath,
+  } = await validateStackUpdateSnapshot(snapshot, options);
+
+  await assertSnapshotComponent(snapshotPath, 'directory', 'stack snapshot');
+  if (lockfileExisted) {
+    await assertSnapshotComponent(lockfileSnapshotPath, 'file', 'lockfile snapshot');
+  }
+  if (stateRootExisted) {
+    await assertSnapshotComponent(stateSnapshotPath, 'directory', 'state snapshot');
+  }
+
+  const components = [
+    {
+      currentPath: stateRoot,
+      existedBefore: stateRootExisted,
+      label: 'state',
+      snapshotPath: stateSnapshotPath,
+    },
+    {
+      currentPath: targetPath,
+      existedBefore: true,
+      label: 'install',
+      snapshotPath,
+    },
+    {
+      currentPath: lockfilePath,
+      existedBefore: lockfileExisted,
+      label: 'lockfile',
+      snapshotPath: lockfileSnapshotPath,
+    },
+  ];
+  const stateComponent = components[0];
+
+  for (const component of components) {
+    component.stagedPath = path.join(backupRoot, `failed-${component.label}`);
+    component.staged = false;
+    component.promoted = false;
+  }
+
+  try {
+    for (const component of components) {
+      try {
+        const currentStat = await fs.lstat(component.currentPath);
+        if (currentStat.isSymbolicLink()) {
+          throw new Error(`Refusing to stage symlinked ${component.label}: ${component.currentPath}`);
+        }
+        await fs.rename(component.currentPath, component.stagedPath);
+        component.staged = true;
+      } catch (error) {
+        if (error.code !== 'ENOENT') throw error;
+      }
+    }
+
+    const stagedStateManifest = stateComponent.staged
+      ? await buildTreeManifest(stateComponent.stagedPath)
+      : [];
+    const stateMatchesInitial = treeManifestsEqual(stagedStateManifest, stateInitialManifest);
+    const stateMatchesExpected = (
+      stateExpectedManifest !== null &&
+      treeManifestsEqual(stagedStateManifest, stateExpectedManifest)
+    );
+    if (!stateMatchesInitial && !stateMatchesExpected) {
+      throw new Error(`Stack state changed during update; refusing to rewind: ${stateRoot}`);
+    }
+
+    for (const component of components) {
+      if (!component.existedBefore) continue;
+      await fs.mkdir(path.dirname(component.currentPath), { recursive: true });
+      await fs.rename(component.snapshotPath, component.currentPath);
+      component.promoted = true;
+    }
+  } catch (error) {
+    const compensationErrors = [];
+    for (const component of [...components].reverse()) {
+      if (component.promoted) {
+        try {
+          await copyPathWithoutOverwrite(
+            component.currentPath,
+            component.snapshotPath,
+            `accepted ${component.label}`,
+          );
+        } catch (compensationError) {
+          compensationErrors.push(compensationError.message);
+        }
+        compensationErrors.push(
+          `Rollback could not atomically restore the failed ${component.label}; `
+          + `accepted data remains at ${component.currentPath} and failed data remains at ${component.stagedPath}`,
+        );
+        continue;
+      }
+      if (component.staged) {
+        try {
+          await copyPathWithoutOverwrite(
+            component.stagedPath,
+            component.currentPath,
+            `failed ${component.label}`,
+          );
+        } catch (compensationError) {
+          compensationErrors.push(compensationError.message);
+        }
+      }
+    }
+    if (compensationErrors.length > 0) {
+      throw new Error(
+        `${error.message}; rollback compensation failed: ${compensationErrors.join('; ')}`,
+        { cause: error },
+      );
+    }
+    throw error;
+  }
+
+  await fs.rm(backupRoot, { force: true, recursive: true });
+}
+
+export async function discardStackUpdateSnapshot(snapshot, options = {}) {
+  const { backupRoot } = await validateStackUpdateSnapshot(snapshot, options);
+  await fs.rm(backupRoot, { force: true, recursive: true });
+}
+
 const defaultDependencies = {
   fetchIndex,
   listInstalled,
   resolvePackage: coreResolvePackage,
   updatePackage: coreUpdatePackage,
+  getPackageLockfilePath: getLockfilePath,
+  createStackUpdateSnapshot,
+  restoreStackUpdateSnapshot,
+  discardStackUpdateSnapshot,
+  loadStackManifest: loadManifest,
+  buildStack: buildStackIfNeeded,
+  validateStack: validateStackEntryPoint,
+  registerStack: addStack,
   rebuildToolIndex,
   log: console.log,
   error: console.error,
@@ -160,15 +640,77 @@ function logSkillProjectionFailures(skillProjection, deps) {
 
 async function updateOnePackage(pkg, flags, deps) {
   deps.log(`Updating ${pkg.id}...`);
-  const result = await deps.updatePackage(pkg.id, {
-    preserveState: shouldPreserveInstallState(flags),
-  });
-  if (!result?.success) {
-    throw new Error(result?.error || `Failed to update ${pkg.id}`);
+  const kind = pkg.kind || packageKindFromId(pkg.id);
+  const snapshot = kind === 'stack'
+    ? await deps.createStackUpdateSnapshot(pkg.path, {
+      lockfilePath: deps.getPackageLockfilePath(pkg.id),
+    })
+    : null;
+  let result;
+
+  try {
+    result = await deps.updatePackage(pkg.id, {
+      preserveState: shouldPreserveInstallState(flags),
+    });
+    if (!result?.success) {
+      throw new Error(result?.error || `Failed to update ${pkg.id}`);
+    }
+
+    if (kind === 'stack') {
+      if (path.resolve(result.path) !== path.resolve(snapshot.targetPath)) {
+        throw new Error(`Updated stack path changed unexpectedly for ${pkg.id}`);
+      }
+
+      const manifest = await deps.loadStackManifest(result.path);
+      if (!manifest) {
+        throw new Error(`Stack manifest not found after updating ${pkg.id}`);
+      }
+
+      await deps.buildStack(result.path, manifest, {
+        force: true,
+        verbose: Boolean(flags.verbose),
+      });
+
+      const validation = deps.validateStack(result.path, manifest);
+      if (!validation.valid) {
+        throw new Error(`Stack validation failed: ${validation.error}`);
+      }
+
+      deps.registerStack(pkg.id, {
+        path: result.path,
+        runtime: getStackRuntime(manifest),
+        command: getStackCommand(manifest),
+        secrets: getManifestSecrets(manifest),
+        version: manifest.version,
+      });
+    }
+  } catch (error) {
+    if (snapshot) {
+      try {
+        await deps.restoreStackUpdateSnapshot(snapshot);
+      } catch (rollbackError) {
+        throw new Error(
+          `${error.message}; stack rollback failed: ${rollbackError.message}`,
+          { cause: error },
+        );
+      }
+    }
+    throw error;
   }
+
+  if (snapshot) {
+    try {
+      await deps.discardStackUpdateSnapshot(snapshot);
+    } catch (cleanupError) {
+      deps.error(
+        `  ! ${pkg.id}: update applied, but snapshot cleanup failed: ${cleanupError.message}`,
+      );
+    }
+  }
+
   return {
     id: pkg.id,
-    kind: pkg.kind || packageKindFromId(pkg.id),
+    kind,
     result,
   };
 }
@@ -278,6 +820,9 @@ export async function runUpdate(args = [], flags = {}, deps = defaultDependencie
         const updated = await updateOnePackage(pkg, flags, deps);
         updatedPackages.push(updated);
       } catch (error) {
+        if (pkg.id === target.id) {
+          throw error;
+        }
         failedPackages.push({ id: pkg.id, error: error.message });
         deps.error(`  x ${pkg.id}: ${error.message}`);
       }
