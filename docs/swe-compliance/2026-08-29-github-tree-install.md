@@ -151,9 +151,9 @@ entire change followed a perfect red-green sequence.
 - Commit `77dc203`: `feat: install stacks from public GitHub trees (#34)` —
   source, tests, README, and help
 - Commit `e9f94b2`: `build: regenerate CLI bundle for GitHub tree install (#34)`
-- Planned commit 3: this compliance ledger
-- Push: pending
-- Pull request: pending
+- Commit `73812ad`: `docs: record GitHub tree install compliance (#34)`
+- Push: branch published to `origin/chore/34-public-github-tree-install`
+- Pull request: [#35 — Install compatible RUDI stacks from public GitHub tree URLs](https://github.com/learnrudi/cli/pull/35)
 - CI/review/merge: pending
 - Release/deployment/install: not authorized
 - Final closeout and cleanup: final receipt pending; cleanup not authorized
