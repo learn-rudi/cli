@@ -45,7 +45,8 @@ RUDI supports three installation sources:
 
 1. **Dynamic npm** (`npm:<package>`) - Any npm package with a `bin` field
 2. **Curated Registry** - Pre-configured stacks and binaries with documentation
-3. **Upstream Binaries** - Direct downloads from official sources
+3. **Public GitHub stacks** - Commit-pinned RUDI stack directories
+4. **Upstream Binaries** - Direct downloads from official sources
 
 ### Secret Management
 
@@ -66,12 +67,45 @@ rudi install slack                # MCP stack for Slack
 rudi install binary:ffmpeg        # Upstream ffmpeg binary
 rudi install binary:supabase      # Supabase CLI
 
+# Install a RUDI-compatible stack from a public GitHub tree
+rudi install https://github.com/acme/rudi-packages/tree/main/catalog/stacks/demo
+
 # Install with scripts enabled (when needed)
 rudi install npm:puppeteer --allow-scripts
 
 # Optional: create shims immediately (opt-in)
 rudi install binary:ffmpeg --with-shims
 ```
+
+GitHub source installs accept only the exact public HTTPS form
+`https://github.com/<owner>/<repo>/tree/<ref>/<stack-path>`. RUDI resolves the
+ref to a full commit SHA, downloads only files and directories from that pinned
+subtree, rejects symlinks/submodules and foreign download URLs, and records the
+source plus a content checksum in the package lockfile. Private repositories,
+other Git hosts, repository-root shorthand, and arbitrary non-RUDI source are
+not supported.
+
+The external stack must use a canonical `stack:` manifest. Its `related`
+metadata must name the operator skill in `operatorSkill` and `skills`, and must
+add `operatorSkillPath` as a repository-relative bundle directory containing
+`SKILL.md`:
+
+```json
+{
+  "related": {
+    "operatorSkill": "skill:demo",
+    "skills": ["skill:demo"],
+    "operatorSkillPath": "catalog/skills/demo"
+  }
+}
+```
+
+Downloaded GitHub code is not executed during installation by default: Node
+dependency lifecycle/build scripts are suppressed, and Python requirements that
+may run package builds are rejected. MCP indexing is also deferred because it
+launches the stack command. Use `--allow-scripts` only after reviewing the pinned
+source and dependencies; that opt-in permits dependency/build execution and
+post-install tool indexing.
 
 ### Listing Installed Packages
 
@@ -265,6 +299,9 @@ rudi update stack:swe-engineering --with-related-skills --sync-skills=codex
 `rudi update` without a package now fails closed; use `--all` when broad scope
 is intentional. Update JSON mode emits one structured document. Install keeps
 human progress output and rejects `--json` instead of mixing formats.
+Packages installed from GitHub are immutable snapshots: an explicit update
+stops with guidance, while `--all` reports and skips them. To move to another
+ref or commit, rerun `rudi install <github-tree-url> --force`.
 
 ### Retired Commands
 

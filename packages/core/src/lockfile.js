@@ -5,6 +5,7 @@
 
 import fs from 'fs';
 import path from 'path';
+import crypto from 'node:crypto';
 import { stringify as yamlStringify, parse as yamlParse } from 'yaml';
 import { PATHS, parsePackageId, getLockfilePath, isPackageInstalled, getPackagePath } from '@learnrudi/env';
 
@@ -29,7 +30,7 @@ import { PATHS, parsePackageId, getLockfilePath, isPackageInstalled, getPackageP
  * @param {Object} resolved - Resolved package info
  * @returns {Promise<string>} Path to lockfile
  */
-export async function writeLockfile(resolved) {
+export async function writeLockfile(resolved, options = {}) {
   // Use getLockfilePath for consistency with read/delete operations
   const lockPath = getLockfilePath(resolved.id);
   const lockDir = path.dirname(lockPath);
@@ -39,12 +40,28 @@ export async function writeLockfile(resolved) {
     fs.mkdirSync(lockDir, { recursive: true });
   }
 
+  const installPath = options.installPath || getPackagePath(resolved.id);
+  const installLayout = fs.lstatSync(installPath).isDirectory() ? 'directory' : 'file';
+
   const lockfile = {
     id: resolved.id,
     version: resolved.version,
     name: resolved.name,
     installedAt: new Date().toISOString(),
-    checksum: await computeChecksum(resolved),
+    checksum: await computeInstalledContentChecksum(installPath),
+    installLayout,
+    ...(resolved.source?.type === 'github'
+      ? {
+          source: {
+            type: 'github',
+            requestedUrl: resolved.source.requestedUrl,
+            repository: resolved.source.repository,
+            requestedRef: resolved.source.requestedRef,
+            resolvedCommit: resolved.source.resolvedCommit,
+            path: resolved.source.path,
+          },
+        }
+      : {}),
     dependencies: (resolved.dependencies || []).map(dep => ({
       id: dep.id,
       version: dep.version,
@@ -102,6 +119,16 @@ export function deleteLockfile(id) {
   }
 }
 
+export function restoreLockfile(id, snapshot) {
+  const lockPath = getLockfilePath(id);
+  if (!snapshot) {
+    deleteLockfile(id);
+    return;
+  }
+  fs.mkdirSync(path.dirname(lockPath), { recursive: true });
+  fs.writeFileSync(lockPath, yamlStringify(snapshot, { lineWidth: 0 }));
+}
+
 /**
  * Verify a package installation against its lockfile
  * @param {string} id - Package ID
@@ -129,6 +156,19 @@ export async function verifyLockfile(id) {
     }
   }
 
+  if (/^[a-f0-9]{64}$/i.test(lockfile.checksum || '')) {
+    const [kind, name] = parsePackageId(id);
+    const installPath = kind === 'skill' && (
+      lockfile.installLayout === 'directory' || lockfile.source?.type === 'github'
+    )
+      ? path.join(PATHS.skills, name)
+      : getPackagePath(id);
+    const checksum = await computeInstalledContentChecksum(installPath);
+    if (checksum !== lockfile.checksum) {
+      errors.push('Installed package content checksum does not match lockfile');
+    }
+  }
+
   // In production, we would also verify checksums
 
   return {
@@ -142,16 +182,54 @@ export async function verifyLockfile(id) {
  * @param {Object} pkg - Package info
  * @returns {Promise<string>}
  */
-async function computeChecksum(pkg) {
-  // In production, this would compute a hash of the package contents
-  // For now, we'll use a simple hash of the manifest
-  const crypto = await import('crypto');
-  const data = JSON.stringify({
-    id: pkg.id,
-    version: pkg.version,
-    name: pkg.name
-  });
-  return crypto.createHash('sha256').update(data).digest('hex').slice(0, 16);
+const CHECKSUM_IGNORED_NAMES = new Set([
+  '.DS_Store',
+  '.git',
+  '.venv',
+  'node_modules',
+  'venv',
+]);
+const CHECKSUM_IGNORED_ROOT_NAMES = new Set(['outputs', 'runs']);
+
+function updateContentHash(hash, rootPath, currentPath) {
+  const relativePath = path.relative(rootPath, currentPath).split(path.sep).join('/');
+  const stat = fs.lstatSync(currentPath);
+  if (stat.isSymbolicLink()) {
+    throw new Error(`Cannot checksum symbolic link in installed package: ${relativePath}`);
+  }
+  if (stat.isFile()) {
+    const executable = (stat.mode & 0o111) !== 0 ? 'executable' : 'regular';
+    hash.update(`file\0${relativePath}\0${stat.size}\0${executable}\0`);
+    hash.update(fs.readFileSync(currentPath));
+    return;
+  }
+  if (!stat.isDirectory()) {
+    throw new Error(`Cannot checksum unsupported installed package entry: ${relativePath}`);
+  }
+  hash.update(`dir\0${relativePath}\0`);
+  for (const entry of fs.readdirSync(currentPath).sort()) {
+    if (
+      CHECKSUM_IGNORED_NAMES.has(entry) ||
+      (currentPath === rootPath && CHECKSUM_IGNORED_ROOT_NAMES.has(entry))
+    ) continue;
+    updateContentHash(hash, rootPath, path.join(currentPath, entry));
+  }
+}
+
+export async function computeInstalledContentChecksum(installPath) {
+  if (!fs.existsSync(installPath)) {
+    throw new Error(`Cannot checksum missing installed package: ${installPath}`);
+  }
+  const hash = crypto.createHash('sha256');
+  const stat = fs.lstatSync(installPath);
+  if (stat.isFile()) {
+    const executable = (stat.mode & 0o111) !== 0 ? 'executable' : 'regular';
+    hash.update(`file\0.\0${executable}\0`);
+    hash.update(fs.readFileSync(installPath));
+  } else {
+    updateContentHash(hash, installPath, installPath);
+  }
+  return hash.digest('hex');
 }
 
 /**

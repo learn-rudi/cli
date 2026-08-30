@@ -8,6 +8,7 @@ import {
   createNpmInstallCommand,
   createPipInstallCommand,
   createPostInstallCommand,
+  createStackDependencyInstallCommand,
   runCommandPlan,
 } from '../../installer.js';
 
@@ -53,6 +54,39 @@ test('npm install validates registry package names and builds argv', () => {
       packageName: 'left-pad; touch probe',
     }),
     /Invalid npm package name/
+  );
+});
+
+test('external stack dependency commands suppress lifecycle scripts by default', () => {
+  assert.deepEqual(
+    createStackDependencyInstallCommand('pnpm', '/opt/rudi/pnpm', {
+      storeDir: '/tmp/rudi-store',
+      allowScripts: false,
+    }),
+    {
+      command: '/opt/rudi/pnpm',
+      args: [
+        'install',
+        '--store-dir',
+        '/tmp/rudi-store',
+        '--prefer-frozen-lockfile',
+        '--ignore-scripts',
+      ],
+    },
+  );
+  assert.deepEqual(
+    createStackDependencyInstallCommand('npm', '/opt/rudi/npm', {
+      allowScripts: false,
+    }),
+    {
+      command: '/opt/rudi/npm',
+      args: ['install', '--no-audit', '--no-fund', '--ignore-scripts'],
+    },
+  );
+  assert.equal(
+    createStackDependencyInstallCommand('npm', 'npm', { allowScripts: true })
+      .args.includes('--ignore-scripts'),
+    false,
   );
 });
 
