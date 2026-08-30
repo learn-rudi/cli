@@ -792,6 +792,395 @@ var init_registry_contract = __esm({
   }
 });
 
+// packages/registry-client/src/github-source.js
+function decodePathSegment(segment) {
+  let decoded;
+  try {
+    decoded = decodeURIComponent(segment);
+  } catch {
+    throw new Error("Invalid GitHub tree URL encoding");
+  }
+  if (!decoded || decoded === "." || decoded === ".." || decoded.includes("/") || decoded.includes("\\") || decoded.includes("\0")) {
+    throw new Error("Invalid GitHub tree URL path");
+  }
+  return decoded;
+}
+function encodeRepositoryPath(value) {
+  return value.split("/").map((segment) => encodeURIComponent(segment)).join("/");
+}
+function normalizeRepositoryPath(value, label = "GitHub repository path") {
+  if (typeof value !== "string" || !value) {
+    throw new Error(`${label} is required`);
+  }
+  const normalized = value.replaceAll("\\", "/");
+  const segments = normalized.split("/");
+  if (normalized.startsWith("/") || segments.some((segment) => !segment || segment === "." || segment === ".." || segment.includes("\0"))) {
+    throw new Error(`Invalid ${label}`);
+  }
+  return segments.join("/");
+}
+function assertRawUrlPath(value) {
+  const authorityEnd = value.indexOf("/", "https://".length);
+  const rawPath = authorityEnd === -1 ? "" : value.slice(authorityEnd).split(/[?#]/, 1)[0];
+  for (const segment of rawPath.split("/")) {
+    if (!segment) continue;
+    decodePathSegment(segment);
+  }
+}
+function parseGitHubTreeUrl(value) {
+  const rawValue = String(value || "");
+  assertRawUrlPath(rawValue);
+  let url;
+  try {
+    url = new URL(rawValue);
+  } catch {
+    throw new Error("Invalid GitHub tree URL");
+  }
+  if (url.protocol !== "https:" || url.hostname !== GITHUB_HOST || url.port || url.username || url.password || url.search || url.hash) {
+    throw new Error("GitHub tree URL must use exact public HTTPS github.com form");
+  }
+  const segments = url.pathname.split("/").filter(Boolean).map(decodePathSegment);
+  if (segments.length < 5 || segments[2] !== "tree" || !REPOSITORY_SEGMENT_PATTERN.test(segments[0]) || !REPOSITORY_SEGMENT_PATTERN.test(segments[1])) {
+    throw new Error("Expected https://github.com/<owner>/<repo>/tree/<ref>/<stack-path>");
+  }
+  return {
+    requestedUrl: `https://${GITHUB_HOST}/${segments.map(encodeURIComponent).join("/")}`,
+    owner: segments[0],
+    repo: segments[1],
+    refAndPath: segments.slice(3)
+  };
+}
+function githubHeaders() {
+  return {
+    "User-Agent": "rudi-cli/2.0",
+    Accept: "application/vnd.github+json"
+  };
+}
+function assertPinnedGitHubSource(source) {
+  if (!source || source.type !== "github" || !REPOSITORY_SEGMENT_PATTERN.test(source.owner || "") || !REPOSITORY_SEGMENT_PATTERN.test(source.repo || "") || source.repository !== `${source.owner}/${source.repo}` || !FULL_COMMIT_PATTERN.test(source.resolvedCommit || "")) {
+    throw new Error("Invalid pinned GitHub source");
+  }
+  return {
+    ...source,
+    resolvedCommit: source.resolvedCommit.toLowerCase(),
+    path: normalizeRepositoryPath(source.path)
+  };
+}
+function createContentsUrl(source, repositoryPath) {
+  return `https://${GITHUB_API_HOST}/repos/${encodeURIComponent(source.owner)}/${encodeURIComponent(source.repo)}/contents/${encodeRepositoryPath(repositoryPath)}?ref=${source.resolvedCommit}`;
+}
+function createTreeUrl(source) {
+  return `https://${GITHUB_API_HOST}/repos/${encodeURIComponent(source.owner)}/${encodeURIComponent(source.repo)}/git/trees/${source.resolvedCommit}?recursive=1`;
+}
+async function loadGitHubFileModes(source, repositoryPath, state) {
+  const response = await state.fetch(createTreeUrl(source), { headers: githubHeaders() });
+  if (!response.ok) {
+    throw new Error(`Failed to read pinned GitHub tree metadata: HTTP ${response.status}`);
+  }
+  const body = await response.json();
+  if (!Array.isArray(body?.tree) || body.truncated) {
+    throw new Error("Pinned GitHub tree metadata is missing or truncated");
+  }
+  const prefix = `${repositoryPath}/`;
+  const modes = /* @__PURE__ */ new Map();
+  for (const item of body.tree) {
+    if (typeof item?.path !== "string") continue;
+    const itemPath = normalizeRepositoryPath(item.path, "GitHub tree entry path");
+    if (!itemPath.startsWith(prefix)) continue;
+    if (item.type === "tree" && item.mode === "040000") continue;
+    if (item.type !== "blob" || !["100644", "100755"].includes(item.mode)) {
+      throw new Error(`Unsupported GitHub package entry mode at ${itemPath}: ${item.mode || item.type || "unknown"}`);
+    }
+    modes.set(itemPath, item.mode);
+  }
+  return modes;
+}
+function assertGitHubEntryName(name) {
+  if (typeof name !== "string" || !name || name === "." || name === ".." || import_node_path.default.basename(name) !== name || name.includes("/") || name.includes("\\") || name.includes("\0")) {
+    throw new Error("Invalid GitHub package entry name");
+  }
+  return name;
+}
+function assertRawDownloadUrl(value, source, repositoryPath) {
+  let url;
+  try {
+    url = new URL(value);
+  } catch {
+    throw new Error(`GitHub file is missing a valid download URL: ${repositoryPath}`);
+  }
+  const expectedPath = `/${source.owner}/${source.repo}/${source.resolvedCommit}/${repositoryPath}`;
+  let decodedPath;
+  try {
+    decodedPath = decodeURIComponent(url.pathname);
+  } catch {
+    throw new Error(`GitHub file has an invalid download URL: ${repositoryPath}`);
+  }
+  if (url.protocol !== "https:" || url.hostname !== GITHUB_RAW_HOST || decodedPath !== expectedPath || url.username || url.password || url.port || url.search || url.hash) {
+    throw new Error(`GitHub file URL does not match the pinned source: ${repositoryPath}`);
+  }
+  return url.toString();
+}
+function createRawFileUrl(source, repositoryPath) {
+  return `https://${GITHUB_RAW_HOST}/${encodeURIComponent(source.owner)}/${encodeURIComponent(source.repo)}/${source.resolvedCommit}/${encodeRepositoryPath(repositoryPath)}`;
+}
+async function readGitHubTextFile(sourceValue, repositoryPathValue, options = {}) {
+  const source = assertPinnedGitHubSource(sourceValue);
+  const repositoryPath = normalizeRepositoryPath(repositoryPathValue);
+  const fetchImpl = options.fetch || globalThis.fetch;
+  if (typeof fetchImpl !== "function") {
+    throw new Error("GitHub file read requires fetch");
+  }
+  const response = await fetchImpl(createRawFileUrl(source, repositoryPath), {
+    headers: githubHeaders()
+  });
+  if (!response.ok) {
+    throw new Error(`GitHub package file not found: ${repositoryPath} (HTTP ${response.status})`);
+  }
+  const content = await response.text();
+  const maxBytes = options.maxBytes ?? 1024 * 1024;
+  if (Buffer.byteLength(content) > maxBytes) {
+    throw new Error(`GitHub package file exceeds maximum size of ${maxBytes} bytes`);
+  }
+  return content;
+}
+async function readGitHubJsonFile(source, repositoryPath, options = {}) {
+  const content = await readGitHubTextFile(source, repositoryPath, options);
+  try {
+    return JSON.parse(content);
+  } catch (error) {
+    throw new Error(`Invalid GitHub package JSON ${repositoryPath}: ${error.message}`);
+  }
+}
+async function assertGitHubDirectoryFile(sourceValue, repositoryPathValue, fileNameValue, options = {}) {
+  const source = assertPinnedGitHubSource(sourceValue);
+  const repositoryPath = normalizeRepositoryPath(repositoryPathValue);
+  const fileName = assertGitHubEntryName(fileNameValue);
+  const fetchImpl = options.fetch || globalThis.fetch;
+  if (typeof fetchImpl !== "function") {
+    throw new Error("GitHub directory validation requires fetch");
+  }
+  const response = await fetchImpl(createContentsUrl(source, repositoryPath), {
+    headers: githubHeaders()
+  });
+  if (!response.ok) {
+    throw new Error(`GitHub package directory not found: ${repositoryPath} (HTTP ${response.status})`);
+  }
+  const contents = await response.json();
+  if (!Array.isArray(contents)) {
+    throw new Error(`GitHub package path is not a directory: ${repositoryPath}`);
+  }
+  const item = contents.find((entry) => entry?.name === fileName);
+  const expectedPath = `${repositoryPath}/${fileName}`;
+  if (!item || item.type !== "file" || item.path !== expectedPath) {
+    throw new Error(`GitHub package directory is missing ${fileName}: ${repositoryPath}`);
+  }
+  assertRawDownloadUrl(item.download_url, source, expectedPath);
+  return true;
+}
+async function downloadDirectoryRecursive(source, repositoryPath, destination, state, depth = 0) {
+  if (depth > state.maxDepth) {
+    throw new Error(`GitHub package exceeds maximum directory depth of ${state.maxDepth}`);
+  }
+  const response = await state.fetch(createContentsUrl(source, repositoryPath), {
+    headers: githubHeaders()
+  });
+  if (!response.ok) {
+    throw new Error(`GitHub package directory not found: ${repositoryPath} (HTTP ${response.status})`);
+  }
+  const contents = await response.json();
+  if (!Array.isArray(contents)) {
+    throw new Error(`GitHub package path is not a directory: ${repositoryPath}`);
+  }
+  import_node_fs.default.mkdirSync(destination, { recursive: true });
+  for (const item of contents) {
+    const name = assertGitHubEntryName(item?.name);
+    const itemPath = `${repositoryPath}/${name}`;
+    if (item.path !== itemPath) {
+      throw new Error(`GitHub package entry path mismatch: ${itemPath}`);
+    }
+    const itemDestination = import_node_path.default.join(destination, name);
+    if (item.type === "dir") {
+      await downloadDirectoryRecursive(source, itemPath, itemDestination, state, depth + 1);
+      continue;
+    }
+    if (item.type !== "file") {
+      throw new Error(`Unsupported GitHub package entry type: ${item.type || "unknown"}`);
+    }
+    state.files += 1;
+    if (state.files > state.maxFiles) {
+      throw new Error(`GitHub package exceeds maximum file count of ${state.maxFiles}`);
+    }
+    const declaredSize = Number(item.size);
+    if (!Number.isSafeInteger(declaredSize) || declaredSize < 0) {
+      throw new Error(`GitHub package file has invalid size: ${itemPath}`);
+    }
+    if (state.bytes + declaredSize > state.maxBytes) {
+      throw new Error(`GitHub package exceeds maximum size of ${state.maxBytes} bytes`);
+    }
+    const downloadUrl = assertRawDownloadUrl(item.download_url, source, itemPath);
+    const fileResponse = await state.fetch(downloadUrl, { headers: githubHeaders() });
+    if (!fileResponse.ok) {
+      throw new Error(`Failed to download GitHub package file: ${itemPath} (HTTP ${fileResponse.status})`);
+    }
+    const content = Buffer.from(await fileResponse.arrayBuffer());
+    if (state.bytes + content.length > state.maxBytes) {
+      throw new Error(`GitHub package exceeds maximum size of ${state.maxBytes} bytes`);
+    }
+    state.bytes += content.length;
+    const mode = state.fileModes.get(itemPath);
+    if (!mode) {
+      throw new Error(`Pinned GitHub tree metadata is missing file mode for ${itemPath}`);
+    }
+    const installedMode = mode === "100755" ? 493 : 420;
+    import_node_fs.default.writeFileSync(itemDestination, content, {
+      flag: "wx",
+      mode: installedMode
+    });
+    import_node_fs.default.chmodSync(itemDestination, installedMode);
+    state.fileModes.delete(itemPath);
+    state.onProgress?.({ phase: "downloading", file: itemPath });
+  }
+}
+async function downloadGitHubDirectory(sourceValue, repositoryPathValue, destination, options = {}) {
+  const source = assertPinnedGitHubSource(sourceValue);
+  const repositoryPath = normalizeRepositoryPath(repositoryPathValue);
+  if (typeof destination !== "string" || !import_node_path.default.isAbsolute(destination)) {
+    throw new Error("GitHub package destination must be an absolute path");
+  }
+  if (import_node_fs.default.existsSync(destination)) {
+    throw new Error(`GitHub package destination already exists: ${destination}`);
+  }
+  const fetchImpl = options.fetch || globalThis.fetch;
+  if (typeof fetchImpl !== "function") {
+    throw new Error("GitHub package download requires fetch");
+  }
+  const state = {
+    fetch: fetchImpl,
+    onProgress: options.onProgress,
+    files: 0,
+    bytes: 0,
+    maxDepth: options.maxDepth ?? 20,
+    maxFiles: options.maxFiles ?? 2e3,
+    maxBytes: options.maxBytes ?? 100 * 1024 * 1024
+  };
+  try {
+    state.fileModes = await loadGitHubFileModes(source, repositoryPath, state);
+    await downloadDirectoryRecursive(source, repositoryPath, destination, state);
+    if (state.fileModes.size > 0) {
+      const [missingPath] = state.fileModes.keys();
+      throw new Error(`GitHub Contents response omitted pinned tree file: ${missingPath}`);
+    }
+  } catch (error) {
+    import_node_fs.default.rmSync(destination, { recursive: true, force: true });
+    throw error;
+  }
+  return { path: destination, files: state.files, bytes: state.bytes };
+}
+async function resolveCommitCandidates(parsed, fetchImpl) {
+  const candidates = [];
+  for (let split = 1; split < parsed.refAndPath.length; split += 1) {
+    const requestedRef = parsed.refAndPath.slice(0, split).join("/");
+    const stackPath = parsed.refAndPath.slice(split).join("/");
+    const commitUrl = `https://${GITHUB_API_HOST}/repos/${encodeURIComponent(parsed.owner)}/${encodeURIComponent(parsed.repo)}/commits/${encodeURIComponent(requestedRef)}`;
+    const response = await fetchImpl(commitUrl, { headers: githubHeaders() });
+    if (response.status === 404) continue;
+    if (!response.ok) {
+      throw new Error(`Unable to resolve public GitHub ref: HTTP ${response.status}`);
+    }
+    const body = await response.json();
+    if (!FULL_COMMIT_PATTERN.test(body?.sha || "")) {
+      throw new Error("GitHub commit response did not contain a full commit SHA");
+    }
+    candidates.push({ requestedRef, stackPath, resolvedCommit: body.sha.toLowerCase() });
+  }
+  if (candidates.length === 0) {
+    throw new Error("Public GitHub ref not found");
+  }
+  return candidates;
+}
+function assertManifestEntry(contents, source) {
+  if (!Array.isArray(contents)) {
+    throw new Error(`GitHub stack path is not a directory: ${source.path}`);
+  }
+  const manifest = contents.find((item) => item?.name === "manifest.json");
+  if (!manifest || manifest.type !== "file") {
+    throw new Error(`GitHub stack path is missing manifest.json: ${source.path}`);
+  }
+  let downloadUrl;
+  try {
+    downloadUrl = new URL(manifest.download_url);
+  } catch {
+    throw new Error("GitHub manifest is missing a valid download URL");
+  }
+  const expectedPath = `/${source.owner}/${source.repo}/${source.resolvedCommit}/${source.path}/manifest.json`;
+  if (downloadUrl.protocol !== "https:" || downloadUrl.hostname !== GITHUB_RAW_HOST || decodeURIComponent(downloadUrl.pathname) !== expectedPath || downloadUrl.search || downloadUrl.hash) {
+    throw new Error("GitHub manifest download URL does not match the resolved source");
+  }
+}
+function isGitHubTreeUrl(value) {
+  try {
+    parseGitHubTreeUrl(value);
+    return true;
+  } catch {
+    return false;
+  }
+}
+async function resolveGitHubTreeSource(value, options = {}) {
+  const parsed = parseGitHubTreeUrl(value);
+  const fetchImpl = options.fetch || globalThis.fetch;
+  if (typeof fetchImpl !== "function") {
+    throw new Error("GitHub source resolution requires fetch");
+  }
+  const candidates = await resolveCommitCandidates(parsed, fetchImpl);
+  const validSources = [];
+  for (const resolved of candidates) {
+    const source = {
+      type: "github",
+      requestedUrl: parsed.requestedUrl,
+      repository: `${parsed.owner}/${parsed.repo}`,
+      owner: parsed.owner,
+      repo: parsed.repo,
+      requestedRef: resolved.requestedRef,
+      resolvedCommit: resolved.resolvedCommit,
+      path: resolved.stackPath
+    };
+    const response = await fetchImpl(createContentsUrl(source, source.path), {
+      headers: githubHeaders()
+    });
+    if (response.status === 404) continue;
+    if (!response.ok) {
+      throw new Error(`GitHub stack path validation failed: HTTP ${response.status}`);
+    }
+    const contents = await response.json();
+    if (!Array.isArray(contents) || !contents.some((item) => item?.name === "manifest.json" && item.type === "file")) {
+      continue;
+    }
+    assertManifestEntry(contents, source);
+    validSources.push(source);
+  }
+  if (validSources.length === 0) {
+    throw new Error("GitHub tree URL did not resolve to a RUDI stack directory with manifest.json");
+  }
+  if (validSources.length > 1) {
+    throw new Error(
+      "Ambiguous GitHub tree URL: multiple ref/path interpretations contain RUDI stacks; use a full commit SHA in the URL"
+    );
+  }
+  return validSources[0];
+}
+var import_node_fs, import_node_path, GITHUB_HOST, GITHUB_API_HOST, GITHUB_RAW_HOST, FULL_COMMIT_PATTERN, REPOSITORY_SEGMENT_PATTERN;
+var init_github_source = __esm({
+  "packages/registry-client/src/github-source.js"() {
+    import_node_fs = __toESM(require("node:fs"), 1);
+    import_node_path = __toESM(require("node:path"), 1);
+    GITHUB_HOST = "github.com";
+    GITHUB_API_HOST = "api.github.com";
+    GITHUB_RAW_HOST = "raw.githubusercontent.com";
+    FULL_COMMIT_PATTERN = /^[a-f0-9]{40}$/i;
+    REPOSITORY_SEGMENT_PATTERN = /^[A-Za-z0-9_.-]+$/;
+  }
+});
+
 // packages/registry-client/src/index.js
 function assertCommandArg(value, label) {
   if (typeof value !== "string" || value.length === 0 || value.includes("\0")) {
@@ -1268,6 +1657,20 @@ async function downloadResolvedPackage(pkg, destPath, options = {}) {
 }
 async function downloadPackage(pkg, destPath, options = {}) {
   const { onProgress } = options;
+  if (pkg.source?.type === "github") {
+    await downloadGitHubDirectory(pkg.source, pkg.source.path, destPath, { onProgress });
+    if (pkg.kind === "stack") {
+      const manifest = installCanonicalStackManifest(destPath);
+      import_fs2.default.writeFileSync(
+        import_path3.default.join(destPath, "manifest.json"),
+        JSON.stringify({ ...manifest, source: pkg.source }, null, 2)
+      );
+    } else if (pkg.kind === "skill" && !import_fs2.default.existsSync(import_path3.default.join(destPath, "SKILL.md"))) {
+      import_fs2.default.rmSync(destPath, { recursive: true, force: true });
+      throw new Error(`GitHub operator skill is missing SKILL.md: ${pkg.source.path}`);
+    }
+    return { success: true, path: destPath };
+  }
   const registryPath = pkg.path;
   const isSingleFilePackage = pkg.kind === "prompt" || pkg.kind === "workflow" || registryPath.endsWith(".md");
   onProgress?.({ phase: "downloading", package: pkg.name || pkg.id });
@@ -1836,13 +2239,13 @@ function guessArchiveType(filename) {
   return "tar.gz";
 }
 async function verifyHash(filePath, expectedHash) {
-  return new Promise((resolve2, reject) => {
+  return new Promise((resolve3, reject) => {
     const hash = import_crypto.default.createHash("sha256");
     const stream = import_fs2.default.createReadStream(filePath);
     stream.on("data", (data) => hash.update(data));
     stream.on("end", () => {
       const actualHash = hash.digest("hex");
-      resolve2(actualHash === expectedHash);
+      resolve3(actualHash === expectedHash);
     });
     stream.on("error", reject);
   });
@@ -1856,318 +2259,15 @@ var init_src3 = __esm({
     import_child_process = require("child_process");
     init_src2();
     init_registry_contract();
+    init_github_source();
     init_registry_contract();
+    init_github_source();
     DEFAULT_REGISTRY_URL = "https://raw.githubusercontent.com/learnrudi/registry/main/index.json";
     RUNTIMES_DOWNLOAD_BASE = "https://github.com/learnrudi/registry/releases/download";
     CACHE_TTL = 60 * 60 * 1e3;
     PACKAGE_KINDS3 = ["stack", "skill", "prompt", "workflow", "runtime", "binary", "agent"];
     GITHUB_RAW_BASE = "https://raw.githubusercontent.com/learnrudi/registry/main";
     RUNTIMES_RELEASE_VERSION = "v1.0.0";
-  }
-});
-
-// packages/core/src/resolver.js
-async function getInstallableRegistryPackage(id) {
-  const pkg = await getPackage(id);
-  if (!pkg) return null;
-  const isCanonicalV2Package = Boolean(pkg.delivery && pkg.install?.source);
-  let manifest = null;
-  if (pkg.path && !SINGLE_FILE_KINDS.has(pkg.kind) && !isCanonicalV2Package) {
-    manifest = await getManifest(pkg);
-  }
-  const merged = manifest ? { ...pkg, ...manifest } : pkg;
-  return isCanonicalV2Package ? resolveRegistryPackageForPlatform(merged, getPlatformArch()) : merged;
-}
-async function resolvePackage(id) {
-  if (id.startsWith("npm:")) {
-    return resolveDynamicNpm(id);
-  }
-  const mergedPkg = await getInstallableRegistryPackage(id);
-  if (!mergedPkg) {
-    throw new Error(`Package not found: ${id}`);
-  }
-  const fullId = mergedPkg.id?.includes(":") ? mergedPkg.id : `${mergedPkg.kind}:${mergedPkg.id || id.split(":").pop()}`;
-  const installed = isPackageInstalled(fullId);
-  const dependencies = await resolveDependencies(mergedPkg);
-  const relatedSkills = await resolveRelatedSkills(mergedPkg);
-  return {
-    id: fullId,
-    kind: mergedPkg.kind,
-    name: mergedPkg.name,
-    version: mergedPkg.version,
-    path: mergedPkg.path,
-    description: mergedPkg.description,
-    runtime: mergedPkg.runtime,
-    entry: mergedPkg.entry,
-    installed,
-    dependencies,
-    requires: mergedPkg.requires,
-    related: mergedPkg.related,
-    relatedSkills,
-    // Install-related properties (from canonical manifest)
-    npmPackage: mergedPkg.npmPackage,
-    pipPackage: mergedPkg.pipPackage,
-    postInstall: mergedPkg.postInstall,
-    command: mergedPkg.command,
-    binary: mergedPkg.binary,
-    bins: mergedPkg.bins,
-    binaries: mergedPkg.binaries,
-    // backward compat
-    installDir: mergedPkg.installDir,
-    installType: mergedPkg.installType,
-    nativeInstaller: mergedPkg.nativeInstaller,
-    nativeBinPath: mergedPkg.nativeBinPath,
-    // Canonical registry fields. Installed-state aliases above remain populated
-    // at the boundary so existing local manifests continue to work.
-    delivery: mergedPkg.delivery,
-    install: mergedPkg.install,
-    detect: mergedPkg.detect,
-    auth: mergedPkg.auth,
-    installHints: mergedPkg.installHints,
-    meta: mergedPkg.meta,
-    mcp: mergedPkg.mcp,
-    _resolved: mergedPkg._resolved
-  };
-}
-function normalizeSkillPackageId(id) {
-  if (typeof id !== "string") return null;
-  const trimmed = id.trim();
-  if (!trimmed) return null;
-  if (trimmed.startsWith("skill:")) return trimmed;
-  if (trimmed.startsWith("prompt:")) return trimmed.replace(/^prompt:/, "skill:");
-  if (trimmed.includes(":")) return null;
-  return `skill:${trimmed}`;
-}
-async function resolveRelatedSkills(pkg) {
-  const relatedSkillIds = pkg.related?.skills || [];
-  const operatorSkillId = normalizeSkillPackageId(pkg.related?.operatorSkill);
-  if (pkg.kind === "stack" && !operatorSkillId) {
-    throw new Error(`${pkg.id || "Stack package"} requires related.operatorSkill`);
-  }
-  const normalizedRelatedSkillIds = relatedSkillIds.map((id) => normalizeSkillPackageId(id)).filter(Boolean);
-  if (operatorSkillId && !normalizedRelatedSkillIds.includes(operatorSkillId)) {
-    throw new Error(
-      `${pkg.id || "Stack package"} related.operatorSkill must appear in related.skills`
-    );
-  }
-  const relatedSkills = [];
-  const seen = /* @__PURE__ */ new Set();
-  for (const id of relatedSkillIds) {
-    const skillId = normalizeSkillPackageId(id);
-    if (!skillId || seen.has(skillId)) continue;
-    seen.add(skillId);
-    const skillPkg = await getPackage(skillId);
-    if (!skillPkg) {
-      if (skillId === operatorSkillId) {
-        throw new Error(`operator skill package not found: ${skillId}`);
-      }
-      continue;
-    }
-    relatedSkills.push({
-      id: skillId,
-      kind: "skill",
-      name: skillPkg.name,
-      version: skillPkg.version,
-      installed: isPackageInstalled(skillId),
-      isOperator: skillId === operatorSkillId,
-      dependencies: []
-    });
-  }
-  return relatedSkills;
-}
-async function resolveDynamicNpm(id) {
-  const spec = id.replace("npm:", "");
-  let name, version;
-  if (spec.startsWith("@")) {
-    const parts = spec.split("@");
-    if (parts.length >= 3) {
-      name = `@${parts[1]}`;
-      version = parts[2];
-    } else {
-      name = `@${parts[1]}`;
-      version = "latest";
-    }
-  } else {
-    const lastAt = spec.lastIndexOf("@");
-    if (lastAt > 0) {
-      name = spec.substring(0, lastAt);
-      version = spec.substring(lastAt + 1);
-    } else {
-      name = spec;
-      version = "latest";
-    }
-  }
-  const sanitizedName = name.replace(/\//g, "__").replace(/^@/, "");
-  const installDir = `npm/${sanitizedName}`;
-  const fullId = id;
-  const installed = isPackageInstalled(fullId);
-  return {
-    id: fullId,
-    kind: "binary",
-    name,
-    version,
-    description: `Dynamic npm package: ${name}`,
-    installType: "npm",
-    npmPackage: name,
-    installDir,
-    installed,
-    dependencies: [],
-    source: {
-      type: "npm",
-      spec
-    },
-    // bins will be discovered after install by installer
-    bins: null
-  };
-}
-async function resolveDependencies(pkg) {
-  const dependencies = [];
-  const runtimeVal = pkg.runtime === "binary" ? null : pkg.runtime;
-  const runtimes = pkg.requires?.runtimes || (runtimeVal ? [runtimeVal] : []);
-  for (const runtime of runtimes) {
-    const runtimeId = runtime.startsWith("runtime:") ? runtime : `runtime:${runtime}`;
-    const runtimePkg = await getInstallableRegistryPackage(runtimeId);
-    if (runtimePkg) {
-      dependencies.push({
-        ...runtimePkg,
-        id: runtimeId,
-        kind: "runtime",
-        installed: isPackageInstalled(runtimeId),
-        dependencies: []
-      });
-    }
-  }
-  const binaries = pkg.requires?.binaries || pkg.requires?.tools || [];
-  for (const binary of binaries) {
-    const binaryId = binary.startsWith("binary:") ? binary : binary.startsWith("tool:") ? binary.replace(/^tool:/, "binary:") : `binary:${binary}`;
-    const binaryPkg = await getInstallableRegistryPackage(binaryId);
-    if (binaryPkg) {
-      dependencies.push({
-        ...binaryPkg,
-        id: binaryId,
-        kind: "binary",
-        installed: isPackageInstalled(binaryId),
-        dependencies: []
-      });
-    }
-  }
-  const agents = pkg.requires?.agents || [];
-  for (const agent of agents) {
-    const agentId = agent.startsWith("agent:") ? agent : `agent:${agent}`;
-    const agentPkg = await getInstallableRegistryPackage(agentId);
-    if (agentPkg) {
-      dependencies.push({
-        ...agentPkg,
-        id: agentId,
-        kind: "agent",
-        installed: isPackageInstalled(agentId),
-        dependencies: []
-      });
-    }
-  }
-  const requiredStacks = pkg.requires?.stacks || [];
-  for (const stackName of requiredStacks) {
-    const stackId = stackName.startsWith("stack:") ? stackName : `stack:${stackName}`;
-    const stackPkg = await getInstallableRegistryPackage(stackId);
-    if (stackPkg) {
-      const stackDependencies = await resolveDependencies(stackPkg);
-      dependencies.push({
-        ...stackPkg,
-        id: stackId,
-        kind: "stack",
-        installed: isPackageInstalled(stackId),
-        dependencies: stackDependencies
-      });
-    }
-  }
-  const requiredSkills = pkg.requires?.skills || [];
-  for (const skillName of requiredSkills) {
-    const skillId = skillName.startsWith("skill:") ? skillName : skillName.startsWith("prompt:") ? skillName.replace(/^prompt:/, "skill:") : `skill:${skillName}`;
-    const skillPkg = await getInstallableRegistryPackage(skillId);
-    if (skillPkg) {
-      dependencies.push({
-        ...skillPkg,
-        id: skillId,
-        kind: "skill",
-        installed: isPackageInstalled(skillId),
-        dependencies: []
-      });
-    }
-  }
-  return dependencies;
-}
-function checkDependencies(resolved) {
-  const missing = [];
-  function check(pkg) {
-    for (const dep of pkg.dependencies || []) {
-      if (!dep.installed) {
-        missing.push(dep);
-      }
-      check(dep);
-    }
-  }
-  check(resolved);
-  return {
-    satisfied: missing.length === 0,
-    missing
-  };
-}
-function getInstallOrder(resolved) {
-  const order = [];
-  const visited = /* @__PURE__ */ new Set();
-  function visit(pkg) {
-    if (visited.has(pkg.id)) return;
-    visited.add(pkg.id);
-    for (const dep of pkg.dependencies || []) {
-      visit(dep);
-    }
-    if (!pkg.installed) {
-      order.push(pkg);
-    }
-  }
-  visit(resolved);
-  return order;
-}
-async function resolvePackages(ids) {
-  return Promise.all(ids.map((id) => resolvePackage(id)));
-}
-function satisfiesVersion(version, constraint) {
-  if (!constraint) return true;
-  const [major, minor = 0, patch = 0] = version.split(".").map(Number);
-  const match = constraint.match(/^(>=|<=|>|<|=)?(\d+)(?:\.(\d+))?(?:\.(\d+))?$/);
-  if (!match) return true;
-  const [, op = "=", cMajor, cMinor = "0", cPatch = "0"] = match;
-  const constraintVersion = [Number(cMajor), Number(cMinor), Number(cPatch)];
-  const actualVersion = [major, minor, patch];
-  const cmp = compareVersions(actualVersion, constraintVersion);
-  switch (op) {
-    case ">=":
-      return cmp >= 0;
-    case "<=":
-      return cmp <= 0;
-    case ">":
-      return cmp > 0;
-    case "<":
-      return cmp < 0;
-    case "=":
-      return cmp === 0;
-    default:
-      return cmp === 0;
-  }
-}
-function compareVersions(a, b) {
-  for (let i = 0; i < 3; i++) {
-    if (a[i] > b[i]) return 1;
-    if (a[i] < b[i]) return -1;
-  }
-  return 0;
-}
-var SINGLE_FILE_KINDS;
-var init_resolver = __esm({
-  "packages/core/src/resolver.js"() {
-    init_src3();
-    init_src();
-    SINGLE_FILE_KINDS = /* @__PURE__ */ new Set(["skill", "prompt", "workflow"]);
   }
 });
 
@@ -2248,17 +2348,17 @@ var require_visit = __commonJS({
     visit.BREAK = BREAK;
     visit.SKIP = SKIP;
     visit.REMOVE = REMOVE;
-    function visit_(key, node, visitor, path52) {
-      const ctrl = callVisitor(key, node, visitor, path52);
+    function visit_(key, node, visitor, path53) {
+      const ctrl = callVisitor(key, node, visitor, path53);
       if (identity.isNode(ctrl) || identity.isPair(ctrl)) {
-        replaceNode(key, path52, ctrl);
-        return visit_(key, ctrl, visitor, path52);
+        replaceNode(key, path53, ctrl);
+        return visit_(key, ctrl, visitor, path53);
       }
       if (typeof ctrl !== "symbol") {
         if (identity.isCollection(node)) {
-          path52 = Object.freeze(path52.concat(node));
+          path53 = Object.freeze(path53.concat(node));
           for (let i = 0; i < node.items.length; ++i) {
-            const ci = visit_(i, node.items[i], visitor, path52);
+            const ci = visit_(i, node.items[i], visitor, path53);
             if (typeof ci === "number")
               i = ci - 1;
             else if (ci === BREAK)
@@ -2269,13 +2369,13 @@ var require_visit = __commonJS({
             }
           }
         } else if (identity.isPair(node)) {
-          path52 = Object.freeze(path52.concat(node));
-          const ck = visit_("key", node.key, visitor, path52);
+          path53 = Object.freeze(path53.concat(node));
+          const ck = visit_("key", node.key, visitor, path53);
           if (ck === BREAK)
             return BREAK;
           else if (ck === REMOVE)
             node.key = null;
-          const cv = visit_("value", node.value, visitor, path52);
+          const cv = visit_("value", node.value, visitor, path53);
           if (cv === BREAK)
             return BREAK;
           else if (cv === REMOVE)
@@ -2296,17 +2396,17 @@ var require_visit = __commonJS({
     visitAsync.BREAK = BREAK;
     visitAsync.SKIP = SKIP;
     visitAsync.REMOVE = REMOVE;
-    async function visitAsync_(key, node, visitor, path52) {
-      const ctrl = await callVisitor(key, node, visitor, path52);
+    async function visitAsync_(key, node, visitor, path53) {
+      const ctrl = await callVisitor(key, node, visitor, path53);
       if (identity.isNode(ctrl) || identity.isPair(ctrl)) {
-        replaceNode(key, path52, ctrl);
-        return visitAsync_(key, ctrl, visitor, path52);
+        replaceNode(key, path53, ctrl);
+        return visitAsync_(key, ctrl, visitor, path53);
       }
       if (typeof ctrl !== "symbol") {
         if (identity.isCollection(node)) {
-          path52 = Object.freeze(path52.concat(node));
+          path53 = Object.freeze(path53.concat(node));
           for (let i = 0; i < node.items.length; ++i) {
-            const ci = await visitAsync_(i, node.items[i], visitor, path52);
+            const ci = await visitAsync_(i, node.items[i], visitor, path53);
             if (typeof ci === "number")
               i = ci - 1;
             else if (ci === BREAK)
@@ -2317,13 +2417,13 @@ var require_visit = __commonJS({
             }
           }
         } else if (identity.isPair(node)) {
-          path52 = Object.freeze(path52.concat(node));
-          const ck = await visitAsync_("key", node.key, visitor, path52);
+          path53 = Object.freeze(path53.concat(node));
+          const ck = await visitAsync_("key", node.key, visitor, path53);
           if (ck === BREAK)
             return BREAK;
           else if (ck === REMOVE)
             node.key = null;
-          const cv = await visitAsync_("value", node.value, visitor, path52);
+          const cv = await visitAsync_("value", node.value, visitor, path53);
           if (cv === BREAK)
             return BREAK;
           else if (cv === REMOVE)
@@ -2350,23 +2450,23 @@ var require_visit = __commonJS({
       }
       return visitor;
     }
-    function callVisitor(key, node, visitor, path52) {
+    function callVisitor(key, node, visitor, path53) {
       if (typeof visitor === "function")
-        return visitor(key, node, path52);
+        return visitor(key, node, path53);
       if (identity.isMap(node))
-        return visitor.Map?.(key, node, path52);
+        return visitor.Map?.(key, node, path53);
       if (identity.isSeq(node))
-        return visitor.Seq?.(key, node, path52);
+        return visitor.Seq?.(key, node, path53);
       if (identity.isPair(node))
-        return visitor.Pair?.(key, node, path52);
+        return visitor.Pair?.(key, node, path53);
       if (identity.isScalar(node))
-        return visitor.Scalar?.(key, node, path52);
+        return visitor.Scalar?.(key, node, path53);
       if (identity.isAlias(node))
-        return visitor.Alias?.(key, node, path52);
+        return visitor.Alias?.(key, node, path53);
       return void 0;
     }
-    function replaceNode(key, path52, node) {
-      const parent = path52[path52.length - 1];
+    function replaceNode(key, path53, node) {
+      const parent = path53[path53.length - 1];
       if (identity.isCollection(parent)) {
         parent.items[key] = node;
       } else if (identity.isPair(parent)) {
@@ -2974,10 +3074,10 @@ var require_Collection = __commonJS({
     var createNode = require_createNode();
     var identity = require_identity();
     var Node = require_Node();
-    function collectionFromPath(schema, path52, value) {
+    function collectionFromPath(schema, path53, value) {
       let v = value;
-      for (let i = path52.length - 1; i >= 0; --i) {
-        const k = path52[i];
+      for (let i = path53.length - 1; i >= 0; --i) {
+        const k = path53[i];
         if (typeof k === "number" && Number.isInteger(k) && k >= 0) {
           const a = [];
           a[k] = v;
@@ -2996,7 +3096,7 @@ var require_Collection = __commonJS({
         sourceObjects: /* @__PURE__ */ new Map()
       });
     }
-    var isEmptyPath = (path52) => path52 == null || typeof path52 === "object" && !!path52[Symbol.iterator]().next().done;
+    var isEmptyPath = (path53) => path53 == null || typeof path53 === "object" && !!path53[Symbol.iterator]().next().done;
     var Collection = class extends Node.NodeBase {
       constructor(type, schema) {
         super(type);
@@ -3026,11 +3126,11 @@ var require_Collection = __commonJS({
        * be a Pair instance or a `{ key, value }` object, which may not have a key
        * that already exists in the map.
        */
-      addIn(path52, value) {
-        if (isEmptyPath(path52))
+      addIn(path53, value) {
+        if (isEmptyPath(path53))
           this.add(value);
         else {
-          const [key, ...rest] = path52;
+          const [key, ...rest] = path53;
           const node = this.get(key, true);
           if (identity.isCollection(node))
             node.addIn(rest, value);
@@ -3044,8 +3144,8 @@ var require_Collection = __commonJS({
        * Removes a value from the collection.
        * @returns `true` if the item was found and removed.
        */
-      deleteIn(path52) {
-        const [key, ...rest] = path52;
+      deleteIn(path53) {
+        const [key, ...rest] = path53;
         if (rest.length === 0)
           return this.delete(key);
         const node = this.get(key, true);
@@ -3059,8 +3159,8 @@ var require_Collection = __commonJS({
        * scalar values from their surrounding node; to disable set `keepScalar` to
        * `true` (collections are always returned intact).
        */
-      getIn(path52, keepScalar) {
-        const [key, ...rest] = path52;
+      getIn(path53, keepScalar) {
+        const [key, ...rest] = path53;
         const node = this.get(key, true);
         if (rest.length === 0)
           return !keepScalar && identity.isScalar(node) ? node.value : node;
@@ -3078,8 +3178,8 @@ var require_Collection = __commonJS({
       /**
        * Checks if the collection includes a value with the key `key`.
        */
-      hasIn(path52) {
-        const [key, ...rest] = path52;
+      hasIn(path53) {
+        const [key, ...rest] = path53;
         if (rest.length === 0)
           return this.has(key);
         const node = this.get(key, true);
@@ -3089,8 +3189,8 @@ var require_Collection = __commonJS({
        * Sets a value in this collection. For `!!set`, `value` needs to be a
        * boolean to add/remove the item from the set.
        */
-      setIn(path52, value) {
-        const [key, ...rest] = path52;
+      setIn(path53, value) {
+        const [key, ...rest] = path53;
         if (rest.length === 0) {
           this.set(key, value);
         } else {
@@ -5594,9 +5694,9 @@ var require_Document = __commonJS({
           this.contents.add(value);
       }
       /** Adds a value to the document. */
-      addIn(path52, value) {
+      addIn(path53, value) {
         if (assertCollection(this.contents))
-          this.contents.addIn(path52, value);
+          this.contents.addIn(path53, value);
       }
       /**
        * Create a new `Alias` node, ensuring that the target `node` has the required anchor.
@@ -5671,14 +5771,14 @@ var require_Document = __commonJS({
        * Removes a value from the document.
        * @returns `true` if the item was found and removed.
        */
-      deleteIn(path52) {
-        if (Collection.isEmptyPath(path52)) {
+      deleteIn(path53) {
+        if (Collection.isEmptyPath(path53)) {
           if (this.contents == null)
             return false;
           this.contents = null;
           return true;
         }
-        return assertCollection(this.contents) ? this.contents.deleteIn(path52) : false;
+        return assertCollection(this.contents) ? this.contents.deleteIn(path53) : false;
       }
       /**
        * Returns item at `key`, or `undefined` if not found. By default unwraps
@@ -5693,10 +5793,10 @@ var require_Document = __commonJS({
        * scalar values from their surrounding node; to disable set `keepScalar` to
        * `true` (collections are always returned intact).
        */
-      getIn(path52, keepScalar) {
-        if (Collection.isEmptyPath(path52))
+      getIn(path53, keepScalar) {
+        if (Collection.isEmptyPath(path53))
           return !keepScalar && identity.isScalar(this.contents) ? this.contents.value : this.contents;
-        return identity.isCollection(this.contents) ? this.contents.getIn(path52, keepScalar) : void 0;
+        return identity.isCollection(this.contents) ? this.contents.getIn(path53, keepScalar) : void 0;
       }
       /**
        * Checks if the document includes a value with the key `key`.
@@ -5707,10 +5807,10 @@ var require_Document = __commonJS({
       /**
        * Checks if the document includes a value at `path`.
        */
-      hasIn(path52) {
-        if (Collection.isEmptyPath(path52))
+      hasIn(path53) {
+        if (Collection.isEmptyPath(path53))
           return this.contents !== void 0;
-        return identity.isCollection(this.contents) ? this.contents.hasIn(path52) : false;
+        return identity.isCollection(this.contents) ? this.contents.hasIn(path53) : false;
       }
       /**
        * Sets a value in this document. For `!!set`, `value` needs to be a
@@ -5727,13 +5827,13 @@ var require_Document = __commonJS({
        * Sets a value in this document. For `!!set`, `value` needs to be a
        * boolean to add/remove the item from the set.
        */
-      setIn(path52, value) {
-        if (Collection.isEmptyPath(path52)) {
+      setIn(path53, value) {
+        if (Collection.isEmptyPath(path53)) {
           this.contents = value;
         } else if (this.contents == null) {
-          this.contents = Collection.collectionFromPath(this.schema, Array.from(path52), value);
+          this.contents = Collection.collectionFromPath(this.schema, Array.from(path53), value);
         } else if (assertCollection(this.contents)) {
-          this.contents.setIn(path52, value);
+          this.contents.setIn(path53, value);
         }
       }
       /**
@@ -6119,10 +6219,10 @@ var require_resolve_block_map = __commonJS({
       let offset = bm.offset;
       let commentEnd = null;
       for (const collItem of bm.items) {
-        const { start, key, sep: sep2, value } = collItem;
+        const { start, key, sep: sep3, value } = collItem;
         const keyProps = resolveProps.resolveProps(start, {
           indicator: "explicit-key-ind",
-          next: key ?? sep2?.[0],
+          next: key ?? sep3?.[0],
           offset,
           onError,
           parentIndent: bm.indent,
@@ -6136,7 +6236,7 @@ var require_resolve_block_map = __commonJS({
             else if ("indent" in key && key.indent !== bm.indent)
               onError(offset, "BAD_INDENT", startColMsg);
           }
-          if (!keyProps.anchor && !keyProps.tag && !sep2) {
+          if (!keyProps.anchor && !keyProps.tag && !sep3) {
             commentEnd = keyProps.end;
             if (keyProps.comment) {
               if (map.comment)
@@ -6160,7 +6260,7 @@ var require_resolve_block_map = __commonJS({
         ctx.atKey = false;
         if (utilMapIncludes.mapIncludes(ctx, map.items, keyNode))
           onError(keyStart, "DUPLICATE_KEY", "Map keys must be unique");
-        const valueProps = resolveProps.resolveProps(sep2 ?? [], {
+        const valueProps = resolveProps.resolveProps(sep3 ?? [], {
           indicator: "map-value-ind",
           next: value,
           offset: keyNode.range[2],
@@ -6176,7 +6276,7 @@ var require_resolve_block_map = __commonJS({
             if (ctx.options.strict && keyProps.start < valueProps.found.offset - 1024)
               onError(keyNode.range, "KEY_OVER_1024_CHARS", "The : indicator must be at most 1024 chars after the start of an implicit block mapping key");
           }
-          const valueNode = value ? composeNode(ctx, value, valueProps, onError) : composeEmptyNode(ctx, offset, sep2, null, valueProps, onError);
+          const valueNode = value ? composeNode(ctx, value, valueProps, onError) : composeEmptyNode(ctx, offset, sep3, null, valueProps, onError);
           if (ctx.schema.compat)
             utilFlowIndentCheck.flowIndentCheck(bm.indent, value, onError);
           offset = valueNode.range[2];
@@ -6267,7 +6367,7 @@ var require_resolve_end = __commonJS({
       let comment = "";
       if (end) {
         let hasSpace = false;
-        let sep2 = "";
+        let sep3 = "";
         for (const token of end) {
           const { source, type } = token;
           switch (type) {
@@ -6281,13 +6381,13 @@ var require_resolve_end = __commonJS({
               if (!comment)
                 comment = cb;
               else
-                comment += sep2 + cb;
-              sep2 = "";
+                comment += sep3 + cb;
+              sep3 = "";
               break;
             }
             case "newline":
               if (comment)
-                sep2 += source;
+                sep3 += source;
               hasSpace = true;
               break;
             default:
@@ -6330,18 +6430,18 @@ var require_resolve_flow_collection = __commonJS({
       let offset = fc.offset + fc.start.source.length;
       for (let i = 0; i < fc.items.length; ++i) {
         const collItem = fc.items[i];
-        const { start, key, sep: sep2, value } = collItem;
+        const { start, key, sep: sep3, value } = collItem;
         const props = resolveProps.resolveProps(start, {
           flow: fcName,
           indicator: "explicit-key-ind",
-          next: key ?? sep2?.[0],
+          next: key ?? sep3?.[0],
           offset,
           onError,
           parentIndent: fc.indent,
           startOnNewline: false
         });
         if (!props.found) {
-          if (!props.anchor && !props.tag && !sep2 && !value) {
+          if (!props.anchor && !props.tag && !sep3 && !value) {
             if (i === 0 && props.comma)
               onError(props.comma, "UNEXPECTED_TOKEN", `Unexpected , in ${fcName}`);
             else if (i < fc.items.length - 1)
@@ -6395,8 +6495,8 @@ var require_resolve_flow_collection = __commonJS({
             }
           }
         }
-        if (!isMap && !sep2 && !props.found) {
-          const valueNode = value ? composeNode(ctx, value, props, onError) : composeEmptyNode(ctx, props.end, sep2, null, props, onError);
+        if (!isMap && !sep3 && !props.found) {
+          const valueNode = value ? composeNode(ctx, value, props, onError) : composeEmptyNode(ctx, props.end, sep3, null, props, onError);
           coll.items.push(valueNode);
           offset = valueNode.range[2];
           if (isBlock(value))
@@ -6408,7 +6508,7 @@ var require_resolve_flow_collection = __commonJS({
           if (isBlock(key))
             onError(keyNode.range, "BLOCK_IN_FLOW", blockMsg);
           ctx.atKey = false;
-          const valueProps = resolveProps.resolveProps(sep2 ?? [], {
+          const valueProps = resolveProps.resolveProps(sep3 ?? [], {
             flow: fcName,
             indicator: "map-value-ind",
             next: value,
@@ -6419,8 +6519,8 @@ var require_resolve_flow_collection = __commonJS({
           });
           if (valueProps.found) {
             if (!isMap && !props.found && ctx.options.strict) {
-              if (sep2)
-                for (const st of sep2) {
+              if (sep3)
+                for (const st of sep3) {
                   if (st === valueProps.found)
                     break;
                   if (st.type === "newline") {
@@ -6437,7 +6537,7 @@ var require_resolve_flow_collection = __commonJS({
             else
               onError(valueProps.start, "MISSING_CHAR", `Missing , or : between ${fcName} items`);
           }
-          const valueNode = value ? composeNode(ctx, value, valueProps, onError) : valueProps.found ? composeEmptyNode(ctx, valueProps.end, sep2, null, valueProps, onError) : null;
+          const valueNode = value ? composeNode(ctx, value, valueProps, onError) : valueProps.found ? composeEmptyNode(ctx, valueProps.end, sep3, null, valueProps, onError) : null;
           if (valueNode) {
             if (isBlock(value))
               onError(valueNode.range, "BLOCK_IN_FLOW", blockMsg);
@@ -6617,7 +6717,7 @@ var require_resolve_block_scalar = __commonJS({
           chompStart = i + 1;
       }
       let value = "";
-      let sep2 = "";
+      let sep3 = "";
       let prevMoreIndented = false;
       for (let i = 0; i < contentStart; ++i)
         value += lines[i][0].slice(trimIndent) + "\n";
@@ -6634,24 +6734,24 @@ var require_resolve_block_scalar = __commonJS({
           indent = "";
         }
         if (type === Scalar.Scalar.BLOCK_LITERAL) {
-          value += sep2 + indent.slice(trimIndent) + content;
-          sep2 = "\n";
+          value += sep3 + indent.slice(trimIndent) + content;
+          sep3 = "\n";
         } else if (indent.length > trimIndent || content[0] === "	") {
-          if (sep2 === " ")
-            sep2 = "\n";
-          else if (!prevMoreIndented && sep2 === "\n")
-            sep2 = "\n\n";
-          value += sep2 + indent.slice(trimIndent) + content;
-          sep2 = "\n";
+          if (sep3 === " ")
+            sep3 = "\n";
+          else if (!prevMoreIndented && sep3 === "\n")
+            sep3 = "\n\n";
+          value += sep3 + indent.slice(trimIndent) + content;
+          sep3 = "\n";
           prevMoreIndented = true;
         } else if (content === "") {
-          if (sep2 === "\n")
+          if (sep3 === "\n")
             value += "\n";
           else
-            sep2 = "\n";
+            sep3 = "\n";
         } else {
-          value += sep2 + content;
-          sep2 = " ";
+          value += sep3 + content;
+          sep3 = " ";
           prevMoreIndented = false;
         }
       }
@@ -6833,25 +6933,25 @@ var require_resolve_flow_scalar = __commonJS({
       if (!match)
         return source;
       let res = match[1];
-      let sep2 = " ";
+      let sep3 = " ";
       let pos = first.lastIndex;
       line.lastIndex = pos;
       while (match = line.exec(source)) {
         if (match[1] === "") {
-          if (sep2 === "\n")
-            res += sep2;
+          if (sep3 === "\n")
+            res += sep3;
           else
-            sep2 = "\n";
+            sep3 = "\n";
         } else {
-          res += sep2 + match[1];
-          sep2 = " ";
+          res += sep3 + match[1];
+          sep3 = " ";
         }
         pos = line.lastIndex;
       }
       const last = /[ \t]*(.*)/sy;
       last.lastIndex = pos;
       match = last.exec(source);
-      return res + sep2 + (match?.[1] ?? "");
+      return res + sep3 + (match?.[1] ?? "");
     }
     function doubleQuotedValue(source, onError) {
       let res = "";
@@ -7653,14 +7753,14 @@ var require_cst_stringify = __commonJS({
         }
       }
     }
-    function stringifyItem({ start, key, sep: sep2, value }) {
+    function stringifyItem({ start, key, sep: sep3, value }) {
       let res = "";
       for (const st of start)
         res += st.source;
       if (key)
         res += stringifyToken(key);
-      if (sep2)
-        for (const st of sep2)
+      if (sep3)
+        for (const st of sep3)
           res += st.source;
       if (value)
         res += stringifyToken(value);
@@ -7685,9 +7785,9 @@ var require_cst_visit = __commonJS({
     visit.BREAK = BREAK;
     visit.SKIP = SKIP;
     visit.REMOVE = REMOVE;
-    visit.itemAtPath = (cst, path52) => {
+    visit.itemAtPath = (cst, path53) => {
       let item = cst;
-      for (const [field, index] of path52) {
+      for (const [field, index] of path53) {
         const tok = item?.[field];
         if (tok && "items" in tok) {
           item = tok.items[index];
@@ -7696,23 +7796,23 @@ var require_cst_visit = __commonJS({
       }
       return item;
     };
-    visit.parentCollection = (cst, path52) => {
-      const parent = visit.itemAtPath(cst, path52.slice(0, -1));
-      const field = path52[path52.length - 1][0];
+    visit.parentCollection = (cst, path53) => {
+      const parent = visit.itemAtPath(cst, path53.slice(0, -1));
+      const field = path53[path53.length - 1][0];
       const coll = parent?.[field];
       if (coll && "items" in coll)
         return coll;
       throw new Error("Parent collection not found");
     };
-    function _visit(path52, item, visitor) {
-      let ctrl = visitor(item, path52);
+    function _visit(path53, item, visitor) {
+      let ctrl = visitor(item, path53);
       if (typeof ctrl === "symbol")
         return ctrl;
       for (const field of ["key", "value"]) {
         const token = item[field];
         if (token && "items" in token) {
           for (let i = 0; i < token.items.length; ++i) {
-            const ci = _visit(Object.freeze(path52.concat([[field, i]])), token.items[i], visitor);
+            const ci = _visit(Object.freeze(path53.concat([[field, i]])), token.items[i], visitor);
             if (typeof ci === "number")
               i = ci - 1;
             else if (ci === BREAK)
@@ -7723,10 +7823,10 @@ var require_cst_visit = __commonJS({
             }
           }
           if (typeof ctrl === "function" && field === "key")
-            ctrl = ctrl(item, path52);
+            ctrl = ctrl(item, path53);
         }
       }
-      return typeof ctrl === "function" ? ctrl(item, path52) : ctrl;
+      return typeof ctrl === "function" ? ctrl(item, path53) : ctrl;
     }
     exports2.visit = visit;
   }
@@ -8810,18 +8910,18 @@ var require_parser = __commonJS({
         if (this.type === "map-value-ind") {
           const prev = getPrevProps(this.peek(2));
           const start = getFirstKeyStartProps(prev);
-          let sep2;
+          let sep3;
           if (scalar.end) {
-            sep2 = scalar.end;
-            sep2.push(this.sourceToken);
+            sep3 = scalar.end;
+            sep3.push(this.sourceToken);
             delete scalar.end;
           } else
-            sep2 = [this.sourceToken];
+            sep3 = [this.sourceToken];
           const map = {
             type: "block-map",
             offset: scalar.offset,
             indent: scalar.indent,
-            items: [{ start, key: scalar, sep: sep2 }]
+            items: [{ start, key: scalar, sep: sep3 }]
           };
           this.onKeyLine = true;
           this.stack[this.stack.length - 1] = map;
@@ -8974,15 +9074,15 @@ var require_parser = __commonJS({
                 } else if (isFlowToken(it.key) && !includesToken(it.sep, "newline")) {
                   const start2 = getFirstKeyStartProps(it.start);
                   const key = it.key;
-                  const sep2 = it.sep;
-                  sep2.push(this.sourceToken);
+                  const sep3 = it.sep;
+                  sep3.push(this.sourceToken);
                   delete it.key;
                   delete it.sep;
                   this.stack.push({
                     type: "block-map",
                     offset: this.offset,
                     indent: this.indent,
-                    items: [{ start: start2, key, sep: sep2 }]
+                    items: [{ start: start2, key, sep: sep3 }]
                   });
                 } else if (start.length > 0) {
                   it.sep = it.sep.concat(start, this.sourceToken);
@@ -9011,14 +9111,14 @@ var require_parser = __commonJS({
             case "scalar":
             case "single-quoted-scalar":
             case "double-quoted-scalar": {
-              const fs51 = this.flowScalar(this.type);
+              const fs52 = this.flowScalar(this.type);
               if (atNextItem || it.value) {
-                map.items.push({ start, key: fs51, sep: [] });
+                map.items.push({ start, key: fs52, sep: [] });
                 this.onKeyLine = true;
               } else if (it.sep) {
-                this.stack.push(fs51);
+                this.stack.push(fs52);
               } else {
-                Object.assign(it, { key: fs51, sep: [] });
+                Object.assign(it, { key: fs52, sep: [] });
                 this.onKeyLine = true;
               }
               return;
@@ -9146,13 +9246,13 @@ var require_parser = __commonJS({
             case "scalar":
             case "single-quoted-scalar":
             case "double-quoted-scalar": {
-              const fs51 = this.flowScalar(this.type);
+              const fs52 = this.flowScalar(this.type);
               if (!it || it.value)
-                fc.items.push({ start: [], key: fs51, sep: [] });
+                fc.items.push({ start: [], key: fs52, sep: [] });
               else if (it.sep)
-                this.stack.push(fs51);
+                this.stack.push(fs52);
               else
-                Object.assign(it, { key: fs51, sep: [] });
+                Object.assign(it, { key: fs52, sep: [] });
               return;
             }
             case "flow-map-end":
@@ -9176,13 +9276,13 @@ var require_parser = __commonJS({
             const prev = getPrevProps(parent);
             const start = getFirstKeyStartProps(prev);
             fixFlowSeqItems(fc);
-            const sep2 = fc.end.splice(1, fc.end.length);
-            sep2.push(this.sourceToken);
+            const sep3 = fc.end.splice(1, fc.end.length);
+            sep3.push(this.sourceToken);
             const map = {
               type: "block-map",
               offset: fc.offset,
               indent: fc.indent,
-              items: [{ start, key: fc, sep: sep2 }]
+              items: [{ start, key: fc, sep: sep3 }]
             };
             this.onKeyLine = true;
             this.stack[this.stack.length - 1] = map;
@@ -9461,18 +9561,31 @@ var require_dist = __commonJS({
 });
 
 // packages/core/src/lockfile.js
-async function writeLockfile(resolved) {
+async function writeLockfile(resolved, options = {}) {
   const lockPath = getLockfilePath(resolved.id);
   const lockDir = import_path4.default.dirname(lockPath);
   if (!import_fs3.default.existsSync(lockDir)) {
     import_fs3.default.mkdirSync(lockDir, { recursive: true });
   }
+  const installPath = options.installPath || getPackagePath(resolved.id);
+  const installLayout = import_fs3.default.lstatSync(installPath).isDirectory() ? "directory" : "file";
   const lockfile = {
     id: resolved.id,
     version: resolved.version,
     name: resolved.name,
     installedAt: (/* @__PURE__ */ new Date()).toISOString(),
-    checksum: await computeChecksum(resolved),
+    checksum: await computeInstalledContentChecksum(installPath),
+    installLayout,
+    ...resolved.source?.type === "github" ? {
+      source: {
+        type: "github",
+        requestedUrl: resolved.source.requestedUrl,
+        repository: resolved.source.repository,
+        requestedRef: resolved.source.requestedRef,
+        resolvedCommit: resolved.source.resolvedCommit,
+        path: resolved.source.path
+      }
+    } : {},
     dependencies: (resolved.dependencies || []).map((dep) => ({
       id: dep.id,
       version: dep.version,
@@ -9508,6 +9621,15 @@ function deleteLockfile(id) {
     import_fs3.default.unlinkSync(lockPath);
   }
 }
+function restoreLockfile(id, snapshot) {
+  const lockPath = getLockfilePath(id);
+  if (!snapshot) {
+    deleteLockfile(id);
+    return;
+  }
+  import_fs3.default.mkdirSync(import_path4.default.dirname(lockPath), { recursive: true });
+  import_fs3.default.writeFileSync(lockPath, (0, import_yaml.stringify)(snapshot, { lineWidth: 0 }));
+}
 async function verifyLockfile(id) {
   const lockfile = readLockfile(id);
   if (!lockfile) {
@@ -9523,19 +9645,54 @@ async function verifyLockfile(id) {
       errors.push(`Missing dependency: ${dep.id}`);
     }
   }
+  if (/^[a-f0-9]{64}$/i.test(lockfile.checksum || "")) {
+    const [kind, name] = parsePackageId(id);
+    const installPath = kind === "skill" && (lockfile.installLayout === "directory" || lockfile.source?.type === "github") ? import_path4.default.join(PATHS.skills, name) : getPackagePath(id);
+    const checksum = await computeInstalledContentChecksum(installPath);
+    if (checksum !== lockfile.checksum) {
+      errors.push("Installed package content checksum does not match lockfile");
+    }
+  }
   return {
     valid: errors.length === 0,
     errors
   };
 }
-async function computeChecksum(pkg) {
-  const crypto7 = await import("crypto");
-  const data = JSON.stringify({
-    id: pkg.id,
-    version: pkg.version,
-    name: pkg.name
-  });
-  return crypto7.createHash("sha256").update(data).digest("hex").slice(0, 16);
+function updateContentHash(hash, rootPath, currentPath) {
+  const relativePath = import_path4.default.relative(rootPath, currentPath).split(import_path4.default.sep).join("/");
+  const stat = import_fs3.default.lstatSync(currentPath);
+  if (stat.isSymbolicLink()) {
+    throw new Error(`Cannot checksum symbolic link in installed package: ${relativePath}`);
+  }
+  if (stat.isFile()) {
+    const executable = (stat.mode & 73) !== 0 ? "executable" : "regular";
+    hash.update(`file\0${relativePath}\0${stat.size}\0${executable}\0`);
+    hash.update(import_fs3.default.readFileSync(currentPath));
+    return;
+  }
+  if (!stat.isDirectory()) {
+    throw new Error(`Cannot checksum unsupported installed package entry: ${relativePath}`);
+  }
+  hash.update(`dir\0${relativePath}\0`);
+  for (const entry of import_fs3.default.readdirSync(currentPath).sort()) {
+    if (CHECKSUM_IGNORED_NAMES.has(entry) || currentPath === rootPath && CHECKSUM_IGNORED_ROOT_NAMES.has(entry)) continue;
+    updateContentHash(hash, rootPath, import_path4.default.join(currentPath, entry));
+  }
+}
+async function computeInstalledContentChecksum(installPath) {
+  if (!import_fs3.default.existsSync(installPath)) {
+    throw new Error(`Cannot checksum missing installed package: ${installPath}`);
+  }
+  const hash = import_node_crypto.default.createHash("sha256");
+  const stat = import_fs3.default.lstatSync(installPath);
+  if (stat.isFile()) {
+    const executable = (stat.mode & 73) !== 0 ? "executable" : "regular";
+    hash.update(`file\0.\0${executable}\0`);
+    hash.update(import_fs3.default.readFileSync(installPath));
+  } else {
+    updateContentHash(hash, installPath, installPath);
+  }
+  return hash.digest("hex");
 }
 function getAllLockfiles() {
   const lockfiles = [];
@@ -9576,13 +9733,425 @@ async function cleanOrphanedLockfiles() {
   }
   return removed;
 }
-var import_fs3, import_path4, import_yaml;
+var import_fs3, import_path4, import_node_crypto, import_yaml, CHECKSUM_IGNORED_NAMES, CHECKSUM_IGNORED_ROOT_NAMES;
 var init_lockfile = __esm({
   "packages/core/src/lockfile.js"() {
     import_fs3 = __toESM(require("fs"), 1);
     import_path4 = __toESM(require("path"), 1);
+    import_node_crypto = __toESM(require("node:crypto"), 1);
     import_yaml = __toESM(require_dist(), 1);
     init_src();
+    CHECKSUM_IGNORED_NAMES = /* @__PURE__ */ new Set([
+      ".DS_Store",
+      ".git",
+      ".venv",
+      "node_modules",
+      "venv"
+    ]);
+    CHECKSUM_IGNORED_ROOT_NAMES = /* @__PURE__ */ new Set(["outputs", "runs"]);
+  }
+});
+
+// packages/core/src/resolver.js
+async function getInstallableRegistryPackage(id) {
+  const pkg = await getPackage(id);
+  if (!pkg) return null;
+  const isCanonicalV2Package = Boolean(pkg.delivery && pkg.install?.source);
+  let manifest = null;
+  if (pkg.path && !SINGLE_FILE_KINDS.has(pkg.kind) && !isCanonicalV2Package) {
+    manifest = await getManifest(pkg);
+  }
+  const merged = manifest ? { ...pkg, ...manifest } : pkg;
+  return isCanonicalV2Package ? resolveRegistryPackageForPlatform(merged, getPlatformArch()) : merged;
+}
+async function resolvePackage(id) {
+  if (id.startsWith("npm:")) {
+    return resolveDynamicNpm(id);
+  }
+  if (isGitHubTreeUrl(id) || /^https?:\/\//i.test(id)) {
+    return resolveGitHubPackage(id);
+  }
+  const mergedPkg = await getInstallableRegistryPackage(id);
+  if (!mergedPkg) {
+    throw new Error(`Package not found: ${id}`);
+  }
+  return buildResolvedPackage(mergedPkg, void 0, id);
+}
+async function buildResolvedPackage(mergedPkg, relatedSkillsOverride, requestedId = mergedPkg.id) {
+  const fullId = mergedPkg.id?.includes(":") ? mergedPkg.id : `${mergedPkg.kind}:${mergedPkg.id || String(requestedId || "").split(":").pop()}`;
+  const installed = typeof mergedPkg.installed === "boolean" ? mergedPkg.installed : isPackageInstalled(fullId);
+  const dependencies = await resolveDependencies(mergedPkg);
+  const relatedSkills = relatedSkillsOverride || await resolveRelatedSkills(mergedPkg);
+  return {
+    id: fullId,
+    kind: mergedPkg.kind,
+    name: mergedPkg.name,
+    version: mergedPkg.version,
+    path: mergedPkg.path,
+    description: mergedPkg.description,
+    runtime: mergedPkg.runtime,
+    entry: mergedPkg.entry,
+    installed,
+    sourceMismatch: mergedPkg.sourceMismatch === true,
+    source: mergedPkg.source,
+    dependencies,
+    requires: mergedPkg.requires,
+    related: mergedPkg.related,
+    relatedSkills,
+    // Install-related properties (from canonical manifest)
+    npmPackage: mergedPkg.npmPackage,
+    pipPackage: mergedPkg.pipPackage,
+    postInstall: mergedPkg.postInstall,
+    command: mergedPkg.command,
+    binary: mergedPkg.binary,
+    bins: mergedPkg.bins,
+    binaries: mergedPkg.binaries,
+    // backward compat
+    installDir: mergedPkg.installDir,
+    installType: mergedPkg.installType,
+    nativeInstaller: mergedPkg.nativeInstaller,
+    nativeBinPath: mergedPkg.nativeBinPath,
+    // Canonical registry fields. Installed-state aliases above remain populated
+    // at the boundary so existing local manifests continue to work.
+    delivery: mergedPkg.delivery,
+    install: mergedPkg.install,
+    detect: mergedPkg.detect,
+    auth: mergedPkg.auth,
+    installHints: mergedPkg.installHints,
+    meta: mergedPkg.meta,
+    mcp: mergedPkg.mcp,
+    _resolved: mergedPkg._resolved
+  };
+}
+function isMatchingPinnedGitHubLock(lockfile, source) {
+  return Boolean(
+    lockfile?.source?.type === "github" && source?.type === "github" && lockfile.source.repository === source.repository && lockfile.source.resolvedCommit === source.resolvedCommit && lockfile.source.path === source.path
+  );
+}
+function getPinnedGitHubInstallState(id, source) {
+  if (!isPackageInstalled(id)) {
+    return { installed: false, sourceMismatch: false };
+  }
+  const installed = isMatchingPinnedGitHubLock(readLockfile(id), source);
+  return { installed, sourceMismatch: !installed };
+}
+function normalizeExternalSourcePath(value, label) {
+  if (typeof value !== "string" || !value) {
+    throw new Error(`${label} is required for a GitHub stack`);
+  }
+  const normalized = value.replaceAll("\\", "/");
+  const segments = normalized.split("/");
+  if (normalized.startsWith("/") || segments.some((segment) => !segment || segment === "." || segment === ".." || segment.includes("\0"))) {
+    throw new Error(`${label} must be a repository-relative path without traversal`);
+  }
+  return segments.join("/");
+}
+async function resolveGitHubPackage(url) {
+  const source = await resolveGitHubTreeSource(url);
+  const manifestPath = `${source.path}/manifest.json`;
+  const rawManifest = await readGitHubJsonFile(source, manifestPath);
+  const manifest = normalizeRegistryPackage(rawManifest, "stack");
+  if (manifest.kind !== "stack" || !EXTERNAL_STACK_ID_PATTERN.test(manifest.id)) {
+    throw new Error("GitHub tree manifest must use a canonical stack package id");
+  }
+  const operatorSkillId = normalizeSkillPackageId(manifest.related?.operatorSkill);
+  if (!operatorSkillId) {
+    throw new Error(`${manifest.id} requires related.operatorSkill`);
+  }
+  if (!EXTERNAL_SKILL_ID_PATTERN.test(operatorSkillId)) {
+    throw new Error(`${manifest.id} related.operatorSkill must use a canonical skill package id`);
+  }
+  const relatedSkillIds = Array.isArray(manifest.related?.skills) ? manifest.related.skills.map(normalizeSkillPackageId).filter(Boolean) : [];
+  if (!relatedSkillIds.includes(operatorSkillId)) {
+    throw new Error(`${manifest.id} related.operatorSkill must appear in related.skills`);
+  }
+  const operatorSkillPath = normalizeExternalSourcePath(
+    manifest.related?.operatorSkillPath,
+    "related.operatorSkillPath"
+  );
+  await assertGitHubDirectoryFile(source, operatorSkillPath, "SKILL.md");
+  const operatorSource = { ...source, path: operatorSkillPath };
+  const operatorInstallState = getPinnedGitHubInstallState(operatorSkillId, operatorSource);
+  const relatedSkills = [];
+  for (const skillId of relatedSkillIds) {
+    if (skillId === operatorSkillId) {
+      relatedSkills.push({
+        id: skillId,
+        kind: "skill",
+        name: skillId.slice("skill:".length),
+        version: manifest.version,
+        installed: operatorInstallState.installed,
+        sourceMismatch: operatorInstallState.sourceMismatch,
+        isOperator: true,
+        dependencies: [],
+        path: operatorSkillPath,
+        source: operatorSource
+      });
+      continue;
+    }
+    const skillPkg = await getPackage(skillId);
+    if (!skillPkg) continue;
+    relatedSkills.push({
+      id: skillId,
+      kind: "skill",
+      name: skillPkg.name,
+      version: skillPkg.version,
+      installed: isPackageInstalled(skillId),
+      isOperator: false,
+      dependencies: []
+    });
+  }
+  const stackInstallState = getPinnedGitHubInstallState(manifest.id, source);
+  return buildResolvedPackage({
+    ...manifest,
+    path: source.path,
+    source,
+    installed: stackInstallState.installed,
+    sourceMismatch: stackInstallState.sourceMismatch
+  }, relatedSkills);
+}
+function normalizeSkillPackageId(id) {
+  if (typeof id !== "string") return null;
+  const trimmed = id.trim();
+  if (!trimmed) return null;
+  if (trimmed.startsWith("skill:")) return trimmed;
+  if (trimmed.startsWith("prompt:")) return trimmed.replace(/^prompt:/, "skill:");
+  if (trimmed.includes(":")) return null;
+  return `skill:${trimmed}`;
+}
+async function resolveRelatedSkills(pkg) {
+  const relatedSkillIds = pkg.related?.skills || [];
+  const operatorSkillId = normalizeSkillPackageId(pkg.related?.operatorSkill);
+  if (pkg.kind === "stack" && !operatorSkillId) {
+    throw new Error(`${pkg.id || "Stack package"} requires related.operatorSkill`);
+  }
+  const normalizedRelatedSkillIds = relatedSkillIds.map((id) => normalizeSkillPackageId(id)).filter(Boolean);
+  if (operatorSkillId && !normalizedRelatedSkillIds.includes(operatorSkillId)) {
+    throw new Error(
+      `${pkg.id || "Stack package"} related.operatorSkill must appear in related.skills`
+    );
+  }
+  const relatedSkills = [];
+  const seen = /* @__PURE__ */ new Set();
+  for (const id of relatedSkillIds) {
+    const skillId = normalizeSkillPackageId(id);
+    if (!skillId || seen.has(skillId)) continue;
+    seen.add(skillId);
+    const skillPkg = await getPackage(skillId);
+    if (!skillPkg) {
+      if (skillId === operatorSkillId) {
+        throw new Error(`operator skill package not found: ${skillId}`);
+      }
+      continue;
+    }
+    relatedSkills.push({
+      id: skillId,
+      kind: "skill",
+      name: skillPkg.name,
+      version: skillPkg.version,
+      installed: isPackageInstalled(skillId),
+      isOperator: skillId === operatorSkillId,
+      dependencies: []
+    });
+  }
+  return relatedSkills;
+}
+async function resolveDynamicNpm(id) {
+  const spec = id.replace("npm:", "");
+  let name, version;
+  if (spec.startsWith("@")) {
+    const parts = spec.split("@");
+    if (parts.length >= 3) {
+      name = `@${parts[1]}`;
+      version = parts[2];
+    } else {
+      name = `@${parts[1]}`;
+      version = "latest";
+    }
+  } else {
+    const lastAt = spec.lastIndexOf("@");
+    if (lastAt > 0) {
+      name = spec.substring(0, lastAt);
+      version = spec.substring(lastAt + 1);
+    } else {
+      name = spec;
+      version = "latest";
+    }
+  }
+  const sanitizedName = name.replace(/\//g, "__").replace(/^@/, "");
+  const installDir = `npm/${sanitizedName}`;
+  const fullId = id;
+  const installed = isPackageInstalled(fullId);
+  return {
+    id: fullId,
+    kind: "binary",
+    name,
+    version,
+    description: `Dynamic npm package: ${name}`,
+    installType: "npm",
+    npmPackage: name,
+    installDir,
+    installed,
+    dependencies: [],
+    source: {
+      type: "npm",
+      spec
+    },
+    // bins will be discovered after install by installer
+    bins: null
+  };
+}
+async function resolveDependencies(pkg) {
+  const dependencies = [];
+  const runtimeVal = pkg.runtime === "binary" ? null : pkg.runtime;
+  const runtimes = pkg.requires?.runtimes || (runtimeVal ? [runtimeVal] : []);
+  for (const runtime of runtimes) {
+    const runtimeId = runtime.startsWith("runtime:") ? runtime : `runtime:${runtime}`;
+    const runtimePkg = await getInstallableRegistryPackage(runtimeId);
+    if (runtimePkg) {
+      dependencies.push({
+        ...runtimePkg,
+        id: runtimeId,
+        kind: "runtime",
+        installed: isPackageInstalled(runtimeId),
+        dependencies: []
+      });
+    }
+  }
+  const binaries = pkg.requires?.binaries || pkg.requires?.tools || [];
+  for (const binary of binaries) {
+    const binaryId = binary.startsWith("binary:") ? binary : binary.startsWith("tool:") ? binary.replace(/^tool:/, "binary:") : `binary:${binary}`;
+    const binaryPkg = await getInstallableRegistryPackage(binaryId);
+    if (binaryPkg) {
+      dependencies.push({
+        ...binaryPkg,
+        id: binaryId,
+        kind: "binary",
+        installed: isPackageInstalled(binaryId),
+        dependencies: []
+      });
+    }
+  }
+  const agents = pkg.requires?.agents || [];
+  for (const agent of agents) {
+    const agentId = agent.startsWith("agent:") ? agent : `agent:${agent}`;
+    const agentPkg = await getInstallableRegistryPackage(agentId);
+    if (agentPkg) {
+      dependencies.push({
+        ...agentPkg,
+        id: agentId,
+        kind: "agent",
+        installed: isPackageInstalled(agentId),
+        dependencies: []
+      });
+    }
+  }
+  const requiredStacks = pkg.requires?.stacks || [];
+  for (const stackName of requiredStacks) {
+    const stackId = stackName.startsWith("stack:") ? stackName : `stack:${stackName}`;
+    const stackPkg = await getInstallableRegistryPackage(stackId);
+    if (stackPkg) {
+      const stackDependencies = await resolveDependencies(stackPkg);
+      dependencies.push({
+        ...stackPkg,
+        id: stackId,
+        kind: "stack",
+        installed: isPackageInstalled(stackId),
+        dependencies: stackDependencies
+      });
+    }
+  }
+  const requiredSkills = pkg.requires?.skills || [];
+  for (const skillName of requiredSkills) {
+    const skillId = skillName.startsWith("skill:") ? skillName : skillName.startsWith("prompt:") ? skillName.replace(/^prompt:/, "skill:") : `skill:${skillName}`;
+    const skillPkg = await getInstallableRegistryPackage(skillId);
+    if (skillPkg) {
+      dependencies.push({
+        ...skillPkg,
+        id: skillId,
+        kind: "skill",
+        installed: isPackageInstalled(skillId),
+        dependencies: []
+      });
+    }
+  }
+  return dependencies;
+}
+function checkDependencies(resolved) {
+  const missing = [];
+  function check(pkg) {
+    for (const dep of pkg.dependencies || []) {
+      if (!dep.installed) {
+        missing.push(dep);
+      }
+      check(dep);
+    }
+  }
+  check(resolved);
+  return {
+    satisfied: missing.length === 0,
+    missing
+  };
+}
+function getInstallOrder(resolved) {
+  const order = [];
+  const visited = /* @__PURE__ */ new Set();
+  function visit(pkg) {
+    if (visited.has(pkg.id)) return;
+    visited.add(pkg.id);
+    for (const dep of pkg.dependencies || []) {
+      visit(dep);
+    }
+    if (!pkg.installed) {
+      order.push(pkg);
+    }
+  }
+  visit(resolved);
+  return order;
+}
+async function resolvePackages(ids) {
+  return Promise.all(ids.map((id) => resolvePackage(id)));
+}
+function satisfiesVersion(version, constraint) {
+  if (!constraint) return true;
+  const [major, minor = 0, patch = 0] = version.split(".").map(Number);
+  const match = constraint.match(/^(>=|<=|>|<|=)?(\d+)(?:\.(\d+))?(?:\.(\d+))?$/);
+  if (!match) return true;
+  const [, op = "=", cMajor, cMinor = "0", cPatch = "0"] = match;
+  const constraintVersion = [Number(cMajor), Number(cMinor), Number(cPatch)];
+  const actualVersion = [major, minor, patch];
+  const cmp = compareVersions(actualVersion, constraintVersion);
+  switch (op) {
+    case ">=":
+      return cmp >= 0;
+    case "<=":
+      return cmp <= 0;
+    case ">":
+      return cmp > 0;
+    case "<":
+      return cmp < 0;
+    case "=":
+      return cmp === 0;
+    default:
+      return cmp === 0;
+  }
+}
+function compareVersions(a, b) {
+  for (let i = 0; i < 3; i++) {
+    if (a[i] > b[i]) return 1;
+    if (a[i] < b[i]) return -1;
+  }
+  return 0;
+}
+var SINGLE_FILE_KINDS, EXTERNAL_STACK_ID_PATTERN, EXTERNAL_SKILL_ID_PATTERN;
+var init_resolver = __esm({
+  "packages/core/src/resolver.js"() {
+    init_src3();
+    init_src();
+    init_lockfile();
+    SINGLE_FILE_KINDS = /* @__PURE__ */ new Set(["skill", "prompt", "workflow"]);
+    EXTERNAL_STACK_ID_PATTERN = /^stack:[a-z0-9][a-z0-9-_]*$/;
+    EXTERNAL_SKILL_ID_PATTERN = /^skill:[a-z0-9][a-z0-9-_]*$/;
   }
 });
 
@@ -9915,6 +10484,23 @@ function createNpmInstallCommand(options = {}) {
   if (options.prefix) {
     args.push("--prefix", assertCommandArg2(options.prefix, "npm prefix"));
   }
+  return { command, args };
+}
+function createStackDependencyInstallCommand(manager, commandValue, options = {}) {
+  const command = assertCommandArg2(commandValue, `${manager} command`);
+  let args;
+  if (manager === "pnpm") {
+    args = ["install"];
+    if (options.storeDir) {
+      args.push("--store-dir", assertCommandArg2(options.storeDir, "pnpm store directory"));
+    }
+    args.push("--prefer-frozen-lockfile");
+  } else if (manager === "npm") {
+    args = ["install", "--no-audit", "--no-fund"];
+  } else {
+    throw new Error(`Unsupported stack dependency manager: ${manager}`);
+  }
+  if (!options.allowScripts) args.push("--ignore-scripts");
   return { command, args };
 }
 function createNpmUninstallCommand(options = {}) {
@@ -10352,6 +10938,8 @@ async function installPackage(id, options = {}) {
     preserveState = false,
     migrateState = true,
     preserveStatePaths,
+    resolvedPackage,
+    deferFinalize = false,
     onProgress
   } = options;
   onProgress?.({ phase: "resolving", package: id });
@@ -10362,7 +10950,10 @@ async function installPackage(id, options = {}) {
       error: "Agent hosts are externally managed and cannot be installed by RUDI."
     };
   }
-  const resolved = await resolvePackage(id);
+  const resolved = resolvedPackage || await resolvePackage(id);
+  if (!resolved || resolved.id !== id) {
+    throw new Error(`Resolved package identity mismatch for ${id}`);
+  }
   if (resolved.kind === "agent") {
     const installHint = resolved.installHints?.manual || resolved.instructions;
     return {
@@ -10385,6 +10976,7 @@ async function installPackage(id, options = {}) {
     toInstall.push(resolved);
   }
   const results = [];
+  const previousLockfile = resolved.source?.type === "github" ? readLockfile(resolved.id) : null;
   for (const pkg of toInstall) {
     onProgress?.({ phase: "installing", package: pkg.id, total: toInstall.length, current: results.length + 1 });
     try {
@@ -10395,6 +10987,7 @@ async function installPackage(id, options = {}) {
         preserveState,
         migrateState,
         preserveStatePaths,
+        deferFinalize: pkg.id === resolved.id && pkg.source?.type === "github",
         onProgress
       });
       results.push(result);
@@ -10406,14 +10999,85 @@ async function installPackage(id, options = {}) {
       };
     }
   }
-  onProgress?.({ phase: "lockfile", package: resolved.id });
-  await writeLockfile(resolved);
+  const mainResult = results.find((result) => result.id === resolved.id);
+  const transaction = mainResult?.transaction ? {
+    ...mainResult.transaction,
+    resolved,
+    previousLockfile
+  } : null;
+  if (transaction && !deferFinalize) {
+    try {
+      await finalizeDeferredInstall(transaction, { onProgress });
+    } catch (error) {
+      try {
+        await rollbackDeferredInstall(transaction);
+      } catch (rollbackError) {
+        return {
+          success: false,
+          id: resolved.id,
+          error: `${error.message}; rollback also failed: ${rollbackError.message}`
+        };
+      }
+      return { success: false, id: resolved.id, error: error.message };
+    }
+  } else if (!transaction) {
+    onProgress?.({ phase: "lockfile", package: resolved.id });
+    await writeLockfile(resolved, {
+      installPath: getInstallPathForPackage(resolved)
+    });
+  }
   return {
     success: true,
     id: resolved.id,
     path: getInstallPathForPackage(resolved),
-    installed: results.map((r) => r.id)
+    installed: results.map((r) => r.id),
+    ...transaction && deferFinalize ? { transaction } : {}
   };
+}
+async function finalizeDeferredInstall(transaction, options = {}) {
+  await prepareDeferredInstall(transaction, options);
+  return commitDeferredInstall(transaction);
+}
+async function prepareDeferredInstall(transaction, options = {}) {
+  if (!transaction?.resolved || !transaction.installPath) {
+    throw new Error("Invalid deferred install transaction");
+  }
+  options.onProgress?.({ phase: "lockfile", package: transaction.id });
+  await writeLockfile(transaction.resolved, { installPath: transaction.installPath });
+  return { success: true, id: transaction.id, path: transaction.installPath };
+}
+function commitDeferredInstall(transaction) {
+  if (!transaction?.id || !transaction.installPath) {
+    throw new Error("Invalid deferred install transaction");
+  }
+  let cleanupError = null;
+  if (transaction.backupPath) {
+    try {
+      import_fs5.default.rmSync(transaction.backupPath, { recursive: true, force: true });
+    } catch (error) {
+      cleanupError = error.message;
+    }
+  }
+  return {
+    success: true,
+    id: transaction.id,
+    path: transaction.installPath,
+    ...cleanupError ? { cleanupError } : {}
+  };
+}
+async function rollbackDeferredInstall(transaction) {
+  if (!transaction?.id || !transaction.installPath) {
+    throw new Error("Invalid deferred install transaction");
+  }
+  if (transaction.previousInstallExisted && (!transaction.backupPath || !import_fs5.default.existsSync(transaction.backupPath))) {
+    throw new Error(`Cannot roll back ${transaction.id}: previous install backup is missing`);
+  }
+  import_fs5.default.rmSync(transaction.installPath, { recursive: true, force: true });
+  if (transaction.backupPath) {
+    import_fs5.default.renameSync(transaction.backupPath, transaction.installPath);
+  }
+  restoreLockfile(transaction.id, transaction.previousLockfile);
+  return { success: true, id: transaction.id, path: transaction.installPath };
 }
 async function installBinaryStack(pkg, installPath, options = {}) {
   const { onProgress } = options;
@@ -10487,6 +11151,7 @@ async function installSinglePackage(pkg, options = {}) {
     preserveState = false,
     migrateState = true,
     preserveStatePaths,
+    deferFinalize = false,
     onProgress
   } = options;
   const installPath = getInstallPathForPackage(pkg);
@@ -10752,7 +11417,7 @@ async function installSinglePackage(pkg, options = {}) {
       throw new Error(`Failed to install ${pkg.id}: ${error.message}`);
     }
   }
-  if (pkg.runtime === "binary" && pkg.binary?.platforms) {
+  if (pkg.source?.type !== "github" && pkg.runtime === "binary" && pkg.binary?.platforms) {
     onProgress?.({ phase: "downloading", package: pkg.id });
     try {
       import_fs5.default.mkdirSync(installPath, { recursive: true });
@@ -10768,6 +11433,59 @@ async function installSinglePackage(pkg, options = {}) {
       } catch {
       }
       throw new Error(`Failed to install binary stack ${pkg.id}: ${error.message}`);
+    }
+  }
+  if (pkg.source?.type === "github") {
+    const parent = import_path6.default.dirname(installPath);
+    const base = import_path6.default.basename(installPath).replace(/[^a-zA-Z0-9_.-]/g, "_");
+    const stagingPath = import_path6.default.join(parent, `.${base}.github-stage-${process.pid}-${Date.now()}`);
+    const backupPath = import_path6.default.join(parent, `.${base}.github-backup-${process.pid}-${Date.now()}`);
+    import_fs5.default.mkdirSync(parent, { recursive: true });
+    let previousInstallExisted = false;
+    let installedStaging = false;
+    try {
+      await downloadPackage(pkg, stagingPath, { onProgress });
+      if (pkg.kind === "stack") {
+        await installStackDependencies(stagingPath, onProgress, {
+          allowScripts,
+          failClosed: true
+        });
+      }
+      previousInstallExisted = import_fs5.default.existsSync(installPath);
+      if (previousInstallExisted) import_fs5.default.renameSync(installPath, backupPath);
+      try {
+        import_fs5.default.renameSync(stagingPath, installPath);
+        installedStaging = true;
+      } catch (error) {
+        if (import_fs5.default.existsSync(backupPath)) import_fs5.default.renameSync(backupPath, installPath);
+        throw error;
+      }
+      if (!deferFinalize) {
+        import_fs5.default.rmSync(backupPath, { recursive: true, force: true });
+      }
+      onProgress?.({ phase: "installed", package: pkg.id });
+      return {
+        success: true,
+        id: pkg.id,
+        path: installPath,
+        ...deferFinalize ? {
+          transaction: {
+            id: pkg.id,
+            installPath,
+            backupPath: previousInstallExisted ? backupPath : null,
+            previousInstallExisted
+          }
+        } : {}
+      };
+    } catch (error) {
+      import_fs5.default.rmSync(stagingPath, { recursive: true, force: true });
+      if (installedStaging) {
+        import_fs5.default.rmSync(installPath, { recursive: true, force: true });
+      }
+      if (previousInstallExisted && import_fs5.default.existsSync(backupPath)) {
+        import_fs5.default.renameSync(backupPath, installPath);
+      }
+      throw new Error(`Failed to install pinned GitHub package ${pkg.id}: ${error.message}`);
     }
   }
   if (pkg.path) {
@@ -10991,6 +11709,9 @@ function extractSingleFileMetadata(filePath, kind) {
   }
   return {};
 }
+function getInstalledPackageSource(id, fallback) {
+  return readLockfile(id)?.source || fallback;
+}
 async function listInstalled(kind) {
   const kinds = kind ? [kind] : ["stack", "skill", "workflow", "runtime", "binary"];
   const packages = [];
@@ -11022,7 +11743,7 @@ async function listInstalled(kind) {
             icon: metadata.icon || "",
             requires: metadata.requires,
             format: skill.format,
-            source: skill.source,
+            source: getInstalledPackageSource(`${k}:${skill.name}`, skill.source),
             entryPath: skill.entryPath,
             path: skill.packagePath
           });
@@ -11036,7 +11757,7 @@ async function listInstalled(kind) {
             category: "general",
             tags: [],
             format: skill.format,
-            source: skill.source,
+            source: getInstalledPackageSource(`${k}:${skill.name}`, skill.source),
             entryPath: skill.entryPath,
             path: skill.packagePath
           });
@@ -11087,11 +11808,13 @@ async function listInstalled(kind) {
       const runtimePath = import_path6.default.join(pkgDir, "runtime.json");
       if (import_fs5.default.existsSync(manifestPath)) {
         const manifest = JSON.parse(import_fs5.default.readFileSync(manifestPath, "utf-8"));
+        const packageId = normalizeInstalledPackageId(k, manifest.id, entry.name);
         packages.push({
           ...manifest,
-          id: normalizeInstalledPackageId(k, manifest.id, entry.name),
+          id: packageId,
           kind: k,
           name: manifest.name || entry.name,
+          source: getInstalledPackageSource(packageId, manifest.source),
           path: pkgDir
         });
       } else if (import_fs5.default.existsSync(runtimePath)) {
@@ -11127,7 +11850,8 @@ async function updateAll(options = {}) {
   }
   return results;
 }
-async function installStackDependencies(stackPath, onProgress) {
+async function installStackDependencies(stackPath, onProgress, options = {}) {
+  const { allowScripts = true, failClosed = false } = options;
   const nodeDepsPaths = [
     stackPath,
     // Flat layout: package.json at stack root
@@ -11144,10 +11868,10 @@ async function installStackDependencies(stackPath, onProgress) {
       if (pnpmCmd) {
         const pnpmStore = import_path6.default.join(PATHS.cache, "pnpm");
         import_fs5.default.mkdirSync(pnpmStore, { recursive: true });
-        runCommandPlan({
-          command: pnpmCmd,
-          args: ["install", "--store-dir", pnpmStore, "--prefer-frozen-lockfile"]
-        }, {
+        runCommandPlan(createStackDependencyInstallCommand("pnpm", pnpmCmd, {
+          storeDir: pnpmStore,
+          allowScripts
+        }), {
           cwd: nodePath,
           stdio: "pipe",
           env: buildNodeToolEnv(pnpmCmd)
@@ -11161,13 +11885,16 @@ async function installStackDependencies(stackPath, onProgress) {
     if (!installedWithPnpm) {
       try {
         const npmCmd = await findNpmExecutable();
-        runCommandPlan({ command: npmCmd, args: ["install"] }, {
+        runCommandPlan(createStackDependencyInstallCommand("npm", npmCmd, {
+          allowScripts
+        }), {
           cwd: nodePath,
           stdio: "pipe",
           env: buildNodeToolEnv(npmCmd)
         });
         onProgress?.({ phase: "installing-deps", message: "Dependencies installed with npm" });
       } catch (error) {
+        if (failClosed) throw error;
         console.warn(`Warning: Failed to install Node.js dependencies: ${error.message}`);
       }
     }
@@ -11182,9 +11909,15 @@ async function installStackDependencies(stackPath, onProgress) {
   for (const pythonPath of pythonDepsPaths) {
     const requirementsPath = import_path6.default.join(pythonPath, "requirements.txt");
     if (!import_fs5.default.existsSync(requirementsPath)) continue;
+    if (failClosed && !allowScripts) {
+      throw new Error(
+        "External stack Python dependency installation is disabled by default because package builds can execute code; review the pinned source and rerun with --allow-scripts"
+      );
+    }
     try {
       await installPythonRequirements(pythonPath, onProgress);
     } catch (error) {
+      if (failClosed) throw error;
       console.warn(`Warning: Failed to install Python dependencies: ${error.message}`);
     }
     break;
@@ -11600,7 +12333,7 @@ function createLaunchConfig(command, runtime, stackPath) {
       throw new Error("Binary runtime requires a command");
     }
     const bin2 = command[0].replace(/^\.\//, "");
-    const binaryPath = path8.isAbsolute(command[0]) ? command[0] : path8.join(stackPath, bin2);
+    const binaryPath = path9.isAbsolute(command[0]) ? command[0] : path9.join(stackPath, bin2);
     return { bin: binaryPath, args: command.slice(1), cwd: stackPath };
   }
   if (!command || command.length === 0) {
@@ -11633,31 +12366,31 @@ function createLaunchConfig(command, runtime, stackPath) {
 function getDefaultRuntimeBin(runtime) {
   const platform = getPlatform();
   if (runtime === "node") {
-    return platform === "win32" ? path8.join(PATHS.runtimes, "node", "node.exe") : path8.join(PATHS.runtimes, "node", "bin", "node");
+    return platform === "win32" ? path9.join(PATHS.runtimes, "node", "node.exe") : path9.join(PATHS.runtimes, "node", "bin", "node");
   }
   if (runtime === "python") {
-    return platform === "win32" ? path8.join(PATHS.runtimes, "python", "python.exe") : path8.join(PATHS.runtimes, "python", "bin", "python3");
+    return platform === "win32" ? path9.join(PATHS.runtimes, "python", "python.exe") : path9.join(PATHS.runtimes, "python", "bin", "python3");
   }
   return runtime;
 }
 function getDefaultNpxBin() {
   const platform = getPlatform();
-  return platform === "win32" ? path8.join(PATHS.runtimes, "node", "npx.cmd") : path8.join(PATHS.runtimes, "node", "bin", "npx");
+  return platform === "win32" ? path9.join(PATHS.runtimes, "node", "npx.cmd") : path9.join(PATHS.runtimes, "node", "bin", "npx");
 }
 function acquireLock(timeoutMs = LOCK_TIMEOUT_MS) {
   const startTime = Date.now();
   while (Date.now() - startTime < timeoutMs) {
     try {
-      fs7.writeFileSync(RUDI_JSON_LOCK, String(process.pid), { flag: "wx" });
+      fs8.writeFileSync(RUDI_JSON_LOCK, String(process.pid), { flag: "wx" });
       return true;
     } catch (err) {
       if (err.code === "EEXIST") {
         try {
-          const pid = parseInt(fs7.readFileSync(RUDI_JSON_LOCK, "utf-8"), 10);
+          const pid = parseInt(fs8.readFileSync(RUDI_JSON_LOCK, "utf-8"), 10);
           try {
             process.kill(pid, 0);
           } catch {
-            fs7.unlinkSync(RUDI_JSON_LOCK);
+            fs8.unlinkSync(RUDI_JSON_LOCK);
             continue;
           }
         } catch {
@@ -11675,16 +12408,16 @@ function acquireLock(timeoutMs = LOCK_TIMEOUT_MS) {
 }
 function releaseLock() {
   try {
-    fs7.unlinkSync(RUDI_JSON_LOCK);
+    fs8.unlinkSync(RUDI_JSON_LOCK);
   } catch {
   }
 }
 function rudiConfigExists() {
-  return fs7.existsSync(RUDI_JSON_PATH);
+  return fs8.existsSync(RUDI_JSON_PATH);
 }
 function readRudiConfig() {
   try {
-    const content = fs7.readFileSync(RUDI_JSON_PATH, "utf-8");
+    const content = fs8.readFileSync(RUDI_JSON_PATH, "utf-8");
     return JSON.parse(content);
   } catch (err) {
     if (err.code === "ENOENT") {
@@ -11700,9 +12433,9 @@ function writeRudiConfig(config) {
   }
   try {
     const content = JSON.stringify(config, null, 2);
-    fs7.writeFileSync(RUDI_JSON_TMP, content, { mode: CONFIG_MODE });
-    fs7.renameSync(RUDI_JSON_TMP, RUDI_JSON_PATH);
-    fs7.chmodSync(RUDI_JSON_PATH, CONFIG_MODE);
+    fs8.writeFileSync(RUDI_JSON_TMP, content, { mode: CONFIG_MODE });
+    fs8.renameSync(RUDI_JSON_TMP, RUDI_JSON_PATH);
+    fs8.chmodSync(RUDI_JSON_PATH, CONFIG_MODE);
   } finally {
     releaseLock();
   }
@@ -11795,7 +12528,7 @@ function addRuntime(runtimeId, runtimeInfo) {
     }
     config.runtimes[runtimeId] = {
       path: runtimeInfo.path,
-      bin: path8.join(runtimeInfo.path, bin),
+      bin: path9.join(runtimeInfo.path, bin),
       version: runtimeInfo.version
     };
   });
@@ -11815,15 +12548,15 @@ function updateSecretStatus(secretName, configured, provider) {
     }
   });
 }
-var fs7, path8, RUDI_JSON_PATH, RUDI_JSON_TMP, RUDI_JSON_LOCK, CONFIG_MODE, LOCK_TIMEOUT_MS;
+var fs8, path9, RUDI_JSON_PATH, RUDI_JSON_TMP, RUDI_JSON_LOCK, CONFIG_MODE, LOCK_TIMEOUT_MS;
 var init_rudi_config = __esm({
   "packages/core/src/rudi-config.js"() {
-    fs7 = __toESM(require("fs"), 1);
-    path8 = __toESM(require("path"), 1);
+    fs8 = __toESM(require("fs"), 1);
+    path9 = __toESM(require("path"), 1);
     init_src();
-    RUDI_JSON_PATH = path8.join(RUDI_HOME, "rudi.json");
-    RUDI_JSON_TMP = path8.join(RUDI_HOME, "rudi.json.tmp");
-    RUDI_JSON_LOCK = path8.join(RUDI_HOME, "rudi.json.lock");
+    RUDI_JSON_PATH = path9.join(RUDI_HOME, "rudi.json");
+    RUDI_JSON_TMP = path9.join(RUDI_HOME, "rudi.json.tmp");
+    RUDI_JSON_LOCK = path9.join(RUDI_HOME, "rudi.json.lock");
     CONFIG_MODE = 384;
     LOCK_TIMEOUT_MS = 5e3;
   }
@@ -11832,7 +12565,7 @@ var init_rudi_config = __esm({
 // packages/core/src/tool-index.js
 function loadSecrets() {
   try {
-    const content = fs8.readFileSync(SECRETS_PATH, "utf-8");
+    const content = fs9.readFileSync(SECRETS_PATH, "utf-8");
     return JSON.parse(content);
   } catch {
     return {};
@@ -11855,23 +12588,23 @@ function getStackSecrets(stackConfig) {
   return { secrets, missing };
 }
 function existingDirectory(dirPath) {
-  return typeof dirPath === "string" && fs8.existsSync(dirPath) && fs8.statSync(dirPath).isDirectory();
+  return typeof dirPath === "string" && fs9.existsSync(dirPath) && fs9.statSync(dirPath).isDirectory();
 }
 function getRudiExecutionPathEntries() {
   const entries = [PATHS.bins];
   for (const runtimeBin of [
-    path9.join(RUDI_HOME, "runtimes", "node", "bin"),
-    path9.join(RUDI_HOME, "runtimes", "python", "bin")
+    path10.join(RUDI_HOME, "runtimes", "node", "bin"),
+    path10.join(RUDI_HOME, "runtimes", "python", "bin")
   ]) {
     if (existingDirectory(runtimeBin)) {
       entries.push(runtimeBin);
     }
   }
-  const binariesRoot = path9.join(RUDI_HOME, "binaries");
+  const binariesRoot = path10.join(RUDI_HOME, "binaries");
   if (existingDirectory(binariesRoot)) {
-    for (const entry of fs8.readdirSync(binariesRoot, { withFileTypes: true })) {
+    for (const entry of fs9.readdirSync(binariesRoot, { withFileTypes: true })) {
       if (entry.isDirectory()) {
-        entries.push(path9.join(binariesRoot, entry.name));
+        entries.push(path10.join(binariesRoot, entry.name));
       }
     }
   }
@@ -11880,12 +12613,12 @@ function getRudiExecutionPathEntries() {
 function prependRudiExecutionPath(env) {
   const seen = /* @__PURE__ */ new Set();
   const entries = [];
-  for (const entry of [...getRudiExecutionPathEntries(), ...(env.PATH || "").split(path9.delimiter)]) {
+  for (const entry of [...getRudiExecutionPathEntries(), ...(env.PATH || "").split(path10.delimiter)]) {
     if (!entry || seen.has(entry)) continue;
     seen.add(entry);
     entries.push(entry);
   }
-  env.PATH = entries.join(path9.delimiter);
+  env.PATH = entries.join(path10.delimiter);
 }
 async function discoverStackTools(stackId, stackConfig, options = {}) {
   const { timeout = REQUEST_TIMEOUT_MS, log = () => {
@@ -11909,7 +12642,7 @@ async function discoverStackTools(stackId, stackConfig, options = {}) {
   const env = { ...process.env, ...secrets };
   prependRudiExecutionPath(env);
   log(`  Spawning ${stackId}...`);
-  return new Promise((resolve2) => {
+  return new Promise((resolve3) => {
     let resolved = false;
     let childProcess;
     let childProcessStartedAtMs = null;
@@ -12031,7 +12764,7 @@ async function discoverStackTools(stackId, stackConfig, options = {}) {
       if (!resolved) {
         resolved = true;
         cleanup();
-        resolve2({
+        resolve3({
           tools: [],
           error: `Timeout after ${timeout}ms`,
           missingSecrets: []
@@ -12087,7 +12820,7 @@ async function discoverStackTools(stackId, stackConfig, options = {}) {
           resolved = true;
           clearTimeout(timeoutId);
           cleanup();
-          resolve2({
+          resolve3({
             tools: [],
             error: `Spawn error: ${err.message}`,
             missingSecrets: []
@@ -12100,7 +12833,7 @@ async function discoverStackTools(stackId, stackConfig, options = {}) {
           resolved = true;
           clearTimeout(timeoutId);
           cleanup();
-          resolve2({
+          resolve3({
             tools: [],
             error: `Process exited with code ${code}`,
             missingSecrets: []
@@ -12128,7 +12861,7 @@ async function discoverStackTools(stackId, stackConfig, options = {}) {
             resolved = true;
             clearTimeout(timeoutId);
             cleanup();
-            resolve2({
+            resolve3({
               tools,
               error: null,
               missingSecrets: []
@@ -12139,7 +12872,7 @@ async function discoverStackTools(stackId, stackConfig, options = {}) {
             resolved = true;
             clearTimeout(timeoutId);
             cleanup();
-            resolve2({
+            resolve3({
               tools: [],
               error: err.message,
               missingSecrets: []
@@ -12151,7 +12884,7 @@ async function discoverStackTools(stackId, stackConfig, options = {}) {
       if (!resolved) {
         resolved = true;
         clearTimeout(timeoutId);
-        resolve2({
+        resolve3({
           tools: [],
           error: `Failed to spawn: ${err.message}`,
           missingSecrets: []
@@ -12162,21 +12895,21 @@ async function discoverStackTools(stackId, stackConfig, options = {}) {
 }
 function readToolIndex() {
   try {
-    const content = fs8.readFileSync(TOOL_INDEX_PATH, "utf-8");
+    const content = fs9.readFileSync(TOOL_INDEX_PATH, "utf-8");
     return JSON.parse(content);
   } catch {
     return null;
   }
 }
 function writeToolIndex(index) {
-  const cacheDir = path9.dirname(TOOL_INDEX_PATH);
-  if (!fs8.existsSync(cacheDir)) {
-    fs8.mkdirSync(cacheDir, { recursive: true });
+  const cacheDir = path10.dirname(TOOL_INDEX_PATH);
+  if (!fs9.existsSync(cacheDir)) {
+    fs9.mkdirSync(cacheDir, { recursive: true });
   }
   index.updatedAt = (/* @__PURE__ */ new Date()).toISOString();
   const content = JSON.stringify(index, null, 2);
-  fs8.writeFileSync(TOOL_INDEX_TMP, content, { mode: 384 });
-  fs8.renameSync(TOOL_INDEX_TMP, TOOL_INDEX_PATH);
+  fs9.writeFileSync(TOOL_INDEX_TMP, content, { mode: 384 });
+  fs9.renameSync(TOOL_INDEX_TMP, TOOL_INDEX_PATH);
 }
 function createToolIndex() {
   return {
@@ -12239,18 +12972,18 @@ async function indexAllStacks(options = {}) {
   writeToolIndex(index);
   return { indexed, failed, index };
 }
-var import_child_process4, fs8, path9, readline, TOOL_INDEX_PATH, TOOL_INDEX_TMP, SECRETS_PATH, REQUEST_TIMEOUT_MS, PROTOCOL_VERSION, WINDOWS_CLEANUP_TIMEOUT_MS, WINDOWS_DESCENDANT_SWEEP_SCRIPT;
+var import_child_process4, fs9, path10, readline, TOOL_INDEX_PATH, TOOL_INDEX_TMP, SECRETS_PATH, REQUEST_TIMEOUT_MS, PROTOCOL_VERSION, WINDOWS_CLEANUP_TIMEOUT_MS, WINDOWS_DESCENDANT_SWEEP_SCRIPT;
 var init_tool_index = __esm({
   "packages/core/src/tool-index.js"() {
     import_child_process4 = require("child_process");
-    fs8 = __toESM(require("fs"), 1);
-    path9 = __toESM(require("path"), 1);
+    fs9 = __toESM(require("fs"), 1);
+    path10 = __toESM(require("path"), 1);
     readline = __toESM(require("readline"), 1);
     init_src();
     init_rudi_config();
-    TOOL_INDEX_PATH = path9.join(RUDI_HOME, "cache", "tool-index.json");
-    TOOL_INDEX_TMP = path9.join(RUDI_HOME, "cache", "tool-index.json.tmp");
-    SECRETS_PATH = path9.join(RUDI_HOME, "secrets.json");
+    TOOL_INDEX_PATH = path10.join(RUDI_HOME, "cache", "tool-index.json");
+    TOOL_INDEX_TMP = path10.join(RUDI_HOME, "cache", "tool-index.json.tmp");
+    SECRETS_PATH = path10.join(RUDI_HOME, "secrets.json");
     REQUEST_TIMEOUT_MS = 15e3;
     PROTOCOL_VERSION = "2024-11-05";
     WINDOWS_CLEANUP_TIMEOUT_MS = 2e3;
@@ -12438,15 +13171,15 @@ function getSecretsFilePath() {
   return SECRETS_FILE;
 }
 function ensureSecretsFile() {
-  const dir = path11.dirname(SECRETS_FILE);
-  if (!fs10.existsSync(dir)) {
-    fs10.mkdirSync(dir, { recursive: true });
+  const dir = path12.dirname(SECRETS_FILE);
+  if (!fs11.existsSync(dir)) {
+    fs11.mkdirSync(dir, { recursive: true });
   }
-  if (!fs10.existsSync(SECRETS_FILE)) {
-    fs10.writeFileSync(SECRETS_FILE, "{}", { mode: 384 });
+  if (!fs11.existsSync(SECRETS_FILE)) {
+    fs11.writeFileSync(SECRETS_FILE, "{}", { mode: 384 });
   } else {
     try {
-      fs10.chmodSync(SECRETS_FILE, 384);
+      fs11.chmodSync(SECRETS_FILE, 384);
     } catch {
     }
   }
@@ -12454,7 +13187,7 @@ function ensureSecretsFile() {
 function loadSecrets2() {
   ensureSecretsFile();
   try {
-    const content = fs10.readFileSync(SECRETS_FILE, "utf-8");
+    const content = fs11.readFileSync(SECRETS_FILE, "utf-8");
     const secrets = JSON.parse(content);
     return isSecretsObject(secrets) ? secrets : {};
   } catch {
@@ -12466,18 +13199,18 @@ function saveSecrets(secrets) {
   const normalized = isSecretsObject(secrets) ? secrets : {};
   const tempFile = `${SECRETS_FILE}.${process.pid}.${Date.now()}.tmp`;
   try {
-    fs10.writeFileSync(tempFile, JSON.stringify(normalized, null, 2), {
+    fs11.writeFileSync(tempFile, JSON.stringify(normalized, null, 2), {
       encoding: "utf-8",
       mode: 384
     });
-    fs10.renameSync(tempFile, SECRETS_FILE);
+    fs11.renameSync(tempFile, SECRETS_FILE);
     try {
-      fs10.chmodSync(SECRETS_FILE, 384);
+      fs11.chmodSync(SECRETS_FILE, 384);
     } catch {
     }
   } finally {
-    if (fs10.existsSync(tempFile)) {
-      fs10.rmSync(tempFile, { force: true });
+    if (fs11.existsSync(tempFile)) {
+      fs11.rmSync(tempFile, { force: true });
     }
   }
 }
@@ -12526,13 +13259,13 @@ function getStorageInfo() {
     permissions: "0600 (owner read/write only)"
   };
 }
-var fs10, path11, SECRETS_FILE;
+var fs11, path12, SECRETS_FILE;
 var init_src4 = __esm({
   "packages/secrets/src/index.js"() {
-    fs10 = __toESM(require("fs"), 1);
-    path11 = __toESM(require("path"), 1);
+    fs11 = __toESM(require("fs"), 1);
+    path12 = __toESM(require("path"), 1);
     init_src();
-    SECRETS_FILE = path11.join(PATHS.home, "secrets.json");
+    SECRETS_FILE = path12.join(PATHS.home, "secrets.json");
   }
 });
 
@@ -12547,7 +13280,7 @@ function checkInstalled(stackId, stackConfig) {
         details: { path: stackConfig.path }
       };
     }
-    if (!import_node_fs.default.existsSync(stackConfig.path)) {
+    if (!import_node_fs2.default.existsSync(stackConfig.path)) {
       return {
         passed: false,
         state: "installed",
@@ -12555,8 +13288,8 @@ function checkInstalled(stackId, stackConfig) {
         details: { path: stackConfig.path }
       };
     }
-    const manifestPath = import_node_path.default.join(stackConfig.path, "manifest.json");
-    if (!import_node_fs.default.existsSync(manifestPath)) {
+    const manifestPath = import_node_path2.default.join(stackConfig.path, "manifest.json");
+    if (!import_node_fs2.default.existsSync(manifestPath)) {
       return {
         passed: false,
         state: "installed",
@@ -12598,7 +13331,7 @@ function checkLaunchable(stackId, stackConfig) {
         details: { bin: null, cwd: launch.cwd || stackConfig.path }
       };
     }
-    if (!import_node_fs.default.existsSync(launch.bin)) {
+    if (!import_node_fs2.default.existsSync(launch.bin)) {
       return {
         passed: false,
         state: "launchable",
@@ -12607,7 +13340,7 @@ function checkLaunchable(stackId, stackConfig) {
       };
     }
     try {
-      import_node_fs.default.accessSync(launch.bin, import_node_fs.default.constants.X_OK);
+      import_node_fs2.default.accessSync(launch.bin, import_node_fs2.default.constants.X_OK);
     } catch (err) {
       return {
         passed: false,
@@ -12617,7 +13350,7 @@ function checkLaunchable(stackId, stackConfig) {
       };
     }
     const cwd = launch.cwd || stackConfig.path;
-    if (!import_node_fs.default.existsSync(cwd)) {
+    if (!import_node_fs2.default.existsSync(cwd)) {
       return {
         passed: false,
         state: "launchable",
@@ -12731,7 +13464,7 @@ async function checkMcpReady(stackId, stackConfig, opts = {}) {
 function checkIndexed(stackId, stackConfig, options = {}) {
   const indexPath = options.indexPath || TOOL_INDEX_PATH;
   try {
-    if (!import_node_fs.default.existsSync(indexPath)) {
+    if (!import_node_fs2.default.existsSync(indexPath)) {
       return {
         passed: false,
         state: "indexed",
@@ -12739,7 +13472,7 @@ function checkIndexed(stackId, stackConfig, options = {}) {
         details: { toolCount: 0, indexPath }
       };
     }
-    const indexContent = import_node_fs.default.readFileSync(indexPath, "utf8");
+    const indexContent = import_node_fs2.default.readFileSync(indexPath, "utf8");
     const index = JSON.parse(indexContent);
     const byStack = index.byStack || index;
     const entry = byStack[stackId] || byStack[`stack:${stackId}`];
@@ -12834,11 +13567,11 @@ async function checkStackLifecycle(stackId, stackConfig, opts = {}) {
     fixCommand
   };
 }
-var import_node_fs, import_node_path;
+var import_node_fs2, import_node_path2;
 var init_stack_lifecycle = __esm({
   "packages/core/src/stack-lifecycle.js"() {
-    import_node_fs = __toESM(require("node:fs"), 1);
-    import_node_path = __toESM(require("node:path"), 1);
+    import_node_fs2 = __toESM(require("node:fs"), 1);
+    import_node_path2 = __toESM(require("node:path"), 1);
     init_src4();
     init_tool_index();
   }
@@ -12866,6 +13599,8 @@ __export(src_exports, {
   checkStackLifecycle: () => checkStackLifecycle,
   cleanOrphanedLockfiles: () => cleanOrphanedLockfiles,
   clearCache: () => clearCache,
+  commitDeferredInstall: () => commitDeferredInstall,
+  computeInstalledContentChecksum: () => computeInstalledContentChecksum,
   createArchiveExtractCommand: () => createArchiveExtractCommand,
   createLaunchConfig: () => createLaunchConfig,
   createNativeInstallerCommand: () => createNativeInstallerCommand,
@@ -12877,6 +13612,7 @@ __export(src_exports, {
   createPostInstallCommand: () => createPostInstallCommand,
   createRudiConfig: () => createRudiConfig,
   createShimsForTool: () => createShimsForTool,
+  createStackDependencyInstallCommand: () => createStackDependencyInstallCommand,
   createToolIndex: () => createToolIndex,
   deleteLockfile: () => deleteLockfile,
   discoverSkillPackages: () => discoverSkillPackages,
@@ -12884,6 +13620,7 @@ __export(src_exports, {
   ensureDirectories: () => ensureDirectories,
   ensureUv: () => ensureUv,
   fetchIndex: () => fetchIndex,
+  finalizeDeferredInstall: () => finalizeDeferredInstall,
   findUvExecutable: () => findUvExecutable,
   formatDependencyResults: () => formatDependencyResults,
   getAllDepsFromRegistry: () => getAllDepsFromRegistry,
@@ -12909,12 +13646,14 @@ __export(src_exports, {
   initRudiConfig: () => initRudiConfig,
   installFromLocal: () => installFromLocal,
   installPackage: () => installPackage,
+  isMatchingPinnedGitHubLock: () => isMatchingPinnedGitHubLock,
   isPackageInstalled: () => isPackageInstalled,
   isSystemBinaryRegistered: () => isSystemBinaryRegistered,
   listInstalled: () => listInstalled,
   listPackages: () => listPackages,
   listShims: () => listShims,
   parsePackageId: () => parsePackageId,
+  prepareDeferredInstall: () => prepareDeferredInstall,
   readLockfile: () => readLockfile,
   readRudiConfig: () => readRudiConfig,
   readToolIndex: () => readToolIndex,
@@ -12925,6 +13664,8 @@ __export(src_exports, {
   resolveNodeRuntimeBin: () => resolveNodeRuntimeBin,
   resolvePackage: () => resolvePackage,
   resolvePackages: () => resolvePackages,
+  restoreLockfile: () => restoreLockfile,
+  rollbackDeferredInstall: () => rollbackDeferredInstall,
   rudiConfigExists: () => rudiConfigExists,
   runCommandPlan: () => runCommandPlan,
   satisfiesVersion: () => satisfiesVersion,
@@ -15910,7 +16651,7 @@ var require_compile = __commonJS({
       const schOrFunc = root.refs[ref];
       if (schOrFunc)
         return schOrFunc;
-      let _sch = resolve2.call(this, root, ref);
+      let _sch = resolve3.call(this, root, ref);
       if (_sch === void 0) {
         const schema = (_a = root.localRefs) === null || _a === void 0 ? void 0 : _a[ref];
         const { schemaId } = this.opts;
@@ -15937,7 +16678,7 @@ var require_compile = __commonJS({
     function sameSchemaEnv(s1, s2) {
       return s1.schema === s2.schema && s1.root === s2.root && s1.baseId === s2.baseId;
     }
-    function resolve2(root, ref) {
+    function resolve3(root, ref) {
       let sch;
       while (typeof (sch = this.refs[ref]) == "string")
         ref = sch;
@@ -16152,8 +16893,8 @@ var require_utils = __commonJS({
       }
       return ind;
     }
-    function removeDotSegments(path52) {
-      let input = path52;
+    function removeDotSegments(path53) {
+      let input = path53;
       const output = [];
       let nextSlash = -1;
       let len = 0;
@@ -16352,8 +17093,8 @@ var require_schemes = __commonJS({
         wsComponent.secure = void 0;
       }
       if (wsComponent.resourceName) {
-        const [path52, query] = wsComponent.resourceName.split("?");
-        wsComponent.path = path52 && path52 !== "/" ? path52 : void 0;
+        const [path53, query] = wsComponent.resourceName.split("?");
+        wsComponent.path = path53 && path53 !== "/" ? path53 : void 0;
         wsComponent.query = query;
         wsComponent.resourceName = void 0;
       }
@@ -16512,55 +17253,55 @@ var require_fast_uri = __commonJS({
       }
       return uri;
     }
-    function resolve2(baseURI, relativeURI, options) {
+    function resolve3(baseURI, relativeURI, options) {
       const schemelessOptions = options ? Object.assign({ scheme: "null" }, options) : { scheme: "null" };
       const resolved = resolveComponent(parse(baseURI, schemelessOptions), parse(relativeURI, schemelessOptions), schemelessOptions, true);
       schemelessOptions.skipEscape = true;
       return serialize(resolved, schemelessOptions);
     }
-    function resolveComponent(base, relative2, options, skipNormalization) {
+    function resolveComponent(base, relative3, options, skipNormalization) {
       const target = {};
       if (!skipNormalization) {
         base = parse(serialize(base, options), options);
-        relative2 = parse(serialize(relative2, options), options);
+        relative3 = parse(serialize(relative3, options), options);
       }
       options = options || {};
-      if (!options.tolerant && relative2.scheme) {
-        target.scheme = relative2.scheme;
-        target.userinfo = relative2.userinfo;
-        target.host = relative2.host;
-        target.port = relative2.port;
-        target.path = removeDotSegments(relative2.path || "");
-        target.query = relative2.query;
+      if (!options.tolerant && relative3.scheme) {
+        target.scheme = relative3.scheme;
+        target.userinfo = relative3.userinfo;
+        target.host = relative3.host;
+        target.port = relative3.port;
+        target.path = removeDotSegments(relative3.path || "");
+        target.query = relative3.query;
       } else {
-        if (relative2.userinfo !== void 0 || relative2.host !== void 0 || relative2.port !== void 0) {
-          target.userinfo = relative2.userinfo;
-          target.host = relative2.host;
-          target.port = relative2.port;
-          target.path = removeDotSegments(relative2.path || "");
-          target.query = relative2.query;
+        if (relative3.userinfo !== void 0 || relative3.host !== void 0 || relative3.port !== void 0) {
+          target.userinfo = relative3.userinfo;
+          target.host = relative3.host;
+          target.port = relative3.port;
+          target.path = removeDotSegments(relative3.path || "");
+          target.query = relative3.query;
         } else {
-          if (!relative2.path) {
+          if (!relative3.path) {
             target.path = base.path;
-            if (relative2.query !== void 0) {
-              target.query = relative2.query;
+            if (relative3.query !== void 0) {
+              target.query = relative3.query;
             } else {
               target.query = base.query;
             }
           } else {
-            if (relative2.path[0] === "/") {
-              target.path = removeDotSegments(relative2.path);
+            if (relative3.path[0] === "/") {
+              target.path = removeDotSegments(relative3.path);
             } else {
               if ((base.userinfo !== void 0 || base.host !== void 0 || base.port !== void 0) && !base.path) {
-                target.path = "/" + relative2.path;
+                target.path = "/" + relative3.path;
               } else if (!base.path) {
-                target.path = relative2.path;
+                target.path = relative3.path;
               } else {
-                target.path = base.path.slice(0, base.path.lastIndexOf("/") + 1) + relative2.path;
+                target.path = base.path.slice(0, base.path.lastIndexOf("/") + 1) + relative3.path;
               }
               target.path = removeDotSegments(target.path);
             }
-            target.query = relative2.query;
+            target.query = relative3.query;
           }
           target.userinfo = base.userinfo;
           target.host = base.host;
@@ -16568,7 +17309,7 @@ var require_fast_uri = __commonJS({
         }
         target.scheme = base.scheme;
       }
-      target.fragment = relative2.fragment;
+      target.fragment = relative3.fragment;
       return target;
     }
     function equal(uriA, uriB, options) {
@@ -16739,7 +17480,7 @@ var require_fast_uri = __commonJS({
     var fastUri = {
       SCHEMES,
       normalize: normalize2,
-      resolve: resolve2,
+      resolve: resolve3,
       resolveComponent,
       equal,
       serialize,
@@ -19706,12 +20447,12 @@ var require_dist2 = __commonJS({
         throw new Error(`Unknown format "${name}"`);
       return f;
     };
-    function addFormats2(ajv2, list, fs51, exportName) {
+    function addFormats2(ajv2, list, fs52, exportName) {
       var _a;
       var _b;
       (_a = (_b = ajv2.opts.code).formats) !== null && _a !== void 0 ? _a : _b.formats = (0, codegen_1._)`require("ajv-formats/dist/formats").${exportName}`;
       for (const f of list)
-        ajv2.addFormat(f, fs51[f]);
+        ajv2.addFormat(f, fs52[f]);
     }
     module2.exports = exports2 = formatsPlugin;
     Object.defineProperty(exports2, "__esModule", { value: true });
@@ -19916,6 +20657,7 @@ USAGE
 
 OPTIONS
   --force                  Force reinstall
+  --allow-scripts          Allow reviewed dependency/build code for npm/GitHub sources
   --with-related-skills    Include optional companion skills declared by a stack
   --no-related-skills      Install the required operator skill only
 
@@ -19929,6 +20671,15 @@ EXAMPLES
   rudi install runtime:python
   rudi install binary:ffmpeg
   rudi install workflow:daily-brief
+  rudi install https://github.com/acme/rudi-packages/tree/main/catalog/stacks/demo
+
+GITHUB SOURCES
+  Public HTTPS github.com tree URLs are resolved to an immutable commit before
+  download. The stack manifest must declare related.operatorSkillPath as a
+  repository-relative directory containing SKILL.md. Private repositories and
+  other Git hosts are not supported.
+  Node lifecycle/build scripts, Python requirement builds, and MCP indexing are
+  blocked unless --allow-scripts is set after reviewing the pinned source.
 
 AGENT HOSTS
   Claude, Codex, Gemini, and Antigravity are installed by their vendors.
@@ -19953,7 +20704,8 @@ OPTIONS
 
 SAFETY
   A package id or --all is required. Related skills that are not installed are
-  reported and skipped; update never installs them.
+  reported and skipped; update never installs them. Pinned GitHub packages are
+  skipped by --all and require an explicit GitHub tree URL plus --force to change.
 
 EXAMPLES
   rudi update stack:swe-engineering
@@ -20524,9 +21276,9 @@ Total: ${totalCount} package(s) available`);
 }
 
 // src/commands/install.js
-var fs30 = __toESM(require("fs/promises"), 1);
+var fs31 = __toESM(require("fs/promises"), 1);
 var fsSync = __toESM(require("fs"), 1);
-var path30 = __toESM(require("path"), 1);
+var path31 = __toESM(require("path"), 1);
 init_src5();
 init_src4();
 
@@ -20767,28 +21519,28 @@ function getMcpServerSummary() {
 }
 
 // packages/mcp/src/registry.js
-var fs13 = __toESM(require("fs/promises"), 1);
-var path14 = __toESM(require("path"), 1);
+var fs14 = __toESM(require("fs/promises"), 1);
+var path15 = __toESM(require("path"), 1);
 var os5 = __toESM(require("os"), 1);
 var HOME = os5.homedir();
 var AGENT_CONFIGS2 = {
-  claude: path14.join(HOME, ".claude", "settings.json"),
-  codex: path14.join(HOME, ".codex", "config.toml"),
-  gemini: path14.join(HOME, ".gemini", "settings.json")
+  claude: path15.join(HOME, ".claude", "settings.json"),
+  codex: path15.join(HOME, ".codex", "config.toml"),
+  gemini: path15.join(HOME, ".gemini", "settings.json")
 };
-var RUDI_ROUTER_SHIM = path14.join(HOME, ".rudi", "bins", "rudi-router");
+var RUDI_ROUTER_SHIM = path15.join(HOME, ".rudi", "bins", "rudi-router");
 async function readJson(filePath) {
   try {
-    const content = await fs13.readFile(filePath, "utf-8");
+    const content = await fs14.readFile(filePath, "utf-8");
     return JSON.parse(content);
   } catch {
     return {};
   }
 }
 async function writeJson(filePath, data) {
-  const dir = path14.dirname(filePath);
-  await fs13.mkdir(dir, { recursive: true });
-  await fs13.writeFile(filePath, JSON.stringify(data, null, 2), "utf-8");
+  const dir = path15.dirname(filePath);
+  await fs14.mkdir(dir, { recursive: true });
+  await fs14.writeFile(filePath, JSON.stringify(data, null, 2), "utf-8");
 }
 function parseTomlValue(value) {
   if (value.startsWith('"') && value.endsWith('"') || value.startsWith("'") && value.endsWith("'")) {
@@ -20896,16 +21648,16 @@ function stringifyToml(config, prefix = "") {
 }
 async function readToml(filePath) {
   try {
-    const content = await fs13.readFile(filePath, "utf-8");
+    const content = await fs14.readFile(filePath, "utf-8");
     return parseToml(content);
   } catch {
     return {};
   }
 }
 async function writeToml(filePath, data) {
-  const dir = path14.dirname(filePath);
-  await fs13.mkdir(dir, { recursive: true });
-  await fs13.writeFile(filePath, stringifyToml(data), "utf-8");
+  const dir = path15.dirname(filePath);
+  await fs14.mkdir(dir, { recursive: true });
+  await fs14.writeFile(filePath, stringifyToml(data), "utf-8");
 }
 async function unregisterMcpCodex(stackId) {
   const configPath = AGENT_CONFIGS2.codex;
@@ -21011,8 +21763,8 @@ init_src();
 init_src5();
 
 // src/agent-host/artifacts.js
-var import_node_fs2 = __toESM(require("node:fs"), 1);
-var import_node_path2 = __toESM(require("node:path"), 1);
+var import_node_fs3 = __toESM(require("node:fs"), 1);
+var import_node_path3 = __toESM(require("node:path"), 1);
 init_src();
 var LAUNCH_ID_PATTERN = /^launch_[A-Za-z0-9][A-Za-z0-9_-]{0,127}$/;
 var OWNERSHIP_MARKER = ".rudi-agent-launch.json";
@@ -21030,54 +21782,54 @@ function getAgentHostPaths({
   launchId = null,
   rudiHome = PATHS.home
 } = {}) {
-  const home = import_node_path2.default.resolve(rudiHome);
-  const stateDirectory = import_node_path2.default.join(home, "state");
-  const artifactsRoot = import_node_path2.default.join(home, "artifacts", "agent-launches");
+  const home = import_node_path3.default.resolve(rudiHome);
+  const stateDirectory = import_node_path3.default.join(home, "state");
+  const artifactsRoot = import_node_path3.default.join(home, "artifacts", "agent-launches");
   const result = {
     artifactsRoot,
-    stateDatabase: import_node_path2.default.join(stateDirectory, "agent-hosts.db"),
+    stateDatabase: import_node_path3.default.join(stateDirectory, "agent-hosts.db"),
     stateDirectory
   };
   if (launchId != null) {
     assertLaunchId(launchId);
-    result.launchDirectory = import_node_path2.default.join(artifactsRoot, launchId);
-    result.workspaceDirectory = import_node_path2.default.join(result.launchDirectory, "workspace");
+    result.launchDirectory = import_node_path3.default.join(artifactsRoot, launchId);
+    result.workspaceDirectory = import_node_path3.default.join(result.launchDirectory, "workspace");
   }
   return result;
 }
 function getLaunchArtifactFiles(launchDirectory) {
-  const directory = import_node_path2.default.resolve(launchDirectory);
+  const directory = import_node_path3.default.resolve(launchDirectory);
   return Object.freeze({
-    events: import_node_path2.default.join(directory, EVENTS_FILE),
-    marker: import_node_path2.default.join(directory, OWNERSHIP_MARKER),
-    stderr: import_node_path2.default.join(directory, STDERR_FILE)
+    events: import_node_path3.default.join(directory, EVENTS_FILE),
+    marker: import_node_path3.default.join(directory, OWNERSHIP_MARKER),
+    stderr: import_node_path3.default.join(directory, STDERR_FILE)
   });
 }
 function createLaunchOwnershipMarker({ launchDirectory, launchId }) {
   assertLaunchId(launchId);
-  const directory = import_node_path2.default.resolve(launchDirectory);
-  const stat = import_node_fs2.default.statSync(directory);
+  const directory = import_node_path3.default.resolve(launchDirectory);
+  const stat = import_node_fs3.default.statSync(directory);
   if (!stat.isDirectory()) throw new Error(`Launch artifact path is not a directory: ${directory}`);
   const { marker } = getLaunchArtifactFiles(directory);
   const payload = `${JSON.stringify({ launchId, schemaVersion: 1 })}
 `;
-  const handle = import_node_fs2.default.openSync(marker, "wx", 384);
+  const handle = import_node_fs3.default.openSync(marker, "wx", 384);
   try {
-    import_node_fs2.default.writeFileSync(handle, payload, "utf8");
+    import_node_fs3.default.writeFileSync(handle, payload, "utf8");
   } finally {
-    import_node_fs2.default.closeSync(handle);
+    import_node_fs3.default.closeSync(handle);
   }
   return marker;
 }
 function assertOwnedLaunchDirectory({ launchDirectory, launchId }) {
   assertLaunchId(launchId);
-  const directory = import_node_path2.default.resolve(launchDirectory);
+  const directory = import_node_path3.default.resolve(launchDirectory);
   const { marker } = getLaunchArtifactFiles(directory);
   let parsed;
   try {
-    const stat = import_node_fs2.default.lstatSync(marker);
+    const stat = import_node_fs3.default.lstatSync(marker);
     if (!stat.isFile() || stat.isSymbolicLink()) throw new Error("marker is not a regular file");
-    parsed = JSON.parse(import_node_fs2.default.readFileSync(marker, "utf8"));
+    parsed = JSON.parse(import_node_fs3.default.readFileSync(marker, "utf8"));
   } catch (error) {
     throw new Error(`Launch artifact ownership marker is invalid: ${error.message}`);
   }
@@ -21092,17 +21844,17 @@ function appendLaunchEvent(eventFile, event) {
   if (Buffer.byteLength(serialized, "utf8") > MAX_EVENT_BYTES) {
     throw new Error(`Agent event exceeds ${MAX_EVENT_BYTES} bytes`);
   }
-  const file = import_node_path2.default.resolve(eventFile);
-  const handle = import_node_fs2.default.openSync(file, "a", 384);
+  const file = import_node_path3.default.resolve(eventFile);
+  const handle = import_node_fs3.default.openSync(file, "a", 384);
   try {
-    import_node_fs2.default.writeFileSync(handle, serialized, "utf8");
+    import_node_fs3.default.writeFileSync(handle, serialized, "utf8");
   } finally {
-    import_node_fs2.default.closeSync(handle);
+    import_node_fs3.default.closeSync(handle);
   }
-  import_node_fs2.default.chmodSync(file, 384);
+  import_node_fs3.default.chmodSync(file, 384);
 }
 function readLaunchEvents({ eventFile, limitBytes = 1024 * 1024, offset = 0 }) {
-  const file = import_node_path2.default.resolve(eventFile);
+  const file = import_node_path3.default.resolve(eventFile);
   const validOffset = Number(offset);
   const validLimit = Number(limitBytes);
   if (!Number.isSafeInteger(validOffset) || validOffset < 0) {
@@ -21113,7 +21865,7 @@ function readLaunchEvents({ eventFile, limitBytes = 1024 * 1024, offset = 0 }) {
   }
   let stat;
   try {
-    stat = import_node_fs2.default.statSync(file);
+    stat = import_node_fs3.default.statSync(file);
   } catch (error) {
     if (error.code === "ENOENT") return { data: "", eof: true, nextOffset: validOffset };
     throw error;
@@ -21124,12 +21876,12 @@ function readLaunchEvents({ eventFile, limitBytes = 1024 * 1024, offset = 0 }) {
   const remaining = stat.size - validOffset;
   const bytesToRead = Math.min(remaining, validLimit + MAX_EVENT_BYTES);
   const buffer = Buffer.allocUnsafe(bytesToRead);
-  const handle = import_node_fs2.default.openSync(file, "r");
+  const handle = import_node_fs3.default.openSync(file, "r");
   let bytesRead;
   try {
-    bytesRead = import_node_fs2.default.readSync(handle, buffer, 0, bytesToRead, validOffset);
+    bytesRead = import_node_fs3.default.readSync(handle, buffer, 0, bytesToRead, validOffset);
   } finally {
-    import_node_fs2.default.closeSync(handle);
+    import_node_fs3.default.closeSync(handle);
   }
   let pageBytes = bytesRead;
   if (remaining > validLimit) {
@@ -21151,8 +21903,8 @@ function readLaunchEvents({ eventFile, limitBytes = 1024 * 1024, offset = 0 }) {
 }
 
 // src/agent-host/launch-store.js
-var import_node_fs3 = __toESM(require("node:fs"), 1);
-var import_node_path3 = __toESM(require("node:path"), 1);
+var import_node_fs4 = __toESM(require("node:fs"), 1);
+var import_node_path4 = __toESM(require("node:path"), 1);
 var import_better_sqlite3 = __toESM(require("better-sqlite3"), 1);
 var LAUNCH_STATUSES = Object.freeze([
   "starting",
@@ -21314,10 +22066,10 @@ function createLaunchStore({
   databasePath = getAgentHostPaths().stateDatabase,
   now = () => (/* @__PURE__ */ new Date()).toISOString()
 } = {}) {
-  const resolvedPath = import_node_path3.default.resolve(databasePath);
-  import_node_fs3.default.mkdirSync(import_node_path3.default.dirname(resolvedPath), { recursive: true, mode: 448 });
+  const resolvedPath = import_node_path4.default.resolve(databasePath);
+  import_node_fs4.default.mkdirSync(import_node_path4.default.dirname(resolvedPath), { recursive: true, mode: 448 });
   const database = new import_better_sqlite3.default(resolvedPath);
-  import_node_fs3.default.chmodSync(resolvedPath, 384);
+  import_node_fs4.default.chmodSync(resolvedPath, 384);
   initialize(database);
   const getStatement = database.prepare("SELECT * FROM agent_launches WHERE launch_id = ?");
   function get(launchId) {
@@ -22356,7 +23108,7 @@ async function attachAgentLaunch(launchId, dependencies = {}) {
         if (buffered.trim()) renderLine(buffered);
         return launch;
       }
-      await new Promise((resolve2) => setTimeout(resolve2, pollIntervalMs));
+      await new Promise((resolve3) => setTimeout(resolve3, pollIntervalMs));
     }
     return store.get(launchId);
   } finally {
@@ -22367,18 +23119,18 @@ async function attachAgentLaunch(launchId, dependencies = {}) {
 }
 
 // src/agent-host/cli-inputs.js
-var import_node_fs8 = __toESM(require("node:fs"), 1);
-var import_node_path8 = __toESM(require("node:path"), 1);
+var import_node_fs9 = __toESM(require("node:fs"), 1);
+var import_node_path9 = __toESM(require("node:path"), 1);
 
 // src/agent-host/private-automation-profile.js
-var import_node_fs5 = __toESM(require("node:fs"), 1);
-var import_node_path5 = __toESM(require("node:path"), 1);
+var import_node_fs6 = __toESM(require("node:fs"), 1);
+var import_node_path6 = __toESM(require("node:path"), 1);
 var import_node_child_process2 = require("node:child_process");
 var import_ajv = __toESM(require_ajv(), 1);
 
 // src/agent-host/providers/catalog.js
-var import_node_fs4 = require("node:fs");
-var import_node_path4 = require("node:path");
+var import_node_fs5 = require("node:fs");
+var import_node_path5 = require("node:path");
 var import_node_os = require("node:os");
 
 // src/agent-host/providers/config/claude.json
@@ -23324,7 +24076,7 @@ function loadProviderConfig(providerId) {
   return config;
 }
 function canonicalPath(candidate, realpathSyncImpl) {
-  const absolute = (0, import_node_path4.resolve)(candidate);
+  const absolute = (0, import_node_path5.resolve)(candidate);
   try {
     return realpathSyncImpl(absolute);
   } catch {
@@ -23332,23 +24084,23 @@ function canonicalPath(candidate, realpathSyncImpl) {
   }
 }
 function isInside(root, candidate) {
-  const child = (0, import_node_path4.relative)(root, candidate);
-  return child === "" || child !== ".." && !child.startsWith(`..${import_node_path4.sep}`) && !(0, import_node_path4.isAbsolute)(child);
+  const child = (0, import_node_path5.relative)(root, candidate);
+  return child === "" || child !== ".." && !child.startsWith(`..${import_node_path5.sep}`) && !(0, import_node_path5.isAbsolute)(child);
 }
 function isExternalAgentBinaryPath(candidate, options = {}) {
-  if (typeof candidate !== "string" || !(0, import_node_path4.isAbsolute)(candidate.trim()) || candidate.length > 4096 || /[\r\n\0]/u.test(candidate)) return false;
+  if (typeof candidate !== "string" || !(0, import_node_path5.isAbsolute)(candidate.trim()) || candidate.length > 4096 || /[\r\n\0]/u.test(candidate)) return false;
   const home = options.home || (0, import_node_os.homedir)();
-  const realpathSyncImpl = options.realpathSyncImpl || import_node_fs4.realpathSync;
-  const lexicalCandidate = (0, import_node_path4.resolve)(candidate.trim());
+  const realpathSyncImpl = options.realpathSyncImpl || import_node_fs5.realpathSync;
+  const lexicalCandidate = (0, import_node_path5.resolve)(candidate.trim());
   const canonicalCandidate = canonicalPath(lexicalCandidate, realpathSyncImpl);
-  const rudiRoots = [(0, import_node_path4.join)(home, ".rudi"), options.rudiHome || process.env.RUDI_HOME].filter((root) => typeof root === "string" && (0, import_node_path4.isAbsolute)(root) && root.length <= 4096 && !/[\r\n\0]/u.test(root)).flatMap((root) => [(0, import_node_path4.resolve)(root), canonicalPath(root, realpathSyncImpl)]);
+  const rudiRoots = [(0, import_node_path5.join)(home, ".rudi"), options.rudiHome || process.env.RUDI_HOME].filter((root) => typeof root === "string" && (0, import_node_path5.isAbsolute)(root) && root.length <= 4096 && !/[\r\n\0]/u.test(root)).flatMap((root) => [(0, import_node_path5.resolve)(root), canonicalPath(root, realpathSyncImpl)]);
   return !rudiRoots.some((root) => isInside(root, lexicalCandidate) || isInside(root, canonicalCandidate));
 }
 function resolveProviderBinary(config, dependencies = {}) {
   const home = dependencies.home || (0, import_node_os.homedir)();
   const arch = process.arch;
-  const accessSyncImpl = dependencies.accessSyncImpl || import_node_fs4.accessSync;
-  const existsSyncImpl = dependencies.existsSyncImpl || import_node_fs4.existsSync;
+  const accessSyncImpl = dependencies.accessSyncImpl || import_node_fs5.accessSync;
+  const existsSyncImpl = dependencies.existsSyncImpl || import_node_fs5.existsSync;
   const runCommandPlanImpl = dependencies.runCommandPlanImpl || runCommandPlan2;
   const externalPathCheck = dependencies.isExternalAgentBinaryPathImpl || ((candidate) => isExternalAgentBinaryPath(candidate, {
     home,
@@ -23357,7 +24109,7 @@ function resolveProviderBinary(config, dependencies = {}) {
   }));
   const isExecutable = (candidate) => {
     try {
-      accessSyncImpl(candidate, import_node_fs4.constants.X_OK);
+      accessSyncImpl(candidate, import_node_fs5.constants.X_OK);
       return true;
     } catch {
       return false;
@@ -23555,10 +24307,10 @@ function containsSchemaReference(value) {
   return Object.values(value).some(containsSchemaReference);
 }
 function readOutputSchema(outputSchemaPath) {
-  const requested = import_node_path5.default.resolve(requiredText(outputSchemaPath, "output schema path"));
+  const requested = import_node_path6.default.resolve(requiredText(outputSchemaPath, "output schema path"));
   let stat;
   try {
-    stat = import_node_fs5.default.lstatSync(requested);
+    stat = import_node_fs6.default.lstatSync(requested);
   } catch {
     throw new Error(`private automation output schema does not exist: ${requested}`);
   }
@@ -23570,7 +24322,7 @@ function readOutputSchema(outputSchemaPath) {
   }
   let schema;
   try {
-    schema = JSON.parse(import_node_fs5.default.readFileSync(requested, "utf8"));
+    schema = JSON.parse(import_node_fs6.default.readFileSync(requested, "utf8"));
   } catch {
     throw new Error("private automation output schema must contain valid JSON");
   }
@@ -23597,7 +24349,7 @@ function readOutputSchema(outputSchemaPath) {
   }
   return Object.freeze({
     canonical: JSON.stringify(schema),
-    path: import_node_fs5.default.realpathSync(requested),
+    path: import_node_fs6.default.realpathSync(requested),
     schema: Object.freeze(schema),
     validate
   });
@@ -23793,7 +24545,7 @@ function assertPrivateAutomationHostCapabilities({ binaryPath, profile }, depend
       "--color",
       "never",
       "-C",
-      import_node_path5.default.dirname(profile.outputSchema.path),
+      import_node_path6.default.dirname(profile.outputSchema.path),
       "-m",
       profile.model,
       "--output-schema",
@@ -23876,9 +24628,9 @@ function assertPrivateAutomationHostCapabilities({ binaryPath, profile }, depend
 }
 
 // src/agent-host/providers/common.js
-var import_node_fs6 = __toESM(require("node:fs"), 1);
+var import_node_fs7 = __toESM(require("node:fs"), 1);
 var import_node_os2 = __toESM(require("node:os"), 1);
-var import_node_path6 = __toESM(require("node:path"), 1);
+var import_node_path7 = __toESM(require("node:path"), 1);
 var MAX_PROMPT_BYTES = 10 * 1024 * 1024;
 var PERMISSION_ALIASES = Object.freeze({
   "accept-edits": "acceptEdits",
@@ -23980,28 +24732,28 @@ function validateImages(images) {
   return images.map((image, index) => requiredText2(image, `images[${index}]`, 4096));
 }
 function canonicalPath2(candidate) {
-  const absolute = import_node_path6.default.resolve(candidate);
+  const absolute = import_node_path7.default.resolve(candidate);
   try {
-    return import_node_fs6.default.realpathSync(absolute);
+    return import_node_fs7.default.realpathSync(absolute);
   } catch {
     return absolute;
   }
 }
 function isInsidePath(root, candidate) {
-  const child = import_node_path6.default.relative(root, candidate);
-  return child === "" || child !== ".." && !child.startsWith(`..${import_node_path6.default.sep}`) && !import_node_path6.default.isAbsolute(child);
+  const child = import_node_path7.default.relative(root, candidate);
+  return child === "" || child !== ".." && !child.startsWith(`..${import_node_path7.default.sep}`) && !import_node_path7.default.isAbsolute(child);
 }
 function rudiOwnedPathRoots(environment) {
   const home = environment.HOME || import_node_os2.default.homedir();
   return [
-    import_node_path6.default.join(home, ".rudi"),
+    import_node_path7.default.join(home, ".rudi"),
     environment.RUDI_HOME,
     process.env.RUDI_HOME
-  ].filter((root) => typeof root === "string" && import_node_path6.default.isAbsolute(root)).flatMap((root) => [import_node_path6.default.resolve(root), canonicalPath2(root)]);
+  ].filter((root) => typeof root === "string" && import_node_path7.default.isAbsolute(root)).flatMap((root) => [import_node_path7.default.resolve(root), canonicalPath2(root)]);
 }
 function isRudiOwnedPathEntry(entry, roots) {
   if (typeof entry !== "string" || entry.length === 0) return false;
-  const lexicalEntry = import_node_path6.default.resolve(entry);
+  const lexicalEntry = import_node_path7.default.resolve(entry);
   const canonicalEntry = canonicalPath2(entry);
   return roots.some((root) => isInsidePath(root, lexicalEntry) || isInsidePath(root, canonicalEntry));
 }
@@ -24009,10 +24761,10 @@ function buildAgentExecutableEnvironment(binaryPath, overrides = {}, baseEnviron
   const merged = { ...baseEnvironment, ...overrides };
   const rudiRoots = rudiOwnedPathRoots(merged);
   const entries = [
-    import_node_path6.default.dirname(binaryPath),
-    ...String(merged.PATH || "").split(import_node_path6.default.delimiter)
-  ].filter((entry) => entry && import_node_path6.default.isAbsolute(entry) && !isRudiOwnedPathEntry(entry, rudiRoots));
-  merged.PATH = [...new Set(entries)].join(import_node_path6.default.delimiter);
+    import_node_path7.default.dirname(binaryPath),
+    ...String(merged.PATH || "").split(import_node_path7.default.delimiter)
+  ].filter((entry) => entry && import_node_path7.default.isAbsolute(entry) && !isRudiOwnedPathEntry(entry, rudiRoots));
+  merged.PATH = [...new Set(entries)].join(import_node_path7.default.delimiter);
   return merged;
 }
 var PRIVATE_OPERATIONAL_ENVIRONMENT_KEYS = Object.freeze([
@@ -24040,10 +24792,10 @@ function buildPrivateProviderEnvironment(config, binaryPath, options = {}) {
 }
 function buildProviderEnvironment(config, options = {}) {
   const baseEnvironment = options.baseEnvironment || process.env;
-  const rudiHome = options.rudiHome || process.env.RUDI_HOME || import_node_path6.default.join(import_node_os2.default.homedir(), ".rudi");
+  const rudiHome = options.rudiHome || process.env.RUDI_HOME || import_node_path7.default.join(import_node_os2.default.homedir(), ".rudi");
   let storedSecrets = {};
   try {
-    const parsed = JSON.parse(import_node_fs6.default.readFileSync(import_node_path6.default.join(rudiHome, "secrets.json"), "utf8"));
+    const parsed = JSON.parse(import_node_fs7.default.readFileSync(import_node_path7.default.join(rudiHome, "secrets.json"), "utf8"));
     if (parsed && typeof parsed === "object" && !Array.isArray(parsed)) {
       storedSecrets = Object.fromEntries(
         Object.entries(parsed).filter(([, value]) => typeof value === "string" && value.length > 0)
@@ -24251,8 +25003,8 @@ function buildCodexPlan(options) {
 }
 
 // src/agent-host/providers/gemini.js
-var import_node_fs7 = __toESM(require("node:fs"), 1);
-var import_node_path7 = __toESM(require("node:path"), 1);
+var import_node_fs8 = __toESM(require("node:fs"), 1);
+var import_node_path8 = __toESM(require("node:path"), 1);
 function defaultSystemSettingsPath(platform = process.platform) {
   if (platform === "darwin") return "/Library/Application Support/GeminiCli/settings.json";
   if (platform === "win32") return "C:\\ProgramData\\gemini-cli\\settings.json";
@@ -24264,9 +25016,9 @@ function buildGeminiProviderEnvironment(config, options = {}) {
   if (!environment.GEMINI_API_KEY || !options.runtimeDirectory) return environment;
   if (baseEnvironment.GEMINI_CLI_SYSTEM_SETTINGS_PATH) return environment;
   const systemSettingsPath = options.systemSettingsPath || defaultSystemSettingsPath(options.platform);
-  if (import_node_fs7.default.existsSync(systemSettingsPath)) return environment;
-  const settingsPath = import_node_path7.default.join(options.runtimeDirectory, "gemini-system-settings.json");
-  import_node_fs7.default.writeFileSync(settingsPath, JSON.stringify({
+  if (import_node_fs8.default.existsSync(systemSettingsPath)) return environment;
+  const settingsPath = import_node_path8.default.join(options.runtimeDirectory, "gemini-system-settings.json");
+  import_node_fs8.default.writeFileSync(settingsPath, JSON.stringify({
     security: { auth: { selectedType: "gemini-api-key" } }
   }, null, 2), { encoding: "utf8", mode: 384 });
   return {
@@ -24377,16 +25129,16 @@ async function resolveAgentPrompt(flags, {
     prompt = requiredFlagString(inline, "--prompt");
   } else if (promptFile != null) {
     const fileValue = requiredFlagString(promptFile, "--prompt-file");
-    const filePath = import_node_path8.default.resolve(originDirectory, fileValue);
+    const filePath = import_node_path9.default.resolve(originDirectory, fileValue);
     let stat;
     try {
-      stat = import_node_fs8.default.statSync(filePath);
+      stat = import_node_fs9.default.statSync(filePath);
     } catch {
       throw new Error(`Prompt file does not exist: ${filePath}`);
     }
     if (!stat.isFile()) throw new Error(`Prompt file is not a regular file: ${filePath}`);
     if (stat.size > MAX_PROMPT_BYTES2) throw new Error(`Prompt file exceeds ${MAX_PROMPT_BYTES2} bytes`);
-    prompt = import_node_fs8.default.readFileSync(filePath, "utf8");
+    prompt = import_node_fs9.default.readFileSync(filePath, "utf8");
   } else if (stdin && stdin.isTTY !== true) {
     prompt = await readPromptStream(
       stdin,
@@ -24417,10 +25169,10 @@ function parseImages(flags, originDirectory) {
   const value = flags.image ?? flags.images;
   if (value == null) return [];
   return requiredFlagString(value, "--image").split(",").map((item) => item.trim()).filter(Boolean).map((item) => {
-    const imagePath = import_node_path8.default.resolve(originDirectory, item);
+    const imagePath = import_node_path9.default.resolve(originDirectory, item);
     let stat;
     try {
-      stat = import_node_fs8.default.statSync(imagePath);
+      stat = import_node_fs9.default.statSync(imagePath);
     } catch {
       throw new Error(`Image attachment does not exist: ${imagePath}`);
     }
@@ -24462,7 +25214,7 @@ function buildLaunchOptions(provider, prompt, flags, passthrough, originDirector
       flagValue(flags, "output-schema", "outputSchema"),
       "--output-schema"
     );
-    const outputSchemaPath = import_node_path8.default.resolve(originDirectory, outputSchemaValue);
+    const outputSchemaPath = import_node_path9.default.resolve(originDirectory, outputSchemaValue);
     const timeoutMs = parseTimeout(flags);
     const privateAutomationProfile = createPrivateAutomationProfile({
       model: flags.model,
@@ -24536,16 +25288,16 @@ function readGroupTaskFiles(taskFlag, originDirectory, common = {}) {
     }
     const provider = value.slice(0, separator);
     resolveAgentProviderId(provider);
-    const filePath = import_node_path8.default.resolve(originDirectory, value.slice(separator + 1));
+    const filePath = import_node_path9.default.resolve(originDirectory, value.slice(separator + 1));
     let stat;
     try {
-      stat = import_node_fs8.default.statSync(filePath);
+      stat = import_node_fs9.default.statSync(filePath);
     } catch {
       throw new Error(`Task file does not exist: ${filePath}`);
     }
     if (!stat.isFile()) throw new Error(`Task file is not a regular file: ${filePath}`);
     if (stat.size > MAX_PROMPT_BYTES2) throw new Error(`Task file exceeds ${MAX_PROMPT_BYTES2} bytes`);
-    const prompt = import_node_fs8.default.readFileSync(filePath, "utf8");
+    const prompt = import_node_fs9.default.readFileSync(filePath, "utf8");
     if (!prompt.trim()) throw new Error(`Task file must not be empty: ${filePath}`);
     if (prompt.includes("\0")) throw new Error(`Task file must not contain NUL bytes: ${filePath}`);
     return { ...common, prompt, provider };
@@ -24553,14 +25305,14 @@ function readGroupTaskFiles(taskFlag, originDirectory, common = {}) {
 }
 
 // src/agent-host/group.js
-var import_node_crypto3 = __toESM(require("node:crypto"), 1);
+var import_node_crypto4 = __toESM(require("node:crypto"), 1);
 
 // src/agent-host/detached.js
-var import_node_fs13 = __toESM(require("node:fs"), 1);
+var import_node_fs14 = __toESM(require("node:fs"), 1);
 var import_node_child_process6 = require("node:child_process");
 
 // src/agent-host/launch.js
-var import_node_crypto2 = __toESM(require("node:crypto"), 1);
+var import_node_crypto3 = __toESM(require("node:crypto"), 1);
 
 // src/agent-host/events/stream.js
 var import_node_child_process3 = require("node:child_process");
@@ -24603,7 +25355,7 @@ function executeForegroundLaunch({
   if (!Number.isSafeInteger(timeoutMs) || timeoutMs < 1 || timeoutMs > 24 * 60 * 60 * 1e3) {
     throw new Error("timeoutMs must be an integer between 1 and 86400000");
   }
-  return new Promise((resolve2, reject) => {
+  return new Promise((resolve3, reject) => {
     const privateAutomation = plan.privateAutomationProfile != null;
     const normalizer = createAgentEventNormalizer(plan.provider);
     let child;
@@ -24836,7 +25588,7 @@ function executeForegroundLaunch({
       if (jsonOutput) {
         if (!privateAutomation) writeLine2(stdout, JSON.stringify(terminalEvent));
       }
-      resolve2(updated);
+      resolve3(updated);
     }
     const runtimeTimer = setTimeout(() => {
       timedOut = true;
@@ -24936,9 +25688,9 @@ function executeForegroundLaunch({
 }
 
 // src/agent-host/preflight.js
-var import_node_fs9 = __toESM(require("node:fs"), 1);
+var import_node_fs10 = __toESM(require("node:fs"), 1);
 var import_node_os3 = __toESM(require("node:os"), 1);
-var import_node_path9 = __toESM(require("node:path"), 1);
+var import_node_path10 = __toESM(require("node:path"), 1);
 var import_node_child_process4 = require("node:child_process");
 var MCP_AGENT_IDS = Object.freeze({ claude: "claude-code" });
 function commandArgs(configuredCommand) {
@@ -24956,15 +25708,15 @@ function runCheck(binaryPath, args, spawnSyncImpl, timeout = 5e3) {
   };
 }
 function skillsRoot(provider) {
-  if (provider === "claude") return import_node_path9.default.join(process.env.CLAUDE_HOME || import_node_path9.default.join(import_node_os3.default.homedir(), ".claude"), "skills");
-  if (provider === "codex") return import_node_path9.default.join(process.env.CODEX_HOME || import_node_path9.default.join(import_node_os3.default.homedir(), ".codex"), "skills");
-  if (provider === "gemini") return import_node_path9.default.join(process.env.GEMINI_HOME || import_node_path9.default.join(import_node_os3.default.homedir(), ".gemini"), "skills");
-  return import_node_path9.default.join(process.env.ANTIGRAVITY_HOME || import_node_path9.default.join(import_node_os3.default.homedir(), ".gemini", "antigravity-cli"), "skills");
+  if (provider === "claude") return import_node_path10.default.join(process.env.CLAUDE_HOME || import_node_path10.default.join(import_node_os3.default.homedir(), ".claude"), "skills");
+  if (provider === "codex") return import_node_path10.default.join(process.env.CODEX_HOME || import_node_path10.default.join(import_node_os3.default.homedir(), ".codex"), "skills");
+  if (provider === "gemini") return import_node_path10.default.join(process.env.GEMINI_HOME || import_node_path10.default.join(import_node_os3.default.homedir(), ".gemini"), "skills");
+  return import_node_path10.default.join(process.env.ANTIGRAVITY_HOME || import_node_path10.default.join(import_node_os3.default.homedir(), ".gemini", "antigravity-cli"), "skills");
 }
 function hasSyncedSkills(provider) {
   const root = skillsRoot(provider);
   try {
-    return import_node_fs9.default.readdirSync(root, { withFileTypes: true }).some((entry) => entry.isDirectory());
+    return import_node_fs10.default.readdirSync(root, { withFileTypes: true }).some((entry) => entry.isDirectory());
   } catch {
     return false;
   }
@@ -24973,7 +25725,7 @@ function hasRudiRouter(provider) {
   const agentId = MCP_AGENT_IDS[provider] || provider;
   const config = AGENT_CONFIGS.find((item) => item.id === agentId);
   if (!config) return false;
-  return readAgentMcpServers(config).some((server) => server.name === "rudi" || import_node_path9.default.basename(String(server.command)) === "rudi-router");
+  return readAgentMcpServers(config).some((server) => server.name === "rudi" || import_node_path10.default.basename(String(server.command)) === "rudi-router");
 }
 async function inspectAgentHost(provider, dependencies = {}) {
   const { spawnSyncImpl = import_node_child_process4.spawnSync } = dependencies;
@@ -25019,39 +25771,39 @@ async function assertAgentHostReady({ binaryPath, provider }, dependencies = {})
 }
 
 // src/agent-host/workspace.js
-var import_node_fs11 = __toESM(require("node:fs"), 1);
-var import_node_path11 = __toESM(require("node:path"), 1);
+var import_node_fs12 = __toESM(require("node:fs"), 1);
+var import_node_path12 = __toESM(require("node:path"), 1);
 var import_node_child_process5 = require("node:child_process");
 
 // src/agent-host/workspace-manifest.js
-var import_node_crypto = __toESM(require("node:crypto"), 1);
-var import_node_fs10 = __toESM(require("node:fs"), 1);
-var import_node_path10 = __toESM(require("node:path"), 1);
+var import_node_crypto2 = __toESM(require("node:crypto"), 1);
+var import_node_fs11 = __toESM(require("node:fs"), 1);
+var import_node_path11 = __toESM(require("node:path"), 1);
 var WORKSPACE_BASELINE_FILE = "workspace-base.json";
 function shouldSkip(relativePath) {
-  const first = relativePath.split(import_node_path10.default.sep)[0];
+  const first = relativePath.split(import_node_path11.default.sep)[0];
   return first === ".git" || first === ".rudi";
 }
 function portablePath(relativePath) {
-  return relativePath.split(import_node_path10.default.sep).join("/");
+  return relativePath.split(import_node_path11.default.sep).join("/");
 }
 function hashFile(file) {
-  return import_node_crypto.default.createHash("sha256").update(import_node_fs10.default.readFileSync(file)).digest("hex");
+  return import_node_crypto2.default.createHash("sha256").update(import_node_fs11.default.readFileSync(file)).digest("hex");
 }
 function createWorkspaceManifest(rootDirectory) {
-  const root = import_node_fs10.default.realpathSync(import_node_path10.default.resolve(rootDirectory));
+  const root = import_node_fs11.default.realpathSync(import_node_path11.default.resolve(rootDirectory));
   const entries = {};
   function visit(directory, prefix = "") {
-    const children = import_node_fs10.default.readdirSync(directory, { withFileTypes: true }).sort((left, right) => left.name.localeCompare(right.name));
+    const children = import_node_fs11.default.readdirSync(directory, { withFileTypes: true }).sort((left, right) => left.name.localeCompare(right.name));
     for (const child of children) {
-      const relative2 = prefix ? import_node_path10.default.join(prefix, child.name) : child.name;
-      if (shouldSkip(relative2)) continue;
-      const absolute = import_node_path10.default.join(directory, child.name);
-      const stat = import_node_fs10.default.lstatSync(absolute);
-      const key = portablePath(relative2);
+      const relative3 = prefix ? import_node_path11.default.join(prefix, child.name) : child.name;
+      if (shouldSkip(relative3)) continue;
+      const absolute = import_node_path11.default.join(directory, child.name);
+      const stat = import_node_fs11.default.lstatSync(absolute);
+      const key = portablePath(relative3);
       if (stat.isDirectory()) {
         entries[key] = { mode: stat.mode & 511, type: "directory" };
-        visit(absolute, relative2);
+        visit(absolute, relative3);
       } else if (stat.isFile()) {
         entries[key] = {
           hash: hashFile(absolute),
@@ -25062,7 +25814,7 @@ function createWorkspaceManifest(rootDirectory) {
       } else if (stat.isSymbolicLink()) {
         entries[key] = {
           mode: stat.mode & 511,
-          target: import_node_fs10.default.readlinkSync(absolute),
+          target: import_node_fs11.default.readlinkSync(absolute),
           type: "symlink"
         };
       } else {
@@ -25074,24 +25826,24 @@ function createWorkspaceManifest(rootDirectory) {
   return { entries, schemaVersion: 1 };
 }
 function writeWorkspaceBaseline({ launchDirectory, workspace }) {
-  const destination = import_node_path10.default.join(import_node_path10.default.resolve(launchDirectory), WORKSPACE_BASELINE_FILE);
+  const destination = import_node_path11.default.join(import_node_path11.default.resolve(launchDirectory), WORKSPACE_BASELINE_FILE);
   const manifest = createWorkspaceManifest(workspace);
-  const handle = import_node_fs10.default.openSync(destination, "wx", 384);
+  const handle = import_node_fs11.default.openSync(destination, "wx", 384);
   try {
-    import_node_fs10.default.writeFileSync(handle, `${JSON.stringify(manifest)}
+    import_node_fs11.default.writeFileSync(handle, `${JSON.stringify(manifest)}
 `, "utf8");
   } finally {
-    import_node_fs10.default.closeSync(handle);
+    import_node_fs11.default.closeSync(handle);
   }
   return destination;
 }
 function readWorkspaceBaseline(launchDirectory) {
-  const file = import_node_path10.default.join(import_node_path10.default.resolve(launchDirectory), WORKSPACE_BASELINE_FILE);
+  const file = import_node_path11.default.join(import_node_path11.default.resolve(launchDirectory), WORKSPACE_BASELINE_FILE);
   let parsed;
   try {
-    const stat = import_node_fs10.default.lstatSync(file);
+    const stat = import_node_fs11.default.lstatSync(file);
     if (!stat.isFile() || stat.isSymbolicLink()) throw new Error("baseline is not a regular file");
-    parsed = JSON.parse(import_node_fs10.default.readFileSync(file, "utf8"));
+    parsed = JSON.parse(import_node_fs11.default.readFileSync(file, "utf8"));
   } catch (error) {
     throw new Error(`Isolated workspace baseline is unavailable: ${error.message}`);
   }
@@ -25135,21 +25887,21 @@ var WORKSPACE_MODES = Object.freeze({
 });
 var VALID_MODES = new Set(Object.values(WORKSPACE_MODES));
 function existingDirectory2(candidate, label) {
-  const resolved = import_node_path11.default.resolve(candidate);
+  const resolved = import_node_path12.default.resolve(candidate);
   let stat;
   try {
-    stat = import_node_fs11.default.statSync(resolved);
+    stat = import_node_fs12.default.statSync(resolved);
   } catch {
     throw new Error(`${label} does not exist: ${resolved}`);
   }
   if (!stat.isDirectory()) {
     throw new Error(`${label} is not a directory: ${resolved}`);
   }
-  return import_node_fs11.default.realpathSync(resolved);
+  return import_node_fs12.default.realpathSync(resolved);
 }
 function isInside2(candidate, parent) {
-  const relative2 = import_node_path11.default.relative(parent, candidate);
-  return relative2 === "" || !relative2.startsWith(`..${import_node_path11.default.sep}`) && relative2 !== ".." && !import_node_path11.default.isAbsolute(relative2);
+  const relative3 = import_node_path12.default.relative(parent, candidate);
+  return relative3 === "" || !relative3.startsWith(`..${import_node_path12.default.sep}`) && relative3 !== ".." && !import_node_path12.default.isAbsolute(relative3);
 }
 function findGitProjectRoot(workspace, execFileSyncImpl) {
   try {
@@ -25192,7 +25944,7 @@ function createGitWorktree({
   } catch (error) {
     if (error?.message?.startsWith("Worktree branch already exists:")) throw error;
   }
-  import_node_fs11.default.mkdirSync(import_node_path11.default.dirname(destination), { recursive: true, mode: 448 });
+  import_node_fs12.default.mkdirSync(import_node_path12.default.dirname(destination), { recursive: true, mode: 448 });
   try {
     execFileSyncImpl("git", ["worktree", "add", "-b", branch, destination, baseRef], {
       cwd: projectRoot,
@@ -25206,7 +25958,7 @@ function createGitWorktree({
       });
     } catch {
     }
-    import_node_fs11.default.rmSync(destination, { recursive: true, force: true });
+    import_node_fs12.default.rmSync(destination, { recursive: true, force: true });
     try {
       execFileSyncImpl("git", ["branch", "-D", "--", branch], {
         cwd: projectRoot,
@@ -25223,15 +25975,15 @@ function copyIsolatedWorkspace({ destination, projectRoot }) {
     throw new Error("Isolated workspace destination cannot be inside the source project");
   }
   try {
-    import_node_fs11.default.cpSync(projectRoot, destination, {
+    import_node_fs12.default.cpSync(projectRoot, destination, {
       errorOnExist: true,
       filter(candidate) {
-        const relative2 = import_node_path11.default.relative(projectRoot, candidate);
-        const firstPart = relative2.split(import_node_path11.default.sep)[0];
+        const relative3 = import_node_path12.default.relative(projectRoot, candidate);
+        const firstPart = relative3.split(import_node_path12.default.sep)[0];
         if (firstPart === ".git" || firstPart === ".rudi") return false;
-        const stat = import_node_fs11.default.lstatSync(candidate);
+        const stat = import_node_fs12.default.lstatSync(candidate);
         if (stat.isSymbolicLink()) {
-          const target = import_node_fs11.default.realpathSync(candidate);
+          const target = import_node_fs12.default.realpathSync(candidate);
           if (!isInside2(target, projectRoot)) {
             throw new Error(`Workspace contains a symlink outside the project: ${candidate}`);
           }
@@ -25242,7 +25994,7 @@ function copyIsolatedWorkspace({ destination, projectRoot }) {
       recursive: true
     });
   } catch (error) {
-    import_node_fs11.default.rmSync(destination, { recursive: true, force: true });
+    import_node_fs12.default.rmSync(destination, { recursive: true, force: true });
     throw new Error(`Unable to create isolated workspace copy: ${error.message}`);
   }
 }
@@ -25268,12 +26020,12 @@ function resolveAgentWorkspace(options, dependencies = {}) {
     throw new Error("artifactsRoot is required");
   }
   const resolvedOrigin = existingDirectory2(originDirectory, "Origin directory");
-  const requestedWorkspace = workspace == null ? resolvedOrigin : import_node_path11.default.resolve(resolvedOrigin, workspace);
+  const requestedWorkspace = workspace == null ? resolvedOrigin : import_node_path12.default.resolve(resolvedOrigin, workspace);
   const validWorkspace = existingDirectory2(requestedWorkspace, "Workspace");
   const gitProjectRoot = findGitProjectRoot(validWorkspace, execFileSyncImpl);
   const projectRoot = gitProjectRoot || validWorkspace;
   const isGitRepository = Boolean(gitProjectRoot);
-  const launchDirectory = outputDirectory == null ? import_node_path11.default.resolve(artifactsRoot, launchId) : import_node_path11.default.resolve(resolvedOrigin, outputDirectory);
+  const launchDirectory = outputDirectory == null ? import_node_path12.default.resolve(artifactsRoot, launchId) : import_node_path12.default.resolve(resolvedOrigin, outputDirectory);
   let resolvedMode = mode;
   if (resolvedMode === WORKSPACE_MODES.AUTO) {
     resolvedMode = isGitRepository ? WORKSPACE_MODES.WORKTREE : WORKSPACE_MODES.ISOLATED_COPY;
@@ -25282,21 +26034,21 @@ function resolveAgentWorkspace(options, dependencies = {}) {
     throw new Error("Workspace mode worktree requires a Git repository");
   }
   assertOutputOutsideProject(launchDirectory, projectRoot);
-  if (import_node_fs11.default.existsSync(launchDirectory)) {
+  if (import_node_fs12.default.existsSync(launchDirectory)) {
     throw new Error(`Output destination already exists: ${launchDirectory}`);
   }
-  import_node_fs11.default.mkdirSync(launchDirectory, { recursive: true, mode: 448 });
+  import_node_fs12.default.mkdirSync(launchDirectory, { recursive: true, mode: 448 });
   createLaunchOwnershipMarker({ launchDirectory, launchId });
   let executionWorkspace = projectRoot;
   let worktreeBranch = null;
   let baseRef = null;
   try {
     if (privateAutomation === true) {
-      executionWorkspace = import_node_path11.default.join(launchDirectory, "private-workspace");
-      import_node_fs11.default.mkdirSync(executionWorkspace, { mode: 320 });
-      import_node_fs11.default.chmodSync(executionWorkspace, 320);
+      executionWorkspace = import_node_path12.default.join(launchDirectory, "private-workspace");
+      import_node_fs12.default.mkdirSync(executionWorkspace, { mode: 320 });
+      import_node_fs12.default.chmodSync(executionWorkspace, 320);
     } else if (resolvedMode === WORKSPACE_MODES.WORKTREE) {
-      executionWorkspace = import_node_path11.default.join(launchDirectory, "workspace");
+      executionWorkspace = import_node_path12.default.join(launchDirectory, "workspace");
       const created = createGitWorktree({
         destination: executionWorkspace,
         execFileSyncImpl,
@@ -25306,12 +26058,12 @@ function resolveAgentWorkspace(options, dependencies = {}) {
       worktreeBranch = created.branch;
       baseRef = created.baseRef;
     } else if (resolvedMode === WORKSPACE_MODES.ISOLATED_COPY) {
-      executionWorkspace = import_node_path11.default.join(launchDirectory, "workspace");
+      executionWorkspace = import_node_path12.default.join(launchDirectory, "workspace");
       copyIsolatedWorkspace({ destination: executionWorkspace, projectRoot });
       writeWorkspaceBaseline({ launchDirectory, workspace: executionWorkspace });
     }
   } catch (error) {
-    import_node_fs11.default.rmSync(launchDirectory, { recursive: true, force: true });
+    import_node_fs12.default.rmSync(launchDirectory, { recursive: true, force: true });
     throw error;
   }
   return Object.freeze({
@@ -25329,8 +26081,8 @@ function resolveAgentWorkspace(options, dependencies = {}) {
 function cleanupUnstartedWorkspace(workspace, dependencies = {}) {
   if (!workspace || typeof workspace !== "object") return;
   const { execFileSyncImpl = import_node_child_process5.execFileSync } = dependencies;
-  const outputDestination = import_node_path11.default.resolve(workspace.outputDestination);
-  const executionWorkspace = import_node_path11.default.resolve(workspace.executionWorkspace);
+  const outputDestination = import_node_path12.default.resolve(workspace.outputDestination);
+  const executionWorkspace = import_node_path12.default.resolve(workspace.executionWorkspace);
   if (!isInside2(executionWorkspace, outputDestination) && workspace.mode !== WORKSPACE_MODES.READ_ONLY) {
     throw new Error("Refusing to clean an execution workspace outside its launch output destination");
   }
@@ -25353,12 +26105,12 @@ function cleanupUnstartedWorkspace(workspace, dependencies = {}) {
     } catch {
     }
   }
-  import_node_fs11.default.rmSync(outputDestination, { recursive: true, force: true });
+  import_node_fs12.default.rmSync(outputDestination, { recursive: true, force: true });
 }
 
 // src/agent-host/launch.js
 function createLaunchId() {
-  return `launch_${import_node_crypto2.default.randomUUID().replaceAll("-", "")}`;
+  return `launch_${import_node_crypto3.default.randomUUID().replaceAll("-", "")}`;
 }
 async function launchAgent(options, dependencies = {}) {
   const {
@@ -25468,11 +26220,11 @@ async function launchAgent(options, dependencies = {}) {
 }
 
 // src/agent-host/resume.js
-var import_node_fs12 = __toESM(require("node:fs"), 1);
-var import_node_path12 = __toESM(require("node:path"), 1);
+var import_node_fs13 = __toESM(require("node:fs"), 1);
+var import_node_path13 = __toESM(require("node:path"), 1);
 function assertWorkspaceStillExists(workspace) {
   try {
-    if (import_node_fs12.default.statSync(workspace).isDirectory()) return;
+    if (import_node_fs13.default.statSync(workspace).isDirectory()) return;
   } catch {
   }
   throw new Error(`Execution workspace no longer exists: ${workspace}`);
@@ -25516,11 +26268,11 @@ async function resumeAgentWithStore(options, dependencies) {
     throw new Error(getMissingAgentProviderMessage(previous.provider));
   }
   await preflightImpl({ binaryPath, provider: previous.provider });
-  const outputDestination = dependencies.artifactsRoot ? import_node_path12.default.resolve(artifactsRoot, launchId) : getAgentHostPaths({ launchId, rudiHome: dependencies.rudiHome }).launchDirectory;
-  if (import_node_fs12.default.existsSync(outputDestination)) {
+  const outputDestination = dependencies.artifactsRoot ? import_node_path13.default.resolve(artifactsRoot, launchId) : getAgentHostPaths({ launchId, rudiHome: dependencies.rudiHome }).launchDirectory;
+  if (import_node_fs13.default.existsSync(outputDestination)) {
     throw new Error(`Output destination already exists: ${outputDestination}`);
   }
-  import_node_fs12.default.mkdirSync(outputDestination, { recursive: true, mode: 448 });
+  import_node_fs13.default.mkdirSync(outputDestination, { recursive: true, mode: 448 });
   createLaunchOwnershipMarker({ launchDirectory: outputDestination, launchId });
   const resolvedEventSink = eventSink || ((event) => appendLaunchEvent(
     getLaunchArtifactFiles(outputDestination).events,
@@ -25543,7 +26295,7 @@ async function resumeAgentWithStore(options, dependencies) {
       workspaceMode: previous.workspaceMode
     });
   } catch (error) {
-    import_node_fs12.default.rmSync(outputDestination, { recursive: true, force: true });
+    import_node_fs13.default.rmSync(outputDestination, { recursive: true, force: true });
     throw error;
   }
   store.create({
@@ -25601,13 +26353,13 @@ function discardSink() {
   } };
 }
 function appendPrivateText(file, value) {
-  const handle = import_node_fs13.default.openSync(file, "a", 384);
+  const handle = import_node_fs14.default.openSync(file, "a", 384);
   try {
-    import_node_fs13.default.writeFileSync(handle, String(value), "utf8");
+    import_node_fs14.default.writeFileSync(handle, String(value), "utf8");
   } finally {
-    import_node_fs13.default.closeSync(handle);
+    import_node_fs14.default.closeSync(handle);
   }
-  import_node_fs13.default.chmodSync(file, 384);
+  import_node_fs14.default.chmodSync(file, 384);
 }
 async function dispatchDetachedAgent({ launchId, operation, options }, dependencies = {}) {
   assertLaunchId(launchId);
@@ -25631,7 +26383,7 @@ async function dispatchDetachedAgent({ launchId, operation, options }, dependenc
   if (Buffer.byteLength(request, "utf8") > MAX_WORKER_REQUEST_BYTES) {
     throw new Error(`Detached worker request exceeds ${MAX_WORKER_REQUEST_BYTES} bytes`);
   }
-  return await new Promise((resolve2, reject) => {
+  return await new Promise((resolve3, reject) => {
     let buffer = "";
     let settled = false;
     const child = spawnImpl(nodePath, [entrypoint, "agent", "_worker", launchId], {
@@ -25656,7 +26408,7 @@ async function dispatchDetachedAgent({ launchId, operation, options }, dependenc
       child.stdout?.destroy?.();
       child.unref?.();
       if (error) reject(error);
-      else resolve2(launch);
+      else resolve3(launch);
     }
     child.once("spawn", () => {
       child.stdin.end(`${request}
@@ -25817,7 +26569,7 @@ async function stopAgentLaunch(launchId, dependencies = {}) {
       if (TERMINAL_STATUSES3.has(current2.status)) {
         return { alreadyTerminal: false, launch: current2 };
       }
-      await new Promise((resolve2) => setTimeout(resolve2, pollIntervalMs));
+      await new Promise((resolve3) => setTimeout(resolve3, pollIntervalMs));
     }
     const current = store.get(launchId);
     if (current.ownerPid && verifyWorkerImpl(current, dependencies)) {
@@ -25833,8 +26585,8 @@ async function stopAgentLaunch(launchId, dependencies = {}) {
 }
 
 // src/agent-host/workspace-lifecycle.js
-var import_node_fs14 = __toESM(require("node:fs"), 1);
-var import_node_path13 = __toESM(require("node:path"), 1);
+var import_node_fs15 = __toESM(require("node:fs"), 1);
+var import_node_path14 = __toESM(require("node:path"), 1);
 var import_node_child_process8 = require("node:child_process");
 var TERMINAL_STATUSES4 = /* @__PURE__ */ new Set(["completed", "failed", "stopped"]);
 var MAX_DIFF_BYTES = 20 * 1024 * 1024;
@@ -25848,7 +26600,7 @@ function git(execFileSyncImpl, cwd, args) {
 }
 function noIndexDiff(execFileSyncImpl, left, right) {
   try {
-    return git(execFileSyncImpl, import_node_path13.default.dirname(left), [
+    return git(execFileSyncImpl, import_node_path14.default.dirname(left), [
       "diff",
       "--no-index",
       "--binary",
@@ -25863,16 +26615,16 @@ function noIndexDiff(execFileSyncImpl, left, right) {
   }
 }
 function isInside3(candidate, parent) {
-  const relative2 = import_node_path13.default.relative(parent, candidate);
-  return relative2 === "" || !relative2.startsWith(`..${import_node_path13.default.sep}`) && relative2 !== ".." && !import_node_path13.default.isAbsolute(relative2);
+  const relative3 = import_node_path14.default.relative(parent, candidate);
+  return relative3 === "" || !relative3.startsWith(`..${import_node_path14.default.sep}`) && relative3 !== ".." && !import_node_path14.default.isAbsolute(relative3);
 }
 function safeRelative(root, relativePath) {
   if (typeof relativePath !== "string" || relativePath === "" || relativePath.includes("\0")) {
     throw new Error("Launch change contains an invalid path");
   }
-  const platformPath = relativePath.split("/").join(import_node_path13.default.sep);
-  const destination = import_node_path13.default.resolve(root, platformPath);
-  if (!isInside3(destination, import_node_path13.default.resolve(root)) || destination === import_node_path13.default.resolve(root)) {
+  const platformPath = relativePath.split("/").join(import_node_path14.default.sep);
+  const destination = import_node_path14.default.resolve(root, platformPath);
+  if (!isInside3(destination, import_node_path14.default.resolve(root)) || destination === import_node_path14.default.resolve(root)) {
     throw new Error(`Launch change escapes the workspace: ${relativePath}`);
   }
   return destination;
@@ -25897,7 +26649,7 @@ function parseNullSeparated(value) {
   return String(value || "").split("\0").filter(Boolean).sort();
 }
 function getGitChangeSet(launch, execFileSyncImpl) {
-  if (!import_node_fs14.default.existsSync(launch.executionWorkspace)) {
+  if (!import_node_fs15.default.existsSync(launch.executionWorkspace)) {
     throw new Error(`Execution workspace no longer exists: ${launch.executionWorkspace}`);
   }
   const trackedPatch = git(execFileSyncImpl, launch.executionWorkspace, [
@@ -25933,19 +26685,19 @@ function getGitChangeSet(launch, execFileSyncImpl) {
   };
 }
 function assertSafeSymlinks(workspace, relativePaths) {
-  const root = import_node_fs14.default.realpathSync(workspace);
+  const root = import_node_fs15.default.realpathSync(workspace);
   for (const relativePath of relativePaths) {
     const candidate = safeRelative(root, relativePath);
     let stat;
     try {
-      stat = import_node_fs14.default.lstatSync(candidate);
+      stat = import_node_fs15.default.lstatSync(candidate);
     } catch {
       continue;
     }
     if (!stat.isSymbolicLink()) continue;
     let target;
     try {
-      target = import_node_fs14.default.realpathSync(candidate);
+      target = import_node_fs15.default.realpathSync(candidate);
     } catch {
       throw new Error(`Launch change contains a broken symlink: ${relativePath}`);
     }
@@ -25959,7 +26711,7 @@ function cleanupGitWorktree(launch, execFileSyncImpl) {
   if (launch.worktreeBranch !== expectedBranch) {
     throw new Error(`Refusing to clean unexpected worktree branch: ${launch.worktreeBranch || "none"}`);
   }
-  if (import_node_fs14.default.existsSync(launch.executionWorkspace)) {
+  if (import_node_fs15.default.existsSync(launch.executionWorkspace)) {
     git(execFileSyncImpl, launch.projectRoot, [
       "worktree",
       "remove",
@@ -25979,33 +26731,33 @@ function copyWorkspaceEntry(sourceRoot, destinationRoot, relativePath, entry) {
   const source = safeRelative(sourceRoot, relativePath);
   const destination = safeRelative(destinationRoot, relativePath);
   if (entry.type === "directory") {
-    import_node_fs14.default.mkdirSync(destination, { recursive: true, mode: entry.mode });
-    import_node_fs14.default.chmodSync(destination, entry.mode);
+    import_node_fs15.default.mkdirSync(destination, { recursive: true, mode: entry.mode });
+    import_node_fs15.default.chmodSync(destination, entry.mode);
     return;
   }
-  import_node_fs14.default.mkdirSync(import_node_path13.default.dirname(destination), { recursive: true });
-  const temporary = import_node_path13.default.join(
-    import_node_path13.default.dirname(destination),
-    `.${import_node_path13.default.basename(destination)}.rudi-promote-${process.pid}`
+  import_node_fs15.default.mkdirSync(import_node_path14.default.dirname(destination), { recursive: true });
+  const temporary = import_node_path14.default.join(
+    import_node_path14.default.dirname(destination),
+    `.${import_node_path14.default.basename(destination)}.rudi-promote-${process.pid}`
   );
-  import_node_fs14.default.rmSync(temporary, { recursive: true, force: true });
+  import_node_fs15.default.rmSync(temporary, { recursive: true, force: true });
   if (entry.type === "file") {
-    import_node_fs14.default.copyFileSync(source, temporary, import_node_fs14.default.constants.COPYFILE_EXCL);
-    import_node_fs14.default.chmodSync(temporary, entry.mode);
+    import_node_fs15.default.copyFileSync(source, temporary, import_node_fs15.default.constants.COPYFILE_EXCL);
+    import_node_fs15.default.chmodSync(temporary, entry.mode);
   } else if (entry.type === "symlink") {
-    import_node_fs14.default.symlinkSync(entry.target, temporary);
+    import_node_fs15.default.symlinkSync(entry.target, temporary);
   } else {
     throw new Error(`Unsupported promoted entry type: ${entry.type}`);
   }
-  import_node_fs14.default.rmSync(destination, { recursive: true, force: true });
-  import_node_fs14.default.renameSync(temporary, destination);
+  import_node_fs15.default.rmSync(destination, { recursive: true, force: true });
+  import_node_fs15.default.renameSync(temporary, destination);
 }
 function restoreDirectoryFromBackup(projectRoot, backup) {
-  for (const entry of import_node_fs14.default.readdirSync(projectRoot)) {
-    import_node_fs14.default.rmSync(import_node_path13.default.join(projectRoot, entry), { recursive: true, force: true });
+  for (const entry of import_node_fs15.default.readdirSync(projectRoot)) {
+    import_node_fs15.default.rmSync(import_node_path14.default.join(projectRoot, entry), { recursive: true, force: true });
   }
-  for (const entry of import_node_fs14.default.readdirSync(backup)) {
-    import_node_fs14.default.cpSync(import_node_path13.default.join(backup, entry), import_node_path13.default.join(projectRoot, entry), {
+  for (const entry of import_node_fs15.default.readdirSync(backup)) {
+    import_node_fs15.default.cpSync(import_node_path14.default.join(backup, entry), import_node_path14.default.join(projectRoot, entry), {
       errorOnExist: true,
       force: false,
       recursive: true
@@ -26019,13 +26771,13 @@ function applyIsolatedChanges(launch, baseline, current) {
   }
   assertSafeSymlinks(launch.executionWorkspace, Object.keys(current.entries));
   const changes = compareWorkspaceManifests(baseline, current);
-  const backup = import_node_path13.default.join(launch.outputDestination, "promotion-backup");
-  if (import_node_fs14.default.existsSync(backup)) throw new Error(`Promotion backup already exists: ${backup}`);
-  import_node_fs14.default.cpSync(launch.projectRoot, backup, { errorOnExist: true, force: false, recursive: true });
+  const backup = import_node_path14.default.join(launch.outputDestination, "promotion-backup");
+  if (import_node_fs15.default.existsSync(backup)) throw new Error(`Promotion backup already exists: ${backup}`);
+  import_node_fs15.default.cpSync(launch.projectRoot, backup, { errorOnExist: true, force: false, recursive: true });
   try {
     const removals = changes.filter((change) => change.after == null).sort((left, right) => right.path.split("/").length - left.path.split("/").length);
     for (const change of removals) {
-      import_node_fs14.default.rmSync(safeRelative(launch.projectRoot, change.path), { recursive: true, force: true });
+      import_node_fs15.default.rmSync(safeRelative(launch.projectRoot, change.path), { recursive: true, force: true });
     }
     const directories = changes.filter((change) => change.after?.type === "directory");
     const otherEntries = changes.filter((change) => change.after && change.after.type !== "directory");
@@ -26056,7 +26808,7 @@ function applyIsolatedChanges(launch, baseline, current) {
     }
     throw error;
   } finally {
-    import_node_fs14.default.rmSync(backup, { recursive: true, force: true });
+    import_node_fs15.default.rmSync(backup, { recursive: true, force: true });
   }
   return changes;
 }
@@ -26126,7 +26878,7 @@ function promoteAgentLaunch(launchId, dependencies = {}) {
       assertSafeSymlinks(launch.executionWorkspace, [...changedTracked, ...changes.untracked]);
       for (const relativePath of changes.untracked) {
         const destination = safeRelative(launch.projectRoot, relativePath);
-        if (import_node_fs14.default.existsSync(destination)) {
+        if (import_node_fs15.default.existsSync(destination)) {
           throw new Error(`Cannot promote untracked file because the destination exists: ${relativePath}`);
         }
       }
@@ -26149,8 +26901,8 @@ function promoteAgentLaunch(launchId, dependencies = {}) {
       for (const relativePath of changes.untracked) {
         const source = safeRelative(launch.executionWorkspace, relativePath);
         const destination = safeRelative(launch.projectRoot, relativePath);
-        import_node_fs14.default.mkdirSync(import_node_path13.default.dirname(destination), { recursive: true });
-        import_node_fs14.default.cpSync(source, destination, { errorOnExist: true, force: false, recursive: true });
+        import_node_fs15.default.mkdirSync(import_node_path14.default.dirname(destination), { recursive: true });
+        import_node_fs15.default.cpSync(source, destination, { errorOnExist: true, force: false, recursive: true });
       }
       const updated = store.setDisposition(launchId, "promoted");
       cleanupGitWorktree(updated, execFileSyncImpl);
@@ -26161,7 +26913,7 @@ function promoteAgentLaunch(launchId, dependencies = {}) {
       const current = createWorkspaceManifest(launch.executionWorkspace);
       changes = applyIsolatedChanges(launch, baseline, current);
       const updated = store.setDisposition(launchId, "promoted");
-      import_node_fs14.default.rmSync(updated.executionWorkspace, { recursive: true, force: true });
+      import_node_fs15.default.rmSync(updated.executionWorkspace, { recursive: true, force: true });
       return { changes, launch: store.get(launchId) };
     }
     throw new Error("Read-only launches have no isolated changes to promote");
@@ -26176,7 +26928,7 @@ function discardAgentLaunch(launchId, dependencies = {}) {
     const launch = requireManagedLaunch(store, launchId, { terminal: true });
     const execFileSyncImpl = dependencies.execFileSyncImpl || import_node_child_process8.execFileSync;
     if (launch.workspaceMode === "worktree") cleanupGitWorktree(launch, execFileSyncImpl);
-    import_node_fs14.default.rmSync(launch.outputDestination, { recursive: true, force: true });
+    import_node_fs15.default.rmSync(launch.outputDestination, { recursive: true, force: true });
     const updated = store.setDisposition(launchId, "discarded");
     return { launch: updated };
   });
@@ -26215,7 +26967,7 @@ function validateTasks(tasks) {
   return validated;
 }
 function createAgentGroupId() {
-  return `group_${import_node_crypto3.default.randomUUID().replaceAll("-", "")}`;
+  return `group_${import_node_crypto4.default.randomUUID().replaceAll("-", "")}`;
 }
 async function launchDetachedAgentGroup(request, dependencies = {}) {
   const groupId = assertAgentGroupId(request?.groupId);
@@ -26281,29 +27033,29 @@ async function stopAgentGroup(groupId, dependencies = {}) {
 }
 
 // src/daemon/runtime/lifecycle.js
-var import_node_fs16 = __toESM(require("node:fs"), 1);
-var import_node_path15 = __toESM(require("node:path"), 1);
+var import_node_fs17 = __toESM(require("node:fs"), 1);
+var import_node_path16 = __toESM(require("node:path"), 1);
 var import_node_child_process9 = require("node:child_process");
 init_src();
 
 // src/daemon/client.js
-var import_node_fs15 = __toESM(require("node:fs"), 1);
-var import_node_path14 = __toESM(require("node:path"), 1);
+var import_node_fs16 = __toESM(require("node:fs"), 1);
+var import_node_path15 = __toESM(require("node:path"), 1);
 init_src();
-var DAEMON_PORT_FILE = import_node_path14.default.join(PATHS.home, "daemon.port");
-var DAEMON_TOKEN_FILE = import_node_path14.default.join(PATHS.home, "daemon.token");
+var DAEMON_PORT_FILE = import_node_path15.default.join(PATHS.home, "daemon.port");
+var DAEMON_TOKEN_FILE = import_node_path15.default.join(PATHS.home, "daemon.token");
 function readDaemonInfo(options = {}) {
   const portFile = options.portFile || DAEMON_PORT_FILE;
   const tokenFile = options.tokenFile || DAEMON_TOKEN_FILE;
-  if (!import_node_fs15.default.existsSync(portFile) || !import_node_fs15.default.existsSync(tokenFile)) {
+  if (!import_node_fs16.default.existsSync(portFile) || !import_node_fs16.default.existsSync(tokenFile)) {
     const error = new Error("RUDI daemon is not running. Start it with: rudi daemon start");
     error.code = "DAEMON_NOT_RUNNING";
     error.portFile = portFile;
     error.tokenFile = tokenFile;
     throw error;
   }
-  const portRaw = import_node_fs15.default.readFileSync(portFile, "utf-8").trim();
-  const token = import_node_fs15.default.readFileSync(tokenFile, "utf-8").trim();
+  const portRaw = import_node_fs16.default.readFileSync(portFile, "utf-8").trim();
+  const token = import_node_fs16.default.readFileSync(tokenFile, "utf-8").trim();
   const port = Number.parseInt(portRaw, 10);
   if (!Number.isFinite(port) || port <= 0) {
     const error = new Error("Invalid daemon port file. Restart it with: rudi daemon restart");
@@ -26860,7 +27612,7 @@ var DEFAULT_START_TIMEOUT_MS2 = 45e3;
 var DEFAULT_STOP_TIMEOUT_MS = 1e4;
 var DEFAULT_POLL_INTERVAL_MS = 250;
 function sleep(ms) {
-  return new Promise((resolve2) => setTimeout(resolve2, ms));
+  return new Promise((resolve3) => setTimeout(resolve3, ms));
 }
 function isOfflineStatus(status) {
   return status?.reason === "not_running" || status?.reason === "unreachable" || status?.reason === "invalid_connection_files";
@@ -26882,11 +27634,11 @@ function removeDaemonConnectionFiles({
   tokenFile = DAEMON_TOKEN_FILE
 } = {}) {
   try {
-    import_node_fs16.default.unlinkSync(portFile);
+    import_node_fs17.default.unlinkSync(portFile);
   } catch {
   }
   try {
-    import_node_fs16.default.unlinkSync(tokenFile);
+    import_node_fs17.default.unlinkSync(tokenFile);
   } catch {
   }
 }
@@ -26910,11 +27662,11 @@ function spawnDaemonProcess({
   serveArgs = ["serve"],
   spawnImpl = import_node_child_process9.spawn
 } = {}) {
-  import_node_fs16.default.mkdirSync(logsDir, { recursive: true });
-  const stdoutPath = import_node_path15.default.join(logsDir, "daemon.out.log");
-  const stderrPath = import_node_path15.default.join(logsDir, "daemon.err.log");
-  const stdoutFd = import_node_fs16.default.openSync(stdoutPath, "a");
-  const stderrFd = import_node_fs16.default.openSync(stderrPath, "a");
+  import_node_fs17.default.mkdirSync(logsDir, { recursive: true });
+  const stdoutPath = import_node_path16.default.join(logsDir, "daemon.out.log");
+  const stderrPath = import_node_path16.default.join(logsDir, "daemon.err.log");
+  const stdoutFd = import_node_fs17.default.openSync(stdoutPath, "a");
+  const stderrFd = import_node_fs17.default.openSync(stderrPath, "a");
   try {
     const child = spawnImpl(nodePath, [entrypoint, ...serveArgs], {
       detached: true,
@@ -26925,11 +27677,11 @@ function spawnDaemonProcess({
     return { pid: child.pid, stderrPath, stdoutPath };
   } finally {
     try {
-      import_node_fs16.default.closeSync(stdoutFd);
+      import_node_fs17.default.closeSync(stdoutFd);
     } catch {
     }
     try {
-      import_node_fs16.default.closeSync(stderrFd);
+      import_node_fs17.default.closeSync(stderrFd);
     } catch {
     }
   }
@@ -28251,9 +29003,9 @@ ${prefix} ${syncedCount} skill(s). Restart ${targetName} to pick up native skill
 
 // src/commands/install.js
 async function loadManifest(installPath) {
-  const manifestPath = path30.join(installPath, "manifest.json");
+  const manifestPath = path31.join(installPath, "manifest.json");
   try {
-    const content = await fs30.readFile(manifestPath, "utf-8");
+    const content = await fs31.readFile(manifestPath, "utf-8");
     return JSON.parse(content);
   } catch {
     return null;
@@ -28261,15 +29013,15 @@ async function loadManifest(installPath) {
 }
 function getBundledBinary(runtime, binary) {
   const platform = process.platform;
-  const rudiHome = process.env.RUDI_HOME || path30.join(process.env.HOME || process.env.USERPROFILE, ".rudi");
+  const rudiHome = process.env.RUDI_HOME || path31.join(process.env.HOME || process.env.USERPROFILE, ".rudi");
   if (runtime === "node") {
-    const npmPath = platform === "win32" ? path30.join(rudiHome, "runtimes", "node", "npm.cmd") : path30.join(rudiHome, "runtimes", "node", "bin", "npm");
+    const npmPath = platform === "win32" ? path31.join(rudiHome, "runtimes", "node", "npm.cmd") : path31.join(rudiHome, "runtimes", "node", "bin", "npm");
     if (fsSync.existsSync(npmPath)) {
       return npmPath;
     }
   }
   if (runtime === "python") {
-    const pipPath = platform === "win32" ? path30.join(rudiHome, "runtimes", "python", "Scripts", "pip.exe") : path30.join(rudiHome, "runtimes", "python", "bin", "pip3");
+    const pipPath = platform === "win32" ? path31.join(rudiHome, "runtimes", "python", "Scripts", "pip.exe") : path31.join(rudiHome, "runtimes", "python", "bin", "pip3");
     if (fsSync.existsSync(pipPath)) {
       return pipPath;
     }
@@ -28291,9 +29043,9 @@ function getStackCommand(manifest) {
   return command;
 }
 function getNodeProjectInfo(stackPath) {
-  const candidates = [stackPath, path30.join(stackPath, "node")];
+  const candidates = [stackPath, path31.join(stackPath, "node")];
   for (const root of candidates) {
-    const packageJsonPath = path30.join(root, "package.json");
+    const packageJsonPath = path31.join(root, "package.json");
     if (!fsSync.existsSync(packageJsonPath)) continue;
     try {
       const content = fsSync.readFileSync(packageJsonPath, "utf-8");
@@ -28320,9 +29072,9 @@ async function installDependencies(stackPath, manifest, options = {}) {
       if (project.error) {
         return { installed: false, error: `Failed to read package.json: ${project.error}` };
       }
-      const nodeModulesPath = path30.join(project.root, "node_modules");
+      const nodeModulesPath = path31.join(project.root, "node_modules");
       try {
-        await fs30.access(nodeModulesPath);
+        await fs31.access(nodeModulesPath);
         return { installed: false, reason: "Dependencies already installed" };
       } catch {
       }
@@ -28335,15 +29087,15 @@ async function installDependencies(stackPath, manifest, options = {}) {
       });
       return { installed: true };
     } else if (runtime === "python") {
-      let requirementsPath = path30.join(stackPath, "python", "requirements.txt");
-      let reqCwd = path30.join(stackPath, "python");
+      let requirementsPath = path31.join(stackPath, "python", "requirements.txt");
+      let reqCwd = path31.join(stackPath, "python");
       try {
-        await fs30.access(requirementsPath);
+        await fs31.access(requirementsPath);
       } catch {
-        requirementsPath = path30.join(stackPath, "requirements.txt");
+        requirementsPath = path31.join(stackPath, "requirements.txt");
         reqCwd = stackPath;
         try {
-          await fs30.access(requirementsPath);
+          await fs31.access(requirementsPath);
         } catch {
           return { installed: false, reason: "No requirements.txt" };
         }
@@ -28395,7 +29147,10 @@ function buildRelatedSkillInstallPlan(resolved, flags = {}) {
   const relatedSkills = Array.isArray(resolved?.relatedSkills) ? resolved.relatedSkills : [];
   const operatorSkill = relatedSkills.find((skill) => skill.isOperator) || null;
   const companionSkills = relatedSkills.filter((skill) => !skill.isOperator);
-  const missingOperator = operatorSkill && !operatorSkill.installed ? [operatorSkill] : [];
+  const forceExternalOperator = Boolean(
+    flags.force && resolved?.source?.type === "github" && operatorSkill?.source?.type === "github"
+  );
+  const missingOperator = operatorSkill && (!operatorSkill.installed || forceExternalOperator) ? [operatorSkill] : [];
   const missingCompanions = companionSkills.filter((skill) => !skill.installed);
   const missing = [...missingOperator, ...missingCompanions];
   return {
@@ -28406,6 +29161,7 @@ function buildRelatedSkillInstallPlan(resolved, flags = {}) {
     missingOperator,
     missingCompanions,
     missing,
+    forceExternalOperator,
     toInstall: [
       ...missingOperator,
       ...mode === "include" ? missingCompanions : []
@@ -28445,13 +29201,35 @@ async function activateInstalledStack(stackId, options = {}, dependencies = {}) 
   }
   return { status: "indexed", result };
 }
+function getInstallActivationPolicy(resolved, allowScripts = false) {
+  if (resolved?.source?.type === "github" && !allowScripts) {
+    return {
+      activate: false,
+      reason: "Downloaded GitHub stack execution is disabled until --allow-scripts is explicitly approved"
+    };
+  }
+  return { activate: true };
+}
+function deferExternalStackActivation(stackId, dependencies = {}) {
+  const removeCachedStack = dependencies.removeStackFromToolIndex || removeStackFromToolIndex;
+  const removedCachedEntry = removeCachedStack(stackId);
+  return { status: "deferred", removedCachedEntry };
+}
+async function activateExternalStackSafely(stackId, resolved, allowScripts, options = {}, dependencies = {}) {
+  deferExternalStackActivation(stackId, dependencies);
+  const activationPolicy = getInstallActivationPolicy(resolved, allowScripts);
+  if (!activationPolicy.activate) {
+    return { status: "deferred", reason: activationPolicy.reason };
+  }
+  return activateInstalledStack(stackId, options, dependencies);
+}
 async function syncRelatedSkillWrappers(relatedSkills, installResults, installedAgents, dependencies = {}) {
   const successful = new Map(
     (installResults || []).filter((result) => result?.success && result.path).map((result) => [result.id, result])
   );
   const skills = (relatedSkills || []).filter((skill) => successful.has(skill.id)).map((skill) => {
     const installed = successful.get(skill.id);
-    const entryPath = fsSync.existsSync(installed.path) && fsSync.statSync(installed.path).isDirectory() ? path30.join(installed.path, "SKILL.md") : installed.path;
+    const entryPath = fsSync.existsSync(installed.path) && fsSync.statSync(installed.path).isDirectory() ? path31.join(installed.path, "SKILL.md") : installed.path;
     return {
       ...skill,
       source: "rudi",
@@ -28558,14 +29336,22 @@ Install ${label} now? [y/N] `);
   }
 }
 async function installRelatedSkills(skills, options = {}) {
-  const { allowScripts = false, withShims = false } = options;
+  const {
+    allowScripts = false,
+    withShims = false,
+    deferFinalize = false,
+    forceExternal = false,
+    installPackage: installResolvedPackage = installPackage
+  } = options;
   const results = [];
   for (const skill of skills) {
     console.log(`  Installing related skill ${skill.id}...`);
-    const result = await installPackage(skill.id, {
-      force: false,
+    const result = await installResolvedPackage(skill.id, {
+      force: skill.sourceMismatch || forceExternal && skill.source?.type === "github",
       allowScripts,
       withShims,
+      deferFinalize: deferFinalize && skill.source?.type === "github",
+      resolvedPackage: skill,
       onProgress: (progress) => {
         if (progress.phase === "installing") {
           console.log(`    Installing ${progress.package}...`);
@@ -28577,7 +29363,8 @@ async function installRelatedSkills(skills, options = {}) {
       success: result.success,
       path: result.path,
       alreadyInstalled: result.alreadyInstalled,
-      error: result.error
+      error: result.error,
+      transaction: result.transaction
     });
   }
   return results;
@@ -28586,10 +29373,20 @@ async function installAndSyncStackSkills(plan, options = {}) {
   const {
     allowScripts = false,
     withShims = false,
-    installedAgents = getInstalledAgents()
+    deferFinalize = false,
+    deferSync = false,
+    forceExternal = false,
+    installedAgents = getInstalledAgents(),
+    installPackage: installResolvedPackage = installPackage
   } = options;
   const selectedSkills = await promptForRelatedSkills(plan);
-  const installResults = selectedSkills.length > 0 ? await installRelatedSkills(selectedSkills, { allowScripts, withShims }) : [];
+  const installResults = selectedSkills.length > 0 ? await installRelatedSkills(selectedSkills, {
+    allowScripts,
+    withShims,
+    deferFinalize,
+    forceExternal,
+    installPackage: installResolvedPackage
+  }) : [];
   if (installResults.length > 0) {
     console.log(`
   Installed skills:`);
@@ -28601,11 +29398,16 @@ async function installAndSyncStackSkills(plan, options = {}) {
       }
     }
   }
-  const wrapperSync = await syncRelatedSkillWrappers(
+  const wrapperSync = deferSync ? null : await syncRelatedSkillWrappers(
     plan.relatedSkills,
     installResults,
     installedAgents
   );
+  reportRelatedSkillWrapperSync(wrapperSync);
+  return { selectedSkills, installResults, wrapperSync };
+}
+function reportRelatedSkillWrapperSync(wrapperSync) {
+  if (!wrapperSync) return;
   for (const target of wrapperSync.targets) {
     if (wrapperSync.errors[target]) {
       console.log(`    - ${target} native skill sync failed: ${wrapperSync.errors[target]}`);
@@ -28619,7 +29421,6 @@ async function installAndSyncStackSkills(plan, options = {}) {
       console.log(`    - ${target} native skill wrapper synced (${wrapperSync.outcomes[target]?.changed || 0} changed)`);
     }
   }
-  return { selectedSkills, installResults, wrapperSync };
 }
 function getStackEntryPoint(stackPath, manifest) {
   const command = getStackCommand(manifest);
@@ -28649,10 +29450,41 @@ function getStackEntryPoint(stackPath, manifest) {
     if (arg.startsWith("-")) continue;
     const looksLikeFile = fileExtensions.some((ext) => arg.endsWith(ext)) || arg.includes("/");
     if (!looksLikeFile) continue;
-    const entryPath = path30.join(stackPath, arg);
-    return { entryArg: arg, entryPath };
+    const resolved = resolveContainedStackPath(stackPath, arg);
+    if (resolved.error) return { entryArg: arg, entryPath: null, error: resolved.error };
+    return { entryArg: arg, entryPath: resolved.path };
   }
   return { entryArg: null, entryPath: null };
+}
+function resolveContainedStackPath(stackPath, value) {
+  if (typeof value !== "string" || !value || value.includes("\0") || path31.isAbsolute(value)) {
+    return { error: `Stack command path must be relative to the installed package: ${value}` };
+  }
+  const root = path31.resolve(stackPath);
+  const candidate = path31.resolve(root, value);
+  if (candidate === root || !candidate.startsWith(`${root}${path31.sep}`)) {
+    return { error: `Stack command path escapes the installed package: ${value}` };
+  }
+  return { path: candidate };
+}
+function validateExternalStackCommand(stackPath, manifest) {
+  const entryPoint = getStackEntryPoint(stackPath, manifest);
+  if (entryPoint.error) return { valid: false, error: entryPoint.error };
+  if (!entryPoint.entryPath) {
+    return {
+      valid: false,
+      error: "External stack command must reference an entry file inside the pinned package"
+    };
+  }
+  const relativeEntry = path31.relative(path31.resolve(stackPath), entryPoint.entryPath);
+  const rootSegment = relativeEntry.split(path31.sep)[0];
+  if (rootSegment === "runs" || rootSegment === "outputs") {
+    return {
+      valid: false,
+      error: `External stack command cannot use mutable install state as its entry point: ${entryPoint.entryArg}`
+    };
+  }
+  return { valid: true, entryPath: entryPoint.entryPath };
 }
 function validateStackEntryPoint(stackPath, manifest) {
   const runtime = getStackRuntime(manifest);
@@ -28662,7 +29494,9 @@ function validateStackEntryPoint(stackPath, manifest) {
       return { valid: false, error: "Binary stack has no command" };
     }
     const binName = command[0].replace(/^\.\//, "");
-    const binaryPath = path30.join(stackPath, binName);
+    const resolved = resolveContainedStackPath(stackPath, binName);
+    if (resolved.error) return { valid: false, error: resolved.error };
+    const binaryPath = resolved.path;
     if (!fsSync.existsSync(binaryPath)) {
       return { valid: false, error: `Binary not found: ${command[0]}` };
     }
@@ -28687,7 +29521,7 @@ function validateStackEntryPoint(stackPath, manifest) {
   return { valid: true };
 }
 async function buildStackIfNeeded(stackPath, manifest, options = {}) {
-  const { nodeProject, verbose = false } = options;
+  const { nodeProject, verbose = false, allowScripts = true } = options;
   const runtime = getStackRuntime(manifest);
   if (runtime !== "node") {
     return { built: false, reason: "Non-node runtime" };
@@ -28708,6 +29542,11 @@ async function buildStackIfNeeded(stackPath, manifest, options = {}) {
   }
   if (!project.packageJson?.scripts?.build) {
     return { built: false, reason: "No build script" };
+  }
+  if (!allowScripts) {
+    throw new Error(
+      "External stack build scripts are disabled by default; review the pinned source and rerun with --allow-scripts"
+    );
   }
   const npmCmd = getBundledBinary("node", "npm");
   console.log(`  Building stack...`);
@@ -28743,9 +29582,9 @@ async function checkSecrets(manifest) {
   return { found, missing };
 }
 async function parseEnvExample(installPath) {
-  const examplePath = path30.join(installPath, ".env.example");
+  const examplePath = path31.join(installPath, ".env.example");
   try {
-    const content = await fs30.readFile(examplePath, "utf-8");
+    const content = await fs31.readFile(examplePath, "utf-8");
     const keys = [];
     for (const line of content.split("\n")) {
       const trimmed = line.trim();
@@ -28763,7 +29602,7 @@ async function parseEnvExample(installPath) {
 async function cleanupFailedStackInstall(stackId, stackPath, removeConfig) {
   if (stackPath) {
     try {
-      await fs30.rm(stackPath, { recursive: true, force: true });
+      await fs31.rm(stackPath, { recursive: true, force: true });
     } catch {
     }
   }
@@ -28774,9 +29613,56 @@ async function cleanupFailedStackInstall(stackId, stackPath, removeConfig) {
     }
   }
 }
+function snapshotStackRegistration(stackId, manifest) {
+  const config = readRudiConfig();
+  const stacks = config?.stacks || {};
+  const secrets = config?.secrets || {};
+  const hasStack = Object.prototype.hasOwnProperty.call(stacks, stackId);
+  const secretNames = [...new Set(
+    getManifestSecrets(manifest).map(getSecretName).filter(Boolean)
+  )];
+  return {
+    stackId,
+    hasStack,
+    stack: hasStack ? structuredClone(stacks[stackId]) : null,
+    secrets: secretNames.map((name) => ({
+      name,
+      exists: Object.prototype.hasOwnProperty.call(secrets, name),
+      value: Object.prototype.hasOwnProperty.call(secrets, name) ? structuredClone(secrets[name]) : null
+    }))
+  };
+}
+function restoreStackRegistration(snapshot) {
+  if (!snapshot) return;
+  updateRudiConfig((config) => {
+    if (snapshot.hasStack) config.stacks[snapshot.stackId] = snapshot.stack;
+    else delete config.stacks[snapshot.stackId];
+    for (const secret of snapshot.secrets) {
+      if (secret.exists) config.secrets[secret.name] = secret.value;
+      else delete config.secrets[secret.name];
+    }
+  });
+}
+async function rollbackDeferredTransactions(transactions, rollback = rollbackDeferredInstall) {
+  const errors = [];
+  for (const transaction of [...transactions].reverse()) {
+    try {
+      await rollback(transaction);
+    } catch (error) {
+      errors.push(`${transaction.id}: ${error.message}`);
+    }
+  }
+  if (errors.length > 0) {
+    throw new Error(`Deferred install rollback failed: ${errors.join("; ")}`);
+  }
+}
 async function cmdInstall(args, flags, dependencies = {}) {
   const fetchRegistryIndex = dependencies.fetchIndex || fetchIndex;
   const resolveRegistryPackage = dependencies.resolvePackage || resolvePackage;
+  const installResolvedPackage = dependencies.installPackage || installPackage;
+  const prepareDeferred = dependencies.prepareDeferredInstall || prepareDeferredInstall;
+  const commitDeferred = dependencies.commitDeferredInstall || commitDeferredInstall;
+  const rollbackDeferred = dependencies.rollbackDeferredInstall || rollbackDeferredInstall;
   const exit = dependencies.exit || ((code) => process.exit(code));
   const printError = dependencies.error || console.error;
   let pkgId = args[0];
@@ -28791,7 +29677,7 @@ async function cmdInstall(args, flags, dependencies = {}) {
     console.error("After installing, run:");
     console.error("  rudi secrets set <KEY>    # Configure required secrets");
     console.error("  rudi integrate all        # Wire up your agents");
-    process.exit(1);
+    return exit(1);
   }
   if (pkgId.startsWith("prompt:")) {
     console.log('Note: "prompt:" has been renamed to "skill:". Converting automatically.\n');
@@ -28809,16 +29695,29 @@ async function cmdInstall(args, flags, dependencies = {}) {
   const withShims = flags["with-shims"] || flags.withShims || false;
   console.log(`Resolving ${pkgId}...`);
   try {
-    if (!pkgId.startsWith("npm:")) {
+    if (!pkgId.startsWith("npm:") && !/^https?:\/\//i.test(pkgId)) {
       await fetchRegistryIndex({ force: true });
     }
     const resolved = await resolveRegistryPackage(pkgId);
     const relatedSkillPlan = buildRelatedSkillInstallPlan(resolved, flags);
+    const externalSourceMismatch = Boolean(
+      resolved.source?.type === "github" && (resolved.sourceMismatch || relatedSkillPlan.operatorSkill?.sourceMismatch)
+    );
     console.log(`
 Package: ${resolved.name} (${resolved.id})`);
     console.log(`Version: ${resolved.version}`);
     if (resolved.description) {
       console.log(`Description: ${resolved.description}`);
+    }
+    if (resolved.source?.type === "github") {
+      const sourceLabel = resolved.source.repository || resolved.source.requestedUrl || "GitHub";
+      console.log(`Source: ${sourceLabel}@${resolved.source.resolvedCommit}`);
+    }
+    if (externalSourceMismatch && !force) {
+      printError(`
+\u2717 ${resolved.id} or its operator skill is installed from a different source snapshot.`);
+      printError("  Review the pinned source shown above, then rerun this exact GitHub URL with --force.");
+      return exit(1);
     }
     const externalAgentGuidance = getExternalAgentInstallGuidance(resolved);
     if (externalAgentGuidance) {
@@ -28826,13 +29725,17 @@ Package: ${resolved.name} (${resolved.id})`);
 \u2717 ${externalAgentGuidance.error}`);
       console.error(`  ${externalAgentGuidance.install}`);
       console.error(`  ${externalAgentGuidance.verify}`);
-      process.exit(1);
+      return exit(1);
     }
     if (resolved.installed && !force) {
       if (resolved.kind === "stack" && relatedSkillPlan.missing.length > 0) {
         console.log(`
 Stack already installed. Installing missing operator or companion skills.`);
-        await installAndSyncStackSkills(relatedSkillPlan, { allowScripts, withShims });
+        await installAndSyncStackSkills(relatedSkillPlan, {
+          allowScripts,
+          withShims,
+          installPackage: installResolvedPackage
+        });
         return;
       }
       console.log(`
@@ -28884,14 +29787,16 @@ Dependency check:`);
       }
       console.error(`
 Or use --force to install anyway.`);
-      process.exit(1);
+      return exit(1);
     }
     console.log(`
 Installing...`);
-    const result = await installPackage(pkgId, {
+    const result = await installResolvedPackage(resolved.id, {
       force,
       allowScripts,
       withShims,
+      deferFinalize: resolved.kind === "stack" && resolved.source?.type === "github",
+      resolvedPackage: resolved,
       onProgress: (progress) => {
         if (progress.phase === "installing") {
           console.log(`  Installing ${progress.package}...`);
@@ -28901,7 +29806,7 @@ Installing...`);
     if (!result.success) {
       console.error(`
 \u2717 Installation failed: ${result.error}`);
-      process.exit(1);
+      return exit(1);
     }
     if (resolved.kind !== "stack") {
       console.log(`
@@ -28921,16 +29826,26 @@ Installing...`);
 \u2713 Installed successfully.`);
       return;
     }
+    const deferredTransactions = result.transaction ? [result.transaction] : [];
     const manifest = await loadManifest(result.path);
     if (!manifest) {
-      await cleanupFailedStackInstall(result.id, result.path, false);
+      if (deferredTransactions.length > 0) {
+        await rollbackDeferredTransactions(deferredTransactions, rollbackDeferred);
+      } else {
+        await cleanupFailedStackInstall(result.id, result.path, false);
+      }
       throw new Error("Stack manifest not found after install");
     }
     const nodeProject = getNodeProjectInfo(result.path);
     const includeDevDeps = Boolean(nodeProject?.packageJson?.scripts?.build);
     let stackRegistered = false;
+    let registrationAttempted = false;
+    let registrationSnapshot = null;
+    let installsCommitted = false;
+    let relatedSkillResults = [];
+    let relatedOutcome = null;
     try {
-      const depResult = await installDependencies(result.path, manifest, {
+      const depResult = resolved.source?.type === "github" ? { installed: false, reason: "Dependencies installed in the staged package" } : await installDependencies(result.path, manifest, {
         includeDevDeps,
         nodeProject
       });
@@ -28940,9 +29855,16 @@ Installing...`);
         throw new Error(`Failed to install dependencies:
 ${depResult.error}`);
       }
+      if (resolved.source?.type === "github") {
+        const externalCommand = validateExternalStackCommand(result.path, manifest);
+        if (!externalCommand.valid) {
+          throw new Error(`External stack command rejected: ${externalCommand.error}`);
+        }
+      }
       const buildResult = await buildStackIfNeeded(result.path, manifest, {
         nodeProject,
-        verbose: flags.verbose
+        verbose: flags.verbose,
+        allowScripts: resolved.source?.type !== "github" || allowScripts
       });
       if (buildResult.built) {
         console.log(`  \u2713 Build complete`);
@@ -28951,6 +29873,32 @@ ${depResult.error}`);
       if (!validation.valid) {
         throw new Error(`Stack validation failed: ${validation.error}`);
       }
+      relatedOutcome = await installAndSyncStackSkills(
+        relatedSkillPlan,
+        {
+          allowScripts,
+          withShims,
+          deferFinalize: resolved.source?.type === "github",
+          deferSync: resolved.source?.type === "github",
+          forceExternal: relatedSkillPlan.forceExternalOperator,
+          installPackage: installResolvedPackage
+        }
+      );
+      relatedSkillResults = relatedOutcome.installResults;
+      deferredTransactions.push(
+        ...relatedSkillResults.map((item) => item.transaction).filter(Boolean)
+      );
+      if (relatedSkillPlan.missingOperator.length > 0) {
+        const operatorId = relatedSkillPlan.missingOperator[0].id;
+        const operatorResult = relatedSkillResults.find((item) => item.id === operatorId);
+        if (!operatorResult?.success) {
+          throw new Error(
+            `Required operator skill ${operatorId} failed to install: ${operatorResult?.error || "no install result"}`
+          );
+        }
+      }
+      registrationSnapshot = snapshotStackRegistration(result.id, manifest);
+      registrationAttempted = true;
       addStack(result.id, {
         path: result.path,
         runtime: getStackRuntime(manifest),
@@ -28960,15 +29908,72 @@ ${depResult.error}`);
       });
       stackRegistered = true;
       console.log(`  \u2713 Updated rudi.json`);
-      const activation = await activateInstalledStack(result.id, {
-        missingSecrets: secretsCheck.missing
-      });
-      if (activation.status === "indexed") {
-        console.log(`  \u2713 Indexed MCP tools`);
+      if (resolved.source?.type !== "github") {
+        const activation = await activateInstalledStack(result.id, {
+          missingSecrets: secretsCheck.missing
+        });
+        if (activation.status === "indexed") {
+          console.log(`  \u2713 Indexed MCP tools`);
+        }
       }
+      for (const transaction of deferredTransactions) {
+        await prepareDeferred(transaction);
+      }
+      for (const transaction of deferredTransactions) {
+        const commit = commitDeferred(transaction);
+        if (commit.cleanupError) {
+          console.warn(`  Warning: installed ${transaction.id}, but could not remove its backup: ${commit.cleanupError}`);
+        }
+      }
+      installsCommitted = true;
     } catch (stackError) {
-      await cleanupFailedStackInstall(result.id, result.path, stackRegistered);
+      let rollbackError = null;
+      try {
+        if (registrationAttempted) restoreStackRegistration(registrationSnapshot);
+        if (!installsCommitted && deferredTransactions.length > 0) {
+          await rollbackDeferredTransactions(deferredTransactions, rollbackDeferred);
+        } else if (deferredTransactions.length === 0) {
+          await cleanupFailedStackInstall(result.id, result.path, stackRegistered);
+        }
+      } catch (error) {
+        rollbackError = error;
+      }
+      if (rollbackError) {
+        throw new Error(`${stackError.message}; rollback also failed: ${rollbackError.message}`);
+      }
       throw stackError;
+    }
+    if (resolved.source?.type === "github") {
+      try {
+        const wrapperSync = await syncRelatedSkillWrappers(
+          relatedSkillPlan.relatedSkills,
+          relatedSkillResults,
+          getInstalledAgents()
+        );
+        reportRelatedSkillWrapperSync(wrapperSync);
+      } catch (error) {
+        console.warn(`  Warning: native skill sync failed after install: ${error.message}`);
+      }
+      try {
+        const activation = await activateExternalStackSafely(
+          result.id,
+          resolved,
+          allowScripts,
+          { missingSecrets: secretsCheck.missing },
+          {
+            removeStackFromToolIndex: dependencies.removeStackFromToolIndex,
+            indexAllStacks: dependencies.indexAllStacks
+          }
+        );
+        if (activation.status === "indexed") {
+          console.log(`  \u2713 Indexed MCP tools`);
+        } else if (activation.status === "deferred") {
+          console.log(`  \u25CB MCP indexing deferred: ${activation.reason}`);
+        }
+      } catch (error) {
+        console.warn(`  Warning: stack installed, but MCP indexing failed: ${error.message}`);
+        console.warn(`  Retry after resolving the stack issue: rudi index ${result.id}`);
+      }
     }
     console.log(`
 \u2713 Installed ${result.id}`);
@@ -28980,10 +29985,6 @@ ${depResult.error}`);
         console.log(`    - ${id}`);
       }
     }
-    const { installResults: relatedSkillResults } = await installAndSyncStackSkills(
-      relatedSkillPlan,
-      { allowScripts, withShims }
-    );
     const { found, missing } = await checkSecrets(manifest);
     const envExampleKeys = await parseEnvExample(result.path);
     for (const key of envExampleKeys) {
@@ -29070,7 +30071,7 @@ Next steps:`);
     if (flags.verbose) {
       console.error(error.stack);
     }
-    process.exit(1);
+    return exit(1);
   }
 }
 
@@ -29190,11 +30191,11 @@ async function runStack(id, options = {}) {
   const startTime = Date.now();
   const packagePath = getPackagePath(id);
   const manifestPath = import_path12.default.join(packagePath, "manifest.json");
-  const { default: fs51 } = await import("fs");
-  if (!fs51.existsSync(manifestPath)) {
+  const { default: fs52 } = await import("fs");
+  if (!fs52.existsSync(manifestPath)) {
     throw new Error(`Stack manifest not found: ${id}`);
   }
-  const manifest = JSON.parse(fs51.readFileSync(manifestPath, "utf-8"));
+  const manifest = JSON.parse(fs52.readFileSync(manifestPath, "utf-8"));
   const { command, args } = resolveCommandFromManifest(manifest, packagePath);
   const secrets = await getSecrets(manifest.requires?.secrets || []);
   const runEnv = buildStackRunEnv({
@@ -29228,7 +30229,7 @@ async function runStack(id, options = {}) {
       onStderr(redactSecrets(text, secrets));
     }
   });
-  return new Promise((resolve2, reject) => {
+  return new Promise((resolve3, reject) => {
     proc.on("error", (error) => {
       reject(error);
     });
@@ -29243,7 +30244,7 @@ async function runStack(id, options = {}) {
       if (onExit) {
         onExit(result);
       }
-      resolve2(result);
+      resolve3(result);
     });
   });
 }
@@ -30165,7 +31166,7 @@ function secretsInfo() {
   console.log("  Same approach as AWS CLI, SSH, GitHub CLI.");
 }
 function promptSecret(prompt) {
-  return new Promise((resolve2) => {
+  return new Promise((resolve3) => {
     const rl = import_readline.default.createInterface({
       input: process.stdin,
       output: process.stdout
@@ -30181,7 +31182,7 @@ function promptSecret(prompt) {
         process.stdin.removeListener("data", onData);
         console.log();
         rl.close();
-        resolve2(input);
+        resolve3(input);
       } else if (char === "") {
         process.exit(0);
       } else if (char === "\x7F") {
@@ -31506,8 +32507,29 @@ async function runUpdate(args = [], flags = {}, deps = defaultDependencies) {
     installed = await getInstalledPackages2(deps);
     updateTargets = installed;
   }
-  deps.log("Refreshing registry...");
-  await deps.fetchIndex({ force: true });
+  const pinnedGitHubPackages = updateTargets.filter(
+    (pkg) => pkg.source?.type === "github"
+  );
+  if (pkgId && pinnedGitHubPackages.length > 0) {
+    throw new Error(
+      `${target.id} is installed from a pinned GitHub source. To change it, reinstall with an explicit GitHub tree URL and --force.`
+    );
+  }
+  if (!pkgId && pinnedGitHubPackages.length > 0) {
+    const pinnedIds = new Set(pinnedGitHubPackages.map((pkg) => pkg.id));
+    updateTargets = updateTargets.filter((pkg) => !pinnedIds.has(pkg.id));
+    for (const pkg of pinnedGitHubPackages) {
+      skippedPackages.push({
+        id: pkg.id,
+        error: "Pinned GitHub source requires an explicit reinstall URL"
+      });
+      deps.log(`  - ${pkg.id}: skipped pinned GitHub source`);
+    }
+  }
+  if (updateTargets.length > 0) {
+    deps.log("Refreshing registry...");
+    await deps.fetchIndex({ force: true });
+  }
   if (pkgId && (flags["with-related-skills"] === true || flags.withRelatedSkills === true)) {
     if (target.kind !== "stack") {
       throw new Error("--with-related-skills requires an installed stack target");
@@ -31545,14 +32567,11 @@ async function runUpdate(args = [], flags = {}, deps = defaultDependencies) {
       failed: skillProjection2.failed,
       packageFailed: 0,
       projectionFailed: skillProjection2.failed,
-      skipped: relatedSkills.notInstalled.length,
+      skipped: skippedPackages.length,
       packages: [],
       failures: [],
       projectionFailures: skillProjection2.failures,
-      skippedPackages: relatedSkills.notInstalled.map((id) => ({
-        id,
-        error: "Related skill is not installed"
-      })),
+      skippedPackages,
       indexedStacks: [],
       updatedSkills: [],
       plannedPackages,
@@ -31578,7 +32597,7 @@ async function runUpdate(args = [], flags = {}, deps = defaultDependencies) {
     }
   } else {
     deps.log("Checking installed packages for updates...");
-    for (const pkg of installed) {
+    for (const pkg of updateTargets) {
       try {
         const updated = await updateOnePackage(pkg, flags, deps);
         updatedPackages.push(updated);
@@ -31666,8 +32685,8 @@ async function cmdUpdate(args, flags, dependencies = {}) {
 }
 
 // src/commands/which.js
-var fs38 = __toESM(require("fs/promises"), 1);
-var path37 = __toESM(require("path"), 1);
+var fs39 = __toESM(require("fs/promises"), 1);
+var path38 = __toESM(require("path"), 1);
 init_src5();
 init_src();
 async function cmdWhich(args, flags) {
@@ -31748,7 +32767,7 @@ Installed stacks:`);
     if (runtimeInfo.entry) {
       console.log("");
       console.log("Run MCP server directly:");
-      const entryPath = path37.join(stackPath, runtimeInfo.entry);
+      const entryPath = path38.join(stackPath, runtimeInfo.entry);
       if (runtimeInfo.runtime === "node") {
         console.log(`  echo '{"jsonrpc":"2.0","method":"tools/list","id":1}' | node ${entryPath}`);
       } else if (runtimeInfo.runtime === "python") {
@@ -31766,32 +32785,32 @@ Installed stacks:`);
 }
 async function detectRuntime(stackPath) {
   const layouts = [
-    { runtime: "node", runtimePath: path37.join(stackPath, "node"), entryPrefix: "node/", explicit: true },
-    { runtime: "python", runtimePath: path37.join(stackPath, "python"), entryPrefix: "python/", explicit: true },
+    { runtime: "node", runtimePath: path38.join(stackPath, "node"), entryPrefix: "node/", explicit: true },
+    { runtime: "python", runtimePath: path38.join(stackPath, "python"), entryPrefix: "python/", explicit: true },
     { runtime: "node", runtimePath: stackPath, entryPrefix: "", explicit: false },
     { runtime: "python", runtimePath: stackPath, entryPrefix: "", explicit: false }
   ];
   for (const { runtime, runtimePath, entryPrefix, explicit } of layouts) {
     try {
-      await fs38.access(runtimePath);
+      await fs39.access(runtimePath);
       if (runtime === "node") {
-        const distEntry = path37.join(runtimePath, "dist", "index.js");
-        const srcEntry = path37.join(runtimePath, "src", "index.ts");
+        const distEntry = path38.join(runtimePath, "dist", "index.js");
+        const srcEntry = path38.join(runtimePath, "src", "index.ts");
         try {
-          await fs38.access(distEntry);
+          await fs39.access(distEntry);
           return { runtime: "node", entry: `${entryPrefix}dist/index.js` };
         } catch {
           try {
-            await fs38.access(srcEntry);
+            await fs39.access(srcEntry);
             return { runtime: "node", entry: `${entryPrefix}src/index.ts` };
           } catch {
             if (explicit) return { runtime: "node", entry: null };
           }
         }
       } else if (runtime === "python") {
-        const entry = path37.join(runtimePath, "src", "index.py");
+        const entry = path38.join(runtimePath, "src", "index.py");
         try {
-          await fs38.access(entry);
+          await fs39.access(entry);
           return { runtime: "python", entry: `${entryPrefix}src/index.py` };
         } catch {
           if (explicit) return { runtime: "python", entry: null };
@@ -31811,18 +32830,18 @@ async function checkAuth(stackPath, runtime, options = {}) {
     if (!rootPath || checkedRoots.has(rootPath)) return;
     checkedRoots.add(rootPath);
     try {
-      await fs38.access(path37.join(rootPath, "token.json"));
+      await fs39.access(path38.join(rootPath, "token.json"));
       authFiles.push(labelPrefix ? `${labelPrefix}/token.json` : "token.json");
       configured = true;
     } catch {
-      const accountsPath = path37.join(rootPath, "accounts");
+      const accountsPath = path38.join(rootPath, "accounts");
       try {
-        const accounts = await fs38.readdir(accountsPath);
+        const accounts = await fs39.readdir(accountsPath);
         for (const account of accounts) {
           if (account.startsWith(".")) continue;
-          const accountTokenPath = path37.join(accountsPath, account, "token.json");
+          const accountTokenPath = path38.join(accountsPath, account, "token.json");
           try {
-            await fs38.access(accountTokenPath);
+            await fs39.access(accountTokenPath);
             const label = labelPrefix ? `${labelPrefix}/accounts/${account}/token.json` : `accounts/${account}/token.json`;
             authFiles.push(label);
             configured = true;
@@ -31834,18 +32853,18 @@ async function checkAuth(stackPath, runtime, options = {}) {
     }
   }
   if (runtime === "node" || runtime === "python") {
-    await scanAuthRoot(path37.join(stackPath, runtime), runtime);
+    await scanAuthRoot(path38.join(stackPath, runtime), runtime);
     await scanAuthRoot(stackPath, "");
   }
-  const stackName = options.stackName || path37.basename(stackPath);
+  const stackName = options.stackName || path38.basename(stackPath);
   const rudiHome = options.rudiHome || PATHS.home;
   await scanAuthRoot(
-    path37.join(rudiHome, "state", "stacks", stackName),
+    path38.join(rudiHome, "state", "stacks", stackName),
     `state/stacks/${stackName}`
   );
-  const envPath = path37.join(stackPath, ".env");
+  const envPath = path38.join(stackPath, ".env");
   try {
-    const envContent = await fs38.readFile(envPath, "utf-8");
+    const envContent = await fs39.readFile(envPath, "utf-8");
     const hasValues = envContent.split("\n").some((line) => {
       const trimmed = line.trim();
       if (!trimmed || trimmed.startsWith("#")) return false;
@@ -31892,8 +32911,8 @@ function checkIfRunning(stackName, options = {}) {
 }
 
 // src/commands/auth.js
-var fs39 = __toESM(require("fs/promises"), 1);
-var path38 = __toESM(require("path"), 1);
+var fs40 = __toESM(require("fs/promises"), 1);
+var path39 = __toESM(require("path"), 1);
 var import_child_process8 = require("child_process");
 init_src5();
 init_src4();
@@ -31907,49 +32926,49 @@ async function findAvailablePort(basePort = 3456) {
   throw new Error(`No available ports found in range ${basePort}-${basePort + 10}`);
 }
 function isPortAvailable(port) {
-  return new Promise((resolve2) => {
+  return new Promise((resolve3) => {
     const server = net.createServer();
     server.once("error", (err) => {
       if (err.code === "EADDRINUSE") {
-        resolve2(false);
+        resolve3(false);
       } else {
-        resolve2(false);
+        resolve3(false);
       }
     });
     server.once("listening", () => {
       server.close();
-      resolve2(true);
+      resolve3(true);
     });
     server.listen(port);
   });
 }
 async function detectRuntime2(stackPath) {
   const layouts = [
-    { runtime: "node", runtimePath: path38.join(stackPath, "node") },
+    { runtime: "node", runtimePath: path39.join(stackPath, "node") },
     { runtime: "node", runtimePath: stackPath },
-    { runtime: "python", runtimePath: path38.join(stackPath, "python") },
+    { runtime: "python", runtimePath: path39.join(stackPath, "python") },
     { runtime: "python", runtimePath: stackPath }
   ];
   for (const { runtime, runtimePath } of layouts) {
     try {
-      await fs39.access(runtimePath);
+      await fs40.access(runtimePath);
       if (runtime === "node") {
-        const authTs = path38.join(runtimePath, "src", "auth.ts");
-        const authJs = path38.join(runtimePath, "dist", "auth.js");
+        const authTs = path39.join(runtimePath, "src", "auth.ts");
+        const authJs = path39.join(runtimePath, "dist", "auth.js");
         try {
-          await fs39.access(authTs);
+          await fs40.access(authTs);
           return { runtime: "node", authScript: authTs, useTsx: true };
         } catch {
           try {
-            await fs39.access(authJs);
+            await fs40.access(authJs);
             return { runtime: "node", authScript: authJs, useTsx: false };
           } catch {
           }
         }
       } else if (runtime === "python") {
-        const authPy = path38.join(runtimePath, "src", "auth.py");
+        const authPy = path39.join(runtimePath, "src", "auth.py");
         try {
-          await fs39.access(authPy);
+          await fs40.access(authPy);
           return { runtime: "python", authScript: authPy, useTsx: false };
         } catch {
         }
@@ -32064,7 +33083,7 @@ function runAuthSubprocess(plan, options = {}) {
 function getTempAuthScriptPath(authScript, useTsx) {
   const safeAuthScript = requireSubprocessArg(authScript, "auth script path");
   const tempExt = useTsx ? ".ts" : ".mjs";
-  return path38.join(path38.dirname(safeAuthScript), `auth-temp${tempExt}`);
+  return path39.join(path39.dirname(safeAuthScript), `auth-temp${tempExt}`);
 }
 async function cmdAuth(args, flags) {
   const stackId = args[0];
@@ -32105,14 +33124,14 @@ Installed stacks:`);
     const port = await findAvailablePort(3456);
     console.log(`Using port: ${port}`);
     console.log("");
-    const cwd = path38.dirname(authInfo.authScript);
+    const cwd = path39.dirname(authInfo.authScript);
     if (authInfo.runtime === "node") {
-      const distAuth = path38.join(cwd, "..", "dist", "auth.js");
+      const distAuth = path39.join(cwd, "..", "dist", "auth.js");
       let useBuiltInPort = false;
       let tempAuthScript = null;
       try {
-        await fs39.access(distAuth);
-        const distContent = await fs39.readFile(distAuth, "utf-8");
+        await fs40.access(distAuth);
+        const distContent = await fs40.readFile(distAuth, "utf-8");
         if (distContent.includes("findAvailablePort")) {
           console.log("Using compiled authentication script...");
           useBuiltInPort = true;
@@ -32120,10 +33139,10 @@ Installed stacks:`);
       } catch {
       }
       if (!useBuiltInPort) {
-        const authContent = await fs39.readFile(authInfo.authScript, "utf-8");
+        const authContent = await fs40.readFile(authInfo.authScript, "utf-8");
         tempAuthScript = getTempAuthScriptPath(authInfo.authScript, authInfo.useTsx);
         const modifiedContent = authContent.replace(/localhost:3456/g, `localhost:${port}`).replace(/server\.listen\(3456/g, `server.listen(${port}`);
-        await fs39.writeFile(tempAuthScript, modifiedContent);
+        await fs40.writeFile(tempAuthScript, modifiedContent);
       }
       console.log("Starting OAuth flow...");
       console.log("");
@@ -32140,12 +33159,12 @@ Installed stacks:`);
           env: authEnv
         });
         if (tempAuthScript) {
-          await fs39.unlink(tempAuthScript);
+          await fs40.unlink(tempAuthScript);
         }
       } catch (error) {
         if (tempAuthScript) {
           try {
-            await fs39.unlink(tempAuthScript);
+            await fs40.unlink(tempAuthScript);
           } catch {
           }
         }
@@ -32181,22 +33200,22 @@ Installed stacks:`);
 }
 
 // src/commands/mcp.js
-var fs40 = __toESM(require("fs"), 1);
-var path39 = __toESM(require("path"), 1);
+var fs41 = __toESM(require("fs"), 1);
+var path40 = __toESM(require("path"), 1);
 var import_child_process9 = require("child_process");
 init_src();
 init_src4();
 function getBundledRuntime(runtime) {
   const platform = process.platform;
   if (runtime === "node") {
-    const nodePath = platform === "win32" ? path39.join(PATHS.runtimes, "node", "node.exe") : path39.join(PATHS.runtimes, "node", "bin", "node");
-    if (fs40.existsSync(nodePath)) {
+    const nodePath = platform === "win32" ? path40.join(PATHS.runtimes, "node", "node.exe") : path40.join(PATHS.runtimes, "node", "bin", "node");
+    if (fs41.existsSync(nodePath)) {
       return nodePath;
     }
   }
   if (runtime === "python") {
-    const pythonPath = platform === "win32" ? path39.join(PATHS.runtimes, "python", "python.exe") : path39.join(PATHS.runtimes, "python", "bin", "python3");
-    if (fs40.existsSync(pythonPath)) {
+    const pythonPath = platform === "win32" ? path40.join(PATHS.runtimes, "python", "python.exe") : path40.join(PATHS.runtimes, "python", "bin", "python3");
+    if (fs41.existsSync(pythonPath)) {
       return pythonPath;
     }
   }
@@ -32204,18 +33223,18 @@ function getBundledRuntime(runtime) {
 }
 function getBundledNpx() {
   const platform = process.platform;
-  const npxPath = platform === "win32" ? path39.join(PATHS.runtimes, "node", "npx.cmd") : path39.join(PATHS.runtimes, "node", "bin", "npx");
-  if (fs40.existsSync(npxPath)) {
+  const npxPath = platform === "win32" ? path40.join(PATHS.runtimes, "node", "npx.cmd") : path40.join(PATHS.runtimes, "node", "bin", "npx");
+  if (fs41.existsSync(npxPath)) {
     return npxPath;
   }
   return null;
 }
 function loadManifest2(stackPath) {
-  const manifestPath = path39.join(stackPath, "manifest.json");
-  if (!fs40.existsSync(manifestPath)) {
+  const manifestPath = path40.join(stackPath, "manifest.json");
+  if (!fs41.existsSync(manifestPath)) {
     return null;
   }
-  return JSON.parse(fs40.readFileSync(manifestPath, "utf-8"));
+  return JSON.parse(fs41.readFileSync(manifestPath, "utf-8"));
 }
 function getRequiredSecrets(manifest) {
   const secrets = manifest?.requires?.secrets || manifest?.secrets || [];
@@ -32248,8 +33267,8 @@ async function cmdMcp(args, flags) {
     console.error("Example: rudi mcp slack");
     process.exit(1);
   }
-  const stackPath = path39.join(PATHS.stacks, stackName);
-  if (!fs40.existsSync(stackPath)) {
+  const stackPath = path40.join(PATHS.stacks, stackName);
+  if (!fs41.existsSync(stackPath)) {
     console.error(`Stack not found: ${stackName}`);
     console.error(`Expected at: ${stackPath}`);
     console.error("");
@@ -32298,22 +33317,22 @@ async function cmdMcp(args, flags) {
       }
       return part;
     }
-    if (part.startsWith("./") || part.startsWith("../") || !path39.isAbsolute(part)) {
-      const resolved = path39.join(stackPath, part);
-      if (fs40.existsSync(resolved)) {
+    if (part.startsWith("./") || part.startsWith("../") || !path40.isAbsolute(part)) {
+      const resolved = path40.join(stackPath, part);
+      if (fs41.existsSync(resolved)) {
         return resolved;
       }
     }
     return part;
   });
   const [cmd, ...cmdArgs] = resolvedCommand;
-  const bundledNodeBin = path39.join(PATHS.runtimes, "node", "bin");
-  const bundledPythonBin = path39.join(PATHS.runtimes, "python", "bin");
-  if (fs40.existsSync(bundledNodeBin) || fs40.existsSync(bundledPythonBin)) {
+  const bundledNodeBin = path40.join(PATHS.runtimes, "node", "bin");
+  const bundledPythonBin = path40.join(PATHS.runtimes, "python", "bin");
+  if (fs41.existsSync(bundledNodeBin) || fs41.existsSync(bundledPythonBin)) {
     const runtimePaths = [];
-    if (fs40.existsSync(bundledNodeBin)) runtimePaths.push(bundledNodeBin);
-    if (fs40.existsSync(bundledPythonBin)) runtimePaths.push(bundledPythonBin);
-    env.PATH = runtimePaths.join(path39.delimiter) + path39.delimiter + (env.PATH || "");
+    if (fs41.existsSync(bundledNodeBin)) runtimePaths.push(bundledNodeBin);
+    if (fs41.existsSync(bundledPythonBin)) runtimePaths.push(bundledPythonBin);
+    env.PATH = runtimePaths.join(path40.delimiter) + path40.delimiter + (env.PATH || "");
   }
   if (flags.debug) {
     console.error(`[rudi mcp] Stack: ${stackName}`);
@@ -32343,47 +33362,47 @@ async function cmdMcp(args, flags) {
 }
 
 // src/commands/integrate.js
-var fs41 = __toESM(require("fs"), 1);
-var path40 = __toESM(require("path"), 1);
+var fs42 = __toESM(require("fs"), 1);
+var path41 = __toESM(require("path"), 1);
 var import_os8 = __toESM(require("os"), 1);
 init_src();
 var HOME2 = import_os8.default.homedir();
-var ROUTER_SHIM_PATH = path40.join(PATHS.bins, "rudi-router");
-var LEGACY_ROUTER_SHIM_PATH = path40.join(PATHS.home, "shims", "rudi-router");
+var ROUTER_SHIM_PATH = path41.join(PATHS.bins, "rudi-router");
+var LEGACY_ROUTER_SHIM_PATH = path41.join(PATHS.home, "shims", "rudi-router");
 function checkRouterShim() {
-  if (fs41.existsSync(ROUTER_SHIM_PATH)) return ROUTER_SHIM_PATH;
-  if (fs41.existsSync(LEGACY_ROUTER_SHIM_PATH)) return LEGACY_ROUTER_SHIM_PATH;
+  if (fs42.existsSync(ROUTER_SHIM_PATH)) return ROUTER_SHIM_PATH;
+  if (fs42.existsSync(LEGACY_ROUTER_SHIM_PATH)) return LEGACY_ROUTER_SHIM_PATH;
   throw new Error(
     `Router shim not found at ${ROUTER_SHIM_PATH}
 Run: rudi shims rebuild`
   );
 }
 function backupConfig(configPath) {
-  if (!fs41.existsSync(configPath)) return null;
+  if (!fs42.existsSync(configPath)) return null;
   const backupPath = configPath + ".backup." + Date.now();
-  fs41.copyFileSync(configPath, backupPath);
+  fs42.copyFileSync(configPath, backupPath);
   return backupPath;
 }
 function readJsonConfig(configPath) {
-  if (!fs41.existsSync(configPath)) {
+  if (!fs42.existsSync(configPath)) {
     return {};
   }
   try {
-    return JSON.parse(fs41.readFileSync(configPath, "utf-8"));
+    return JSON.parse(fs42.readFileSync(configPath, "utf-8"));
   } catch {
     return {};
   }
 }
 function writeJsonConfig(configPath, config) {
-  const dir = path40.dirname(configPath);
-  if (!fs41.existsSync(dir)) {
-    fs41.mkdirSync(dir, { recursive: true });
+  const dir = path41.dirname(configPath);
+  if (!fs42.existsSync(dir)) {
+    fs42.mkdirSync(dir, { recursive: true });
   }
-  fs41.writeFileSync(configPath, JSON.stringify(config, null, 2));
+  fs42.writeFileSync(configPath, JSON.stringify(config, null, 2));
 }
 function getAgentTargetPath(agentConfig) {
   const configPath = findAgentConfig(agentConfig);
-  return configPath || path40.join(HOME2, agentConfig.paths[process.platform]?.[0] || agentConfig.paths.darwin[0]);
+  return configPath || path41.join(HOME2, agentConfig.paths[process.platform]?.[0] || agentConfig.paths.darwin[0]);
 }
 function tomlString(value) {
   return `"${String(value).replaceAll("\\", "\\\\").replaceAll('"', '\\"')}"`;
@@ -32422,9 +33441,9 @@ function buildCodexRouterTomlBlock(routerPath) {
   ].join("\n");
 }
 function patchCodexTomlRouter(content, routerPath, options = {}) {
-  const rudiMcpShimPath = options.rudiMcpShimPath || path40.join(PATHS.bins, "rudi-mcp");
-  const legacyMcpShimPath = options.legacyMcpShimPath || path40.join(PATHS.home, "shims", "rudi-mcp");
-  const rudiStacksPath = options.rudiStacksPath || path40.join(PATHS.home, "stacks");
+  const rudiMcpShimPath = options.rudiMcpShimPath || path41.join(PATHS.bins, "rudi-mcp");
+  const legacyMcpShimPath = options.legacyMcpShimPath || path41.join(PATHS.home, "shims", "rudi-mcp");
+  const rudiStacksPath = options.rudiStacksPath || path41.join(PATHS.home, "stacks");
   const blocks = splitTomlBlocks(content || "");
   const removedEntries = [];
   const removedServers = /* @__PURE__ */ new Set();
@@ -32485,23 +33504,23 @@ async function integrateCodexAgent(agentConfig, targetPath, flags) {
 ${agentConfig.name}:`);
   console.log(`  Config: ${targetPath}`);
   const routerPath = checkRouterShim();
-  const existing = fs41.existsSync(targetPath) ? fs41.readFileSync(targetPath, "utf-8") : "";
+  const existing = fs42.existsSync(targetPath) ? fs42.readFileSync(targetPath, "utf-8") : "";
   const result = patchCodexTomlRouter(existing, routerPath);
   if (result.removed.length > 0) {
     console.log(`  Removed old entries: ${result.removed.join(", ")}`);
   }
   if (result.action !== "none" || result.removed.length > 0) {
-    const dir = path40.dirname(targetPath);
-    if (!fs41.existsSync(dir)) {
-      fs41.mkdirSync(dir, { recursive: true });
+    const dir = path41.dirname(targetPath);
+    if (!fs42.existsSync(dir)) {
+      fs42.mkdirSync(dir, { recursive: true });
     }
-    if (fs41.existsSync(targetPath)) {
+    if (fs42.existsSync(targetPath)) {
       const backup = backupConfig(targetPath);
       if (backup && flags.verbose) {
         console.log(`  Backup: ${backup}`);
       }
     }
-    fs41.writeFileSync(targetPath, result.content);
+    fs42.writeFileSync(targetPath, result.content);
     if (result.action !== "none") {
       console.log(`  ${result.action === "added" ? "\u2713 Added" : "\u2713 Updated"} rudi router`);
     }
@@ -32524,7 +33543,7 @@ ${agentConfig.name}:`);
   console.log(`  Config: ${targetPath}`);
   if (agentId === "codex") {
     const routerPath = checkRouterShim();
-    const existing = fs41.existsSync(targetPath) ? fs41.readFileSync(targetPath, "utf-8") : "";
+    const existing = fs42.existsSync(targetPath) ? fs42.readFileSync(targetPath, "utf-8") : "";
     const result = patchCodexTomlRouter(existing, routerPath);
     if (result.removed.length > 0) {
       console.log(`  Would remove old entries: ${result.removed.join(", ")}`);
@@ -32559,9 +33578,9 @@ ${agentConfig.name}:`);
   if (!config[key]) {
     config[key] = {};
   }
-  const rudiMcpShimPath = path40.join(PATHS.bins, "rudi-mcp");
-  const legacyMcpShimPath = path40.join(PATHS.home, "shims", "rudi-mcp");
-  const rudiStacksPath = path40.join(PATHS.home, "stacks");
+  const rudiMcpShimPath = path41.join(PATHS.bins, "rudi-mcp");
+  const legacyMcpShimPath = path41.join(PATHS.home, "shims", "rudi-mcp");
+  const rudiStacksPath = path41.join(PATHS.home, "stacks");
   const removedEntries = [];
   for (const [serverName, serverConfig] of Object.entries(config[key])) {
     if (serverName === "rudi") continue;
@@ -32600,7 +33619,7 @@ ${agentConfig.name}:`);
     action = "updated";
   }
   if (action !== "none" || removedEntries.length > 0) {
-    if (fs41.existsSync(targetPath)) {
+    if (fs42.existsSync(targetPath)) {
       const backup = backupConfig(targetPath);
       if (backup && flags.verbose) {
         console.log(`  Backup: ${backup}`);
@@ -35001,7 +36020,7 @@ var import_node_http = __toESM(require("node:http"), 1);
 var import_node_url2 = require("node:url");
 
 // src/daemon/http/context.js
-var import_node_crypto4 = __toESM(require("node:crypto"), 1);
+var import_node_crypto5 = __toESM(require("node:crypto"), 1);
 var import_node_url = require("node:url");
 
 // src/daemon/http/errors.js
@@ -35073,7 +36092,7 @@ function createDaemonHttpContext() {
     } catch {
     }
     return {
-      requestId: import_node_crypto4.default.randomUUID(),
+      requestId: import_node_crypto5.default.randomUUID(),
       method: req?.method || null,
       path: pathname,
       startedAt: Date.now(),
@@ -35164,7 +36183,7 @@ function createDaemonHttpContext() {
   function readBody(req, options = {}) {
     const maxBodySize = Number.isFinite(options.maxBodySize) && options.maxBodySize > 0 ? options.maxBodySize : DEFAULT_MAX_BODY_BYTES;
     const timeoutMs = Number.isFinite(options.timeoutMs) && options.timeoutMs > 0 ? options.timeoutMs : DEFAULT_BODY_TIMEOUT_MS;
-    return new Promise((resolve2, reject) => {
+    return new Promise((resolve3, reject) => {
       const chunks = [];
       let size = 0;
       let settled = false;
@@ -35200,9 +36219,9 @@ function createDaemonHttpContext() {
       req.on("end", () => {
         if (settled) return;
         const raw = Buffer.concat(chunks).toString("utf8");
-        if (!raw) return finish(resolve2, {});
+        if (!raw) return finish(resolve3, {});
         try {
-          finish(resolve2, JSON.parse(raw));
+          finish(resolve3, JSON.parse(raw));
         } catch {
           const failure = new Error("Invalid JSON in request body");
           failure.statusCode = 400;
@@ -35221,7 +36240,7 @@ function createDaemonHttpContext() {
     if (!token || typeof candidate !== "string") return false;
     const expected = Buffer.from(token);
     const actual = Buffer.from(candidate);
-    return expected.length === actual.length && import_node_crypto4.default.timingSafeEqual(expected, actual);
+    return expected.length === actual.length && import_node_crypto5.default.timingSafeEqual(expected, actual);
   }
   return {
     REQUEST_ID_HEADER,
@@ -35231,7 +36250,7 @@ function createDaemonHttpContext() {
     checkAuth: checkAuth2,
     createRequestContext,
     error,
-    generateToken: () => import_node_crypto4.default.randomBytes(32).toString("hex"),
+    generateToken: () => import_node_crypto5.default.randomBytes(32).toString("hex"),
     getRequestContext,
     invalidField,
     json,
@@ -35789,7 +36808,7 @@ function buildLocalLlmRoutes(ctx, deps = {}) {
 }
 
 // src/daemon/routes/agent-host-validation.js
-var import_node_path16 = __toESM(require("node:path"), 1);
+var import_node_path17 = __toESM(require("node:path"), 1);
 var MAX_AGENT_HOST_BODY_BYTES = 12 * 1024 * 1024;
 var LAUNCH_FIELDS = /* @__PURE__ */ new Set([
   "approvalMode",
@@ -35890,7 +36909,7 @@ function validateRequest(body, allowed, { resume = false } = {}) {
   }
   if (!resume) {
     Object.assign(options, {
-      originDirectory: import_node_path16.default.resolve(requireText(body.originDirectory, "originDirectory")),
+      originDirectory: import_node_path17.default.resolve(requireText(body.originDirectory, "originDirectory")),
       outputDirectory: body.outputDirectory == null ? void 0 : requireText(body.outputDirectory, "outputDirectory"),
       provider: requireText(body.provider, "provider", 64),
       workspace: body.workspace == null ? void 0 : requireText(body.workspace, "workspace"),
@@ -35960,7 +36979,7 @@ function validateAgentGroupRequest(body) {
   });
   return {
     groupId: assertAgentGroupId(body.groupId),
-    originDirectory: import_node_path16.default.resolve(requireText(body.originDirectory, "originDirectory")),
+    originDirectory: import_node_path17.default.resolve(requireText(body.originDirectory, "originDirectory")),
     tasks,
     workspace: requireText(body.workspace, "workspace"),
     workspaceMode: body.workspaceMode == null ? "auto" : requireText(body.workspaceMode, "workspaceMode", 32)
@@ -36188,7 +37207,7 @@ function buildAgentHostRoutes(ctx, dependencies = {}) {
 
 // src/daemon/routes/packages.js
 var import_crypto2 = __toESM(require("crypto"), 1);
-var fs48 = __toESM(require("fs/promises"), 1);
+var fs49 = __toESM(require("fs/promises"), 1);
 var fsSync2 = __toESM(require("fs"), 1);
 var import_path24 = __toESM(require("path"), 1);
 init_src5();
@@ -36260,7 +37279,7 @@ var defaultDeps = {
 async function loadManifest3(installPath) {
   const manifestPath = import_path24.default.join(installPath, "manifest.json");
   try {
-    const content = await fs48.readFile(manifestPath, "utf-8");
+    const content = await fs49.readFile(manifestPath, "utf-8");
     return JSON.parse(content);
   } catch {
     return null;
@@ -36405,7 +37424,7 @@ async function checkSecrets3(manifest, deps) {
 async function parseEnvExample2(installPath) {
   const examplePath = import_path24.default.join(installPath, ".env.example");
   try {
-    const content = await fs48.readFile(examplePath, "utf-8");
+    const content = await fs49.readFile(examplePath, "utf-8");
     const keys = [];
     for (const line of content.split("\n")) {
       const trimmed = line.trim();
@@ -36421,7 +37440,7 @@ async function parseEnvExample2(installPath) {
 async function cleanupFailedStackInstall2(stackId, stackPath, removeConfig, deps) {
   if (stackPath) {
     try {
-      await fs48.rm(stackPath, { recursive: true, force: true });
+      await fs49.rm(stackPath, { recursive: true, force: true });
     } catch {
     }
   }
@@ -36874,10 +37893,10 @@ function printStartupBanner({
 var DEFAULT_SHUTDOWN_TIMEOUT_MS = 5e3;
 async function closeHttpServer(server) {
   if (!server || typeof server.close !== "function") return;
-  await new Promise((resolve2, reject) => {
+  await new Promise((resolve3, reject) => {
     server.close((err) => {
       if (!err || err.code === "ERR_SERVER_NOT_RUNNING") {
-        resolve2();
+        resolve3();
         return;
       }
       reject(err);
