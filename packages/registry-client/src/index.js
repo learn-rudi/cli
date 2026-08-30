@@ -16,8 +16,18 @@ import {
   listRegistryPackages,
   normalizeRegistryPackage,
 } from './registry-contract.js';
+import { downloadGitHubDirectory } from './github-source.js';
 
-export { resolveRegistryPackageForPlatform } from './registry-contract.js';
+export { normalizeRegistryPackage, resolveRegistryPackageForPlatform } from './registry-contract.js';
+export {
+  assertGitHubDirectoryFile,
+  downloadGitHubDirectory,
+  isGitHubTreeUrl,
+  parseGitHubTreeUrl,
+  readGitHubJsonFile,
+  readGitHubTextFile,
+  resolveGitHubTreeSource,
+} from './github-source.js';
 
 // =============================================================================
 // CONFIGURATION
@@ -743,6 +753,21 @@ const GITHUB_RAW_BASE = 'https://raw.githubusercontent.com/learnrudi/registry/ma
  */
 export async function downloadPackage(pkg, destPath, options = {}) {
   const { onProgress } = options;
+
+  if (pkg.source?.type === 'github') {
+    await downloadGitHubDirectory(pkg.source, pkg.source.path, destPath, { onProgress });
+    if (pkg.kind === 'stack') {
+      const manifest = installCanonicalStackManifest(destPath);
+      fs.writeFileSync(
+        path.join(destPath, 'manifest.json'),
+        JSON.stringify({ ...manifest, source: pkg.source }, null, 2),
+      );
+    } else if (pkg.kind === 'skill' && !fs.existsSync(path.join(destPath, 'SKILL.md'))) {
+      fs.rmSync(destPath, { recursive: true, force: true });
+      throw new Error(`GitHub operator skill is missing SKILL.md: ${pkg.source.path}`);
+    }
+    return { success: true, path: destPath };
+  }
 
   const registryPath = pkg.path; // e.g., 'catalog/stacks/slack' or 'catalog/skills/code-review.md'
   const isSingleFilePackage = (

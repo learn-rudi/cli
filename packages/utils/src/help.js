@@ -152,6 +152,7 @@ USAGE
 
 OPTIONS
   --force                  Force reinstall
+  --allow-scripts          Allow reviewed dependency/build code for npm/GitHub sources
   --with-related-skills    Include optional companion skills declared by a stack
   --no-related-skills      Install the required operator skill only
 
@@ -165,6 +166,15 @@ EXAMPLES
   rudi install runtime:python
   rudi install binary:ffmpeg
   rudi install workflow:daily-brief
+  rudi install https://github.com/acme/rudi-packages/tree/main/catalog/stacks/demo
+
+GITHUB SOURCES
+  Public HTTPS github.com tree URLs are resolved to an immutable commit before
+  download. The stack manifest must declare related.operatorSkillPath as a
+  repository-relative directory containing SKILL.md. Private repositories and
+  other Git hosts are not supported.
+  Node lifecycle/build scripts, Python requirement builds, and MCP indexing are
+  blocked unless --allow-scripts is set after reviewing the pinned source.
 
 AGENT HOSTS
   Claude, Codex, Gemini, and Antigravity are installed by their vendors.
@@ -189,7 +199,8 @@ OPTIONS
 
 SAFETY
   A package id or --all is required. Related skills that are not installed are
-  reported and skipped; update never installs them.
+  reported and skipped; update never installs them. Pinned GitHub packages are
+  skipped by --all and require an explicit GitHub tree URL plus --force to change.
 
 EXAMPLES
   rudi update stack:swe-engineering

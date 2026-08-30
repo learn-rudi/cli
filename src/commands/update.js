@@ -203,8 +203,31 @@ export async function runUpdate(args = [], flags = {}, deps = defaultDependencie
     updateTargets = installed;
   }
 
-  deps.log('Refreshing registry...');
-  await deps.fetchIndex({ force: true });
+  const pinnedGitHubPackages = updateTargets.filter(
+    (pkg) => pkg.source?.type === 'github',
+  );
+  if (pkgId && pinnedGitHubPackages.length > 0) {
+    throw new Error(
+      `${target.id} is installed from a pinned GitHub source. `
+      + 'To change it, reinstall with an explicit GitHub tree URL and --force.',
+    );
+  }
+  if (!pkgId && pinnedGitHubPackages.length > 0) {
+    const pinnedIds = new Set(pinnedGitHubPackages.map((pkg) => pkg.id));
+    updateTargets = updateTargets.filter((pkg) => !pinnedIds.has(pkg.id));
+    for (const pkg of pinnedGitHubPackages) {
+      skippedPackages.push({
+        id: pkg.id,
+        error: 'Pinned GitHub source requires an explicit reinstall URL',
+      });
+      deps.log(`  - ${pkg.id}: skipped pinned GitHub source`);
+    }
+  }
+
+  if (updateTargets.length > 0) {
+    deps.log('Refreshing registry...');
+    await deps.fetchIndex({ force: true });
+  }
 
   if (pkgId && (flags['with-related-skills'] === true || flags.withRelatedSkills === true)) {
     if (target.kind !== 'stack') {
@@ -250,14 +273,11 @@ export async function runUpdate(args = [], flags = {}, deps = defaultDependencie
       failed: skillProjection.failed,
       packageFailed: 0,
       projectionFailed: skillProjection.failed,
-      skipped: relatedSkills.notInstalled.length,
+      skipped: skippedPackages.length,
       packages: [],
       failures: [],
       projectionFailures: skillProjection.failures,
-      skippedPackages: relatedSkills.notInstalled.map((id) => ({
-        id,
-        error: 'Related skill is not installed',
-      })),
+      skippedPackages,
       indexedStacks: [],
       updatedSkills: [],
       plannedPackages,
@@ -285,7 +305,7 @@ export async function runUpdate(args = [], flags = {}, deps = defaultDependencie
   } else {
     deps.log('Checking installed packages for updates...');
 
-    for (const pkg of installed) {
+    for (const pkg of updateTargets) {
       try {
         const updated = await updateOnePackage(pkg, flags, deps);
         updatedPackages.push(updated);

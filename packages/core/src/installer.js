@@ -27,7 +27,7 @@ import {
   verifyHash,
 } from '@learnrudi/registry-client';
 import { resolvePackage, getInstallOrder } from './resolver.js';
-import { writeLockfile } from './lockfile.js';
+import { readLockfile, restoreLockfile, writeLockfile } from './lockfile.js';
 import { createShimsForTool, removeShims } from './shims.js';
 
 const SINGLE_FILE_KINDS = new Set(['skill', 'prompt', 'workflow']);
@@ -155,6 +155,24 @@ export function createNpmInstallCommand(options = {}) {
     args.push('--prefix', assertCommandArg(options.prefix, 'npm prefix'));
   }
 
+  return { command, args };
+}
+
+export function createStackDependencyInstallCommand(manager, commandValue, options = {}) {
+  const command = assertCommandArg(commandValue, `${manager} command`);
+  let args;
+  if (manager === 'pnpm') {
+    args = ['install'];
+    if (options.storeDir) {
+      args.push('--store-dir', assertCommandArg(options.storeDir, 'pnpm store directory'));
+    }
+    args.push('--prefer-frozen-lockfile');
+  } else if (manager === 'npm') {
+    args = ['install', '--no-audit', '--no-fund'];
+  } else {
+    throw new Error(`Unsupported stack dependency manager: ${manager}`);
+  }
+  if (!options.allowScripts) args.push('--ignore-scripts');
   return { command, args };
 }
 
@@ -715,6 +733,8 @@ function hasInstallScripts(installRoot, packageName, scope = 'local') {
  * @param {boolean} [options.migrateState] - Move mutable stack state to ~/.rudi/state before force reinstall
  * @param {string[]} [options.preserveStatePaths] - Relative install paths to preserve
  * @param {boolean} [options.withShims] - Create/update shims in ~/.rudi/bins
+ * @param {Object} [options.resolvedPackage] - Already-resolved package metadata
+ * @param {boolean} [options.deferFinalize] - Keep a GitHub replacement reversible for caller validation
  * @param {Function} [options.onProgress] - Progress callback
  * @returns {Promise<InstallResult>}
  */
@@ -726,6 +746,8 @@ export async function installPackage(id, options = {}) {
     preserveState = false,
     migrateState = true,
     preserveStatePaths,
+    resolvedPackage,
+    deferFinalize = false,
     onProgress
   } = options;
 
@@ -740,7 +762,10 @@ export async function installPackage(id, options = {}) {
   }
 
   // Resolve package and dependencies
-  const resolved = await resolvePackage(id);
+  const resolved = resolvedPackage || await resolvePackage(id);
+  if (!resolved || resolved.id !== id) {
+    throw new Error(`Resolved package identity mismatch for ${id}`);
+  }
 
   if (resolved.kind === 'agent') {
     const installHint = resolved.installHints?.manual || resolved.instructions;
@@ -775,6 +800,9 @@ export async function installPackage(id, options = {}) {
 
   // Install each package in order
   const results = [];
+  const previousLockfile = resolved.source?.type === 'github'
+    ? readLockfile(resolved.id)
+    : null;
   for (const pkg of toInstall) {
     onProgress?.({ phase: 'installing', package: pkg.id, total: toInstall.length, current: results.length + 1 });
 
@@ -786,6 +814,7 @@ export async function installPackage(id, options = {}) {
         preserveState,
         migrateState,
         preserveStatePaths,
+        deferFinalize: pkg.id === resolved.id && pkg.source?.type === 'github',
         onProgress
       });
       results.push(result);
@@ -798,16 +827,97 @@ export async function installPackage(id, options = {}) {
     }
   }
 
-  // Write lockfile
-  onProgress?.({ phase: 'lockfile', package: resolved.id });
-  await writeLockfile(resolved);
+  const mainResult = results.find((result) => result.id === resolved.id);
+  const transaction = mainResult?.transaction
+    ? {
+        ...mainResult.transaction,
+        resolved,
+        previousLockfile,
+      }
+    : null;
+
+  if (transaction && !deferFinalize) {
+    try {
+      await finalizeDeferredInstall(transaction, { onProgress });
+    } catch (error) {
+      try {
+        await rollbackDeferredInstall(transaction);
+      } catch (rollbackError) {
+        return {
+          success: false,
+          id: resolved.id,
+          error: `${error.message}; rollback also failed: ${rollbackError.message}`,
+        };
+      }
+      return { success: false, id: resolved.id, error: error.message };
+    }
+  } else if (!transaction) {
+    onProgress?.({ phase: 'lockfile', package: resolved.id });
+    await writeLockfile(resolved, {
+      installPath: getInstallPathForPackage(resolved),
+    });
+  }
 
   return {
     success: true,
     id: resolved.id,
     path: getInstallPathForPackage(resolved),
-    installed: results.map(r => r.id)
+    installed: results.map(r => r.id),
+    ...(transaction && deferFinalize ? { transaction } : {}),
   };
+}
+
+export async function finalizeDeferredInstall(transaction, options = {}) {
+  await prepareDeferredInstall(transaction, options);
+  return commitDeferredInstall(transaction);
+}
+
+export async function prepareDeferredInstall(transaction, options = {}) {
+  if (!transaction?.resolved || !transaction.installPath) {
+    throw new Error('Invalid deferred install transaction');
+  }
+  options.onProgress?.({ phase: 'lockfile', package: transaction.id });
+  await writeLockfile(transaction.resolved, { installPath: transaction.installPath });
+  return { success: true, id: transaction.id, path: transaction.installPath };
+}
+
+export function commitDeferredInstall(transaction) {
+  if (!transaction?.id || !transaction.installPath) {
+    throw new Error('Invalid deferred install transaction');
+  }
+  let cleanupError = null;
+  if (transaction.backupPath) {
+    try {
+      fs.rmSync(transaction.backupPath, { recursive: true, force: true });
+    } catch (error) {
+      cleanupError = error.message;
+    }
+  }
+  return {
+    success: true,
+    id: transaction.id,
+    path: transaction.installPath,
+    ...(cleanupError ? { cleanupError } : {}),
+  };
+}
+
+export async function rollbackDeferredInstall(transaction) {
+  if (!transaction?.id || !transaction.installPath) {
+    throw new Error('Invalid deferred install transaction');
+  }
+  if (
+    transaction.previousInstallExisted &&
+    (!transaction.backupPath || !fs.existsSync(transaction.backupPath))
+  ) {
+    throw new Error(`Cannot roll back ${transaction.id}: previous install backup is missing`);
+  }
+
+  fs.rmSync(transaction.installPath, { recursive: true, force: true });
+  if (transaction.backupPath) {
+    fs.renameSync(transaction.backupPath, transaction.installPath);
+  }
+  restoreLockfile(transaction.id, transaction.previousLockfile);
+  return { success: true, id: transaction.id, path: transaction.installPath };
 }
 
 /**
@@ -912,6 +1022,7 @@ async function installSinglePackage(pkg, options = {}) {
     preserveState = false,
     migrateState = true,
     preserveStatePaths,
+    deferFinalize = false,
     onProgress,
   } = options;
   const installPath = getInstallPathForPackage(pkg);
@@ -1239,7 +1350,11 @@ async function installSinglePackage(pkg, options = {}) {
   }
 
   // Handle binary runtime stacks — download platform binary directly
-  if (pkg.runtime === 'binary' && pkg.binary?.platforms) {
+  if (
+    pkg.source?.type !== 'github' &&
+    pkg.runtime === 'binary' &&
+    pkg.binary?.platforms
+  ) {
     onProgress?.({ phase: 'downloading', package: pkg.id });
     try {
       fs.mkdirSync(installPath, { recursive: true });
@@ -1256,6 +1371,64 @@ async function installSinglePackage(pkg, options = {}) {
       // Clean up install dir on failure
       try { fs.rmSync(installPath, { recursive: true, force: true }); } catch { /* ignore */ }
       throw new Error(`Failed to install binary stack ${pkg.id}: ${error.message}`);
+    }
+  }
+
+  if (pkg.source?.type === 'github') {
+    const parent = path.dirname(installPath);
+    const base = path.basename(installPath).replace(/[^a-zA-Z0-9_.-]/g, '_');
+    const stagingPath = path.join(parent, `.${base}.github-stage-${process.pid}-${Date.now()}`);
+    const backupPath = path.join(parent, `.${base}.github-backup-${process.pid}-${Date.now()}`);
+    fs.mkdirSync(parent, { recursive: true });
+
+    let previousInstallExisted = false;
+    let installedStaging = false;
+    try {
+      await downloadPackage(pkg, stagingPath, { onProgress });
+      if (pkg.kind === 'stack') {
+        await installStackDependencies(stagingPath, onProgress, {
+          allowScripts,
+          failClosed: true,
+        });
+      }
+
+      previousInstallExisted = fs.existsSync(installPath);
+      if (previousInstallExisted) fs.renameSync(installPath, backupPath);
+      try {
+        fs.renameSync(stagingPath, installPath);
+        installedStaging = true;
+      } catch (error) {
+        if (fs.existsSync(backupPath)) fs.renameSync(backupPath, installPath);
+        throw error;
+      }
+      if (!deferFinalize) {
+        fs.rmSync(backupPath, { recursive: true, force: true });
+      }
+      onProgress?.({ phase: 'installed', package: pkg.id });
+      return {
+        success: true,
+        id: pkg.id,
+        path: installPath,
+        ...(deferFinalize
+          ? {
+              transaction: {
+                id: pkg.id,
+                installPath,
+                backupPath: previousInstallExisted ? backupPath : null,
+                previousInstallExisted,
+              },
+            }
+          : {}),
+      };
+    } catch (error) {
+      fs.rmSync(stagingPath, { recursive: true, force: true });
+      if (installedStaging) {
+        fs.rmSync(installPath, { recursive: true, force: true });
+      }
+      if (previousInstallExisted && fs.existsSync(backupPath)) {
+        fs.renameSync(backupPath, installPath);
+      }
+      throw new Error(`Failed to install pinned GitHub package ${pkg.id}: ${error.message}`);
     }
   }
 
@@ -1549,6 +1722,10 @@ function extractSingleFileMetadata(filePath, kind) {
   return {};
 }
 
+function getInstalledPackageSource(id, fallback) {
+  return readLockfile(id)?.source || fallback;
+}
+
 /**
  * List all installed packages
  * @param {'stack' | 'skill' | 'prompt' | 'workflow' | 'runtime' | 'binary' | 'agent'} [kind] - Filter by kind
@@ -1591,7 +1768,7 @@ export async function listInstalled(kind) {
             icon: metadata.icon || '',
             requires: metadata.requires,
             format: skill.format,
-            source: skill.source,
+            source: getInstalledPackageSource(`${k}:${skill.name}`, skill.source),
             entryPath: skill.entryPath,
             path: skill.packagePath
           });
@@ -1606,7 +1783,7 @@ export async function listInstalled(kind) {
             category: 'general',
             tags: [],
             format: skill.format,
-            source: skill.source,
+            source: getInstalledPackageSource(`${k}:${skill.name}`, skill.source),
             entryPath: skill.entryPath,
             path: skill.packagePath
           });
@@ -1670,11 +1847,13 @@ export async function listInstalled(kind) {
 
       if (fs.existsSync(manifestPath)) {
         const manifest = JSON.parse(fs.readFileSync(manifestPath, 'utf-8'));
+        const packageId = normalizeInstalledPackageId(k, manifest.id, entry.name);
         packages.push({
           ...manifest,
-          id: normalizeInstalledPackageId(k, manifest.id, entry.name),
+          id: packageId,
           kind: k,
           name: manifest.name || entry.name,
+          source: getInstalledPackageSource(packageId, manifest.source),
           path: pkgDir
         });
       } else if (fs.existsSync(runtimePath)) {
@@ -1736,7 +1915,8 @@ export async function updateAll(options = {}) {
  * @param {Function} [onProgress] - Progress callback
  * @returns {Promise<void>}
  */
-async function installStackDependencies(stackPath, onProgress) {
+async function installStackDependencies(stackPath, onProgress, options = {}) {
+  const { allowScripts = true, failClosed = false } = options;
   // Check for Node.js dependencies
   // Support both flat layout (package.json at root) and structured layout (node/package.json)
   const nodeDepsPaths = [
@@ -1758,10 +1938,10 @@ async function installStackDependencies(stackPath, onProgress) {
         const pnpmStore = path.join(PATHS.cache, 'pnpm');
         fs.mkdirSync(pnpmStore, { recursive: true });
 
-        runCommandPlan({
-          command: pnpmCmd,
-          args: ['install', '--store-dir', pnpmStore, '--prefer-frozen-lockfile'],
-        }, {
+        runCommandPlan(createStackDependencyInstallCommand('pnpm', pnpmCmd, {
+          storeDir: pnpmStore,
+          allowScripts,
+        }), {
           cwd: nodePath,
           stdio: 'pipe',
           env: buildNodeToolEnv(pnpmCmd)
@@ -1777,15 +1957,17 @@ async function installStackDependencies(stackPath, onProgress) {
     if (!installedWithPnpm) {
       try {
         const npmCmd = await findNpmExecutable();
-        runCommandPlan({ command: npmCmd, args: ['install'] }, {
+        runCommandPlan(createStackDependencyInstallCommand('npm', npmCmd, {
+          allowScripts,
+        }), {
           cwd: nodePath,
           stdio: 'pipe',
           env: buildNodeToolEnv(npmCmd),
         });
         onProgress?.({ phase: 'installing-deps', message: 'Dependencies installed with npm' });
       } catch (error) {
+        if (failClosed) throw error;
         console.warn(`Warning: Failed to install Node.js dependencies: ${error.message}`);
-        // Don't fail installation if deps fail - stack may still work
       }
     }
 
@@ -1804,12 +1986,18 @@ async function installStackDependencies(stackPath, onProgress) {
     const requirementsPath = path.join(pythonPath, 'requirements.txt');
     if (!fs.existsSync(requirementsPath)) continue;
 
+    if (failClosed && !allowScripts) {
+      throw new Error(
+        'External stack Python dependency installation is disabled by default because package builds can execute code; review the pinned source and rerun with --allow-scripts'
+      );
+    }
+
     try {
       // Use uv if available (10-100x faster), fallback to pip
       await installPythonRequirements(pythonPath, onProgress);
     } catch (error) {
+      if (failClosed) throw error;
       console.warn(`Warning: Failed to install Python dependencies: ${error.message}`);
-      // Don't fail installation if deps fail - stack may still work
     }
 
     // Only install deps once (first matching path wins)

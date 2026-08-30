@@ -12,7 +12,23 @@
 import * as fs from 'fs/promises';
 import * as fsSync from 'fs';
 import * as path from 'path';
-import { fetchIndex, installPackage, resolvePackage, checkAllDependencies, formatDependencyResults, addStack, removeStack, updateSecretStatus, indexAllStacks } from '@learnrudi/core';
+import {
+  fetchIndex,
+  installPackage,
+  resolvePackage,
+  checkAllDependencies,
+  formatDependencyResults,
+  addStack,
+  removeStack,
+  removeStackFromToolIndex,
+  updateSecretStatus,
+  indexAllStacks,
+  prepareDeferredInstall,
+  commitDeferredInstall,
+  rollbackDeferredInstall,
+  readRudiConfig,
+  updateRudiConfig,
+} from '@learnrudi/core';
 import { hasSecret, listSecrets, setSecret, getSecret } from '@learnrudi/secrets';
 import { getInstalledAgents } from '@learnrudi/mcp';
 import { runCommand } from '../utils/subprocess.js';
@@ -227,7 +243,12 @@ export function buildRelatedSkillInstallPlan(resolved, flags = {}) {
     : [];
   const operatorSkill = relatedSkills.find((skill) => skill.isOperator) || null;
   const companionSkills = relatedSkills.filter((skill) => !skill.isOperator);
-  const missingOperator = operatorSkill && !operatorSkill.installed
+  const forceExternalOperator = Boolean(
+    flags.force &&
+    resolved?.source?.type === 'github' &&
+    operatorSkill?.source?.type === 'github'
+  );
+  const missingOperator = operatorSkill && (!operatorSkill.installed || forceExternalOperator)
     ? [operatorSkill]
     : [];
   const missingCompanions = companionSkills.filter((skill) => !skill.installed);
@@ -241,6 +262,7 @@ export function buildRelatedSkillInstallPlan(resolved, flags = {}) {
     missingOperator,
     missingCompanions,
     missing,
+    forceExternalOperator,
     toInstall: [
       ...missingOperator,
       ...(mode === 'include' ? missingCompanions : []),
@@ -287,6 +309,37 @@ export async function activateInstalledStack(stackId, options = {}, dependencies
     throw new Error(`Tool indexing failed for ${stackId}`);
   }
   return { status: 'indexed', result };
+}
+
+export function getInstallActivationPolicy(resolved, allowScripts = false) {
+  if (resolved?.source?.type === 'github' && !allowScripts) {
+    return {
+      activate: false,
+      reason: 'Downloaded GitHub stack execution is disabled until --allow-scripts is explicitly approved',
+    };
+  }
+  return { activate: true };
+}
+
+export function deferExternalStackActivation(stackId, dependencies = {}) {
+  const removeCachedStack = dependencies.removeStackFromToolIndex || removeStackFromToolIndex;
+  const removedCachedEntry = removeCachedStack(stackId);
+  return { status: 'deferred', removedCachedEntry };
+}
+
+export async function activateExternalStackSafely(
+  stackId,
+  resolved,
+  allowScripts,
+  options = {},
+  dependencies = {},
+) {
+  deferExternalStackActivation(stackId, dependencies);
+  const activationPolicy = getInstallActivationPolicy(resolved, allowScripts);
+  if (!activationPolicy.activate) {
+    return { status: 'deferred', reason: activationPolicy.reason };
+  }
+  return activateInstalledStack(stackId, options, dependencies);
 }
 
 export async function syncRelatedSkillWrappers(
@@ -432,15 +485,23 @@ async function promptForRelatedSkills(plan) {
 }
 
 async function installRelatedSkills(skills, options = {}) {
-  const { allowScripts = false, withShims = false } = options;
+  const {
+    allowScripts = false,
+    withShims = false,
+    deferFinalize = false,
+    forceExternal = false,
+    installPackage: installResolvedPackage = installPackage,
+  } = options;
   const results = [];
 
   for (const skill of skills) {
     console.log(`  Installing related skill ${skill.id}...`);
-    const result = await installPackage(skill.id, {
-      force: false,
+    const result = await installResolvedPackage(skill.id, {
+      force: skill.sourceMismatch || (forceExternal && skill.source?.type === 'github'),
       allowScripts,
       withShims,
+      deferFinalize: deferFinalize && skill.source?.type === 'github',
+      resolvedPackage: skill,
       onProgress: (progress) => {
         if (progress.phase === 'installing') {
           console.log(`    Installing ${progress.package}...`);
@@ -454,6 +515,7 @@ async function installRelatedSkills(skills, options = {}) {
       path: result.path,
       alreadyInstalled: result.alreadyInstalled,
       error: result.error,
+      transaction: result.transaction,
     });
   }
 
@@ -464,11 +526,21 @@ async function installAndSyncStackSkills(plan, options = {}) {
   const {
     allowScripts = false,
     withShims = false,
+    deferFinalize = false,
+    deferSync = false,
+    forceExternal = false,
     installedAgents = getInstalledAgents(),
+    installPackage: installResolvedPackage = installPackage,
   } = options;
   const selectedSkills = await promptForRelatedSkills(plan);
   const installResults = selectedSkills.length > 0
-    ? await installRelatedSkills(selectedSkills, { allowScripts, withShims })
+    ? await installRelatedSkills(selectedSkills, {
+        allowScripts,
+        withShims,
+        deferFinalize,
+        forceExternal,
+        installPackage: installResolvedPackage,
+      })
     : [];
 
   if (installResults.length > 0) {
@@ -482,11 +554,20 @@ async function installAndSyncStackSkills(plan, options = {}) {
     }
   }
 
-  const wrapperSync = await syncRelatedSkillWrappers(
-    plan.relatedSkills,
-    installResults,
-    installedAgents
-  );
+  const wrapperSync = deferSync
+    ? null
+    : await syncRelatedSkillWrappers(
+        plan.relatedSkills,
+        installResults,
+        installedAgents
+      );
+  reportRelatedSkillWrapperSync(wrapperSync);
+
+  return { selectedSkills, installResults, wrapperSync };
+}
+
+function reportRelatedSkillWrapperSync(wrapperSync) {
+  if (!wrapperSync) return;
   for (const target of wrapperSync.targets) {
     if (wrapperSync.errors[target]) {
       console.log(`    - ${target} native skill sync failed: ${wrapperSync.errors[target]}`);
@@ -500,8 +581,6 @@ async function installAndSyncStackSkills(plan, options = {}) {
       console.log(`    - ${target} native skill wrapper synced (${wrapperSync.outcomes[target]?.changed || 0} changed)`);
     }
   }
-
-  return { selectedSkills, installResults, wrapperSync };
 }
 
 /**
@@ -533,11 +612,49 @@ function getStackEntryPoint(stackPath, manifest) {
     if (!looksLikeFile) continue;
 
     // This should be the entry point file
-    const entryPath = path.join(stackPath, arg);
-    return { entryArg: arg, entryPath };
+    const resolved = resolveContainedStackPath(stackPath, arg);
+    if (resolved.error) return { entryArg: arg, entryPath: null, error: resolved.error };
+    return { entryArg: arg, entryPath: resolved.path };
   }
 
   return { entryArg: null, entryPath: null }; // No file args found, assume command is valid
+}
+
+function resolveContainedStackPath(stackPath, value) {
+  if (
+    typeof value !== 'string' ||
+    !value ||
+    value.includes('\0') ||
+    path.isAbsolute(value)
+  ) {
+    return { error: `Stack command path must be relative to the installed package: ${value}` };
+  }
+  const root = path.resolve(stackPath);
+  const candidate = path.resolve(root, value);
+  if (candidate === root || !candidate.startsWith(`${root}${path.sep}`)) {
+    return { error: `Stack command path escapes the installed package: ${value}` };
+  }
+  return { path: candidate };
+}
+
+export function validateExternalStackCommand(stackPath, manifest) {
+  const entryPoint = getStackEntryPoint(stackPath, manifest);
+  if (entryPoint.error) return { valid: false, error: entryPoint.error };
+  if (!entryPoint.entryPath) {
+    return {
+      valid: false,
+      error: 'External stack command must reference an entry file inside the pinned package',
+    };
+  }
+  const relativeEntry = path.relative(path.resolve(stackPath), entryPoint.entryPath);
+  const rootSegment = relativeEntry.split(path.sep)[0];
+  if (rootSegment === 'runs' || rootSegment === 'outputs') {
+    return {
+      valid: false,
+      error: `External stack command cannot use mutable install state as its entry point: ${entryPoint.entryArg}`,
+    };
+  }
+  return { valid: true, entryPath: entryPoint.entryPath };
 }
 
 /**
@@ -554,7 +671,9 @@ function validateStackEntryPoint(stackPath, manifest) {
       return { valid: false, error: 'Binary stack has no command' };
     }
     const binName = command[0].replace(/^\.\//, '');
-    const binaryPath = path.join(stackPath, binName);
+    const resolved = resolveContainedStackPath(stackPath, binName);
+    if (resolved.error) return { valid: false, error: resolved.error };
+    const binaryPath = resolved.path;
     if (!fsSync.existsSync(binaryPath)) {
       return { valid: false, error: `Binary not found: ${command[0]}` };
     }
@@ -584,8 +703,8 @@ function validateStackEntryPoint(stackPath, manifest) {
   return { valid: true };
 }
 
-async function buildStackIfNeeded(stackPath, manifest, options = {}) {
-  const { nodeProject, verbose = false } = options;
+export async function buildStackIfNeeded(stackPath, manifest, options = {}) {
+  const { nodeProject, verbose = false, allowScripts = true } = options;
   const runtime = getStackRuntime(manifest);
 
   if (runtime !== 'node') {
@@ -612,6 +731,12 @@ async function buildStackIfNeeded(stackPath, manifest, options = {}) {
 
   if (!project.packageJson?.scripts?.build) {
     return { built: false, reason: 'No build script' };
+  }
+
+  if (!allowScripts) {
+    throw new Error(
+      'External stack build scripts are disabled by default; review the pinned source and rerun with --allow-scripts'
+    );
   }
 
   const npmCmd = getBundledBinary('node', 'npm');
@@ -702,9 +827,63 @@ async function cleanupFailedStackInstall(stackId, stackPath, removeConfig) {
   }
 }
 
+function snapshotStackRegistration(stackId, manifest) {
+  const config = readRudiConfig();
+  const stacks = config?.stacks || {};
+  const secrets = config?.secrets || {};
+  const hasStack = Object.prototype.hasOwnProperty.call(stacks, stackId);
+  const secretNames = [...new Set(
+    getManifestSecrets(manifest).map(getSecretName).filter(Boolean)
+  )];
+
+  return {
+    stackId,
+    hasStack,
+    stack: hasStack ? structuredClone(stacks[stackId]) : null,
+    secrets: secretNames.map((name) => ({
+      name,
+      exists: Object.prototype.hasOwnProperty.call(secrets, name),
+      value: Object.prototype.hasOwnProperty.call(secrets, name)
+        ? structuredClone(secrets[name])
+        : null,
+    })),
+  };
+}
+
+function restoreStackRegistration(snapshot) {
+  if (!snapshot) return;
+  updateRudiConfig((config) => {
+    if (snapshot.hasStack) config.stacks[snapshot.stackId] = snapshot.stack;
+    else delete config.stacks[snapshot.stackId];
+
+    for (const secret of snapshot.secrets) {
+      if (secret.exists) config.secrets[secret.name] = secret.value;
+      else delete config.secrets[secret.name];
+    }
+  });
+}
+
+async function rollbackDeferredTransactions(transactions, rollback = rollbackDeferredInstall) {
+  const errors = [];
+  for (const transaction of [...transactions].reverse()) {
+    try {
+      await rollback(transaction);
+    } catch (error) {
+      errors.push(`${transaction.id}: ${error.message}`);
+    }
+  }
+  if (errors.length > 0) {
+    throw new Error(`Deferred install rollback failed: ${errors.join('; ')}`);
+  }
+}
+
 export async function cmdInstall(args, flags, dependencies = {}) {
   const fetchRegistryIndex = dependencies.fetchIndex || fetchIndex;
   const resolveRegistryPackage = dependencies.resolvePackage || resolvePackage;
+  const installResolvedPackage = dependencies.installPackage || installPackage;
+  const prepareDeferred = dependencies.prepareDeferredInstall || prepareDeferredInstall;
+  const commitDeferred = dependencies.commitDeferredInstall || commitDeferredInstall;
+  const rollbackDeferred = dependencies.rollbackDeferredInstall || rollbackDeferredInstall;
   const exit = dependencies.exit || (code => process.exit(code));
   const printError = dependencies.error || console.error;
   let pkgId = args[0];
@@ -721,7 +900,7 @@ export async function cmdInstall(args, flags, dependencies = {}) {
     console.error('After installing, run:');
     console.error('  rudi secrets set <KEY>    # Configure required secrets');
     console.error('  rudi integrate all        # Wire up your agents');
-    process.exit(1);
+    return exit(1);
   }
 
   // Handle deprecated "prompt:" prefix
@@ -744,18 +923,34 @@ export async function cmdInstall(args, flags, dependencies = {}) {
   console.log(`Resolving ${pkgId}...`);
 
   try {
-    if (!pkgId.startsWith('npm:')) {
+    if (!pkgId.startsWith('npm:') && !/^https?:\/\//i.test(pkgId)) {
       await fetchRegistryIndex({ force: true });
     }
 
     // First resolve to show what will be installed
     const resolved = await resolveRegistryPackage(pkgId);
     const relatedSkillPlan = buildRelatedSkillInstallPlan(resolved, flags);
+    const externalSourceMismatch = Boolean(
+      resolved.source?.type === 'github' && (
+        resolved.sourceMismatch ||
+        relatedSkillPlan.operatorSkill?.sourceMismatch
+      )
+    );
 
     console.log(`\nPackage: ${resolved.name} (${resolved.id})`);
     console.log(`Version: ${resolved.version}`);
     if (resolved.description) {
       console.log(`Description: ${resolved.description}`);
+    }
+    if (resolved.source?.type === 'github') {
+      const sourceLabel = resolved.source.repository || resolved.source.requestedUrl || 'GitHub';
+      console.log(`Source: ${sourceLabel}@${resolved.source.resolvedCommit}`);
+    }
+
+    if (externalSourceMismatch && !force) {
+      printError(`\n✗ ${resolved.id} or its operator skill is installed from a different source snapshot.`);
+      printError('  Review the pinned source shown above, then rerun this exact GitHub URL with --force.');
+      return exit(1);
     }
 
     const externalAgentGuidance = getExternalAgentInstallGuidance(resolved);
@@ -763,13 +958,17 @@ export async function cmdInstall(args, flags, dependencies = {}) {
       console.error(`\n✗ ${externalAgentGuidance.error}`);
       console.error(`  ${externalAgentGuidance.install}`);
       console.error(`  ${externalAgentGuidance.verify}`);
-      process.exit(1);
+      return exit(1);
     }
 
     if (resolved.installed && !force) {
       if (resolved.kind === 'stack' && relatedSkillPlan.missing.length > 0) {
         console.log(`\nStack already installed. Installing missing operator or companion skills.`);
-        await installAndSyncStackSkills(relatedSkillPlan, { allowScripts, withShims });
+        await installAndSyncStackSkills(relatedSkillPlan, {
+          allowScripts,
+          withShims,
+          installPackage: installResolvedPackage,
+        });
         return;
       }
       console.log(`\nAlready installed. Use --force to reinstall.`);
@@ -828,15 +1027,17 @@ export async function cmdInstall(args, flags, dependencies = {}) {
         console.error(`    rudi install ${r.type}:${r.name}`);
       }
       console.error(`\nOr use --force to install anyway.`);
-      process.exit(1);
+      return exit(1);
     }
 
     console.log(`\nInstalling...`);
 
-    const result = await installPackage(pkgId, {
+    const result = await installResolvedPackage(resolved.id, {
       force,
       allowScripts,
       withShims,
+      deferFinalize: resolved.kind === 'stack' && resolved.source?.type === 'github',
+      resolvedPackage: resolved,
       onProgress: (progress) => {
         if (progress.phase === 'installing') {
           console.log(`  Installing ${progress.package}...`);
@@ -846,7 +1047,7 @@ export async function cmdInstall(args, flags, dependencies = {}) {
 
     if (!result.success) {
       console.error(`\n✗ Installation failed: ${result.error}`);
-      process.exit(1);
+      return exit(1);
     }
 
     if (resolved.kind !== 'stack') {
@@ -869,21 +1070,33 @@ export async function cmdInstall(args, flags, dependencies = {}) {
       return;
     }
 
+    const deferredTransactions = result.transaction ? [result.transaction] : [];
     const manifest = await loadManifest(result.path);
     if (!manifest) {
-      await cleanupFailedStackInstall(result.id, result.path, false);
+      if (deferredTransactions.length > 0) {
+        await rollbackDeferredTransactions(deferredTransactions, rollbackDeferred);
+      } else {
+        await cleanupFailedStackInstall(result.id, result.path, false);
+      }
       throw new Error('Stack manifest not found after install');
     }
 
     const nodeProject = getNodeProjectInfo(result.path);
     const includeDevDeps = Boolean(nodeProject?.packageJson?.scripts?.build);
     let stackRegistered = false;
+    let registrationAttempted = false;
+    let registrationSnapshot = null;
+    let installsCommitted = false;
+    let relatedSkillResults = [];
+    let relatedOutcome = null;
 
     try {
-      const depResult = await installDependencies(result.path, manifest, {
-        includeDevDeps,
-        nodeProject
-      });
+      const depResult = resolved.source?.type === 'github'
+        ? { installed: false, reason: 'Dependencies installed in the staged package' }
+        : await installDependencies(result.path, manifest, {
+            includeDevDeps,
+            nodeProject,
+          });
 
       if (depResult.installed) {
         console.log(`  ✓ Dependencies installed`);
@@ -891,9 +1104,17 @@ export async function cmdInstall(args, flags, dependencies = {}) {
         throw new Error(`Failed to install dependencies:\n${depResult.error}`);
       }
 
+      if (resolved.source?.type === 'github') {
+        const externalCommand = validateExternalStackCommand(result.path, manifest);
+        if (!externalCommand.valid) {
+          throw new Error(`External stack command rejected: ${externalCommand.error}`);
+        }
+      }
+
       const buildResult = await buildStackIfNeeded(result.path, manifest, {
         nodeProject,
-        verbose: flags.verbose
+        verbose: flags.verbose,
+        allowScripts: resolved.source?.type !== 'github' || allowScripts,
       });
 
       if (buildResult.built) {
@@ -905,6 +1126,34 @@ export async function cmdInstall(args, flags, dependencies = {}) {
         throw new Error(`Stack validation failed: ${validation.error}`);
       }
 
+      relatedOutcome = await installAndSyncStackSkills(
+        relatedSkillPlan,
+        {
+          allowScripts,
+          withShims,
+          deferFinalize: resolved.source?.type === 'github',
+          deferSync: resolved.source?.type === 'github',
+          forceExternal: relatedSkillPlan.forceExternalOperator,
+          installPackage: installResolvedPackage,
+        }
+      );
+      relatedSkillResults = relatedOutcome.installResults;
+      deferredTransactions.push(
+        ...relatedSkillResults.map((item) => item.transaction).filter(Boolean)
+      );
+
+      if (relatedSkillPlan.missingOperator.length > 0) {
+        const operatorId = relatedSkillPlan.missingOperator[0].id;
+        const operatorResult = relatedSkillResults.find((item) => item.id === operatorId);
+        if (!operatorResult?.success) {
+          throw new Error(
+            `Required operator skill ${operatorId} failed to install: ${operatorResult?.error || 'no install result'}`
+          );
+        }
+      }
+
+      registrationSnapshot = snapshotStackRegistration(result.id, manifest);
+      registrationAttempted = true;
       addStack(result.id, {
         path: result.path,
         runtime: getStackRuntime(manifest),
@@ -915,15 +1164,75 @@ export async function cmdInstall(args, flags, dependencies = {}) {
       stackRegistered = true;
       console.log(`  ✓ Updated rudi.json`);
 
-      const activation = await activateInstalledStack(result.id, {
-        missingSecrets: secretsCheck.missing,
-      });
-      if (activation.status === 'indexed') {
-        console.log(`  ✓ Indexed MCP tools`);
+      if (resolved.source?.type !== 'github') {
+        const activation = await activateInstalledStack(result.id, {
+          missingSecrets: secretsCheck.missing,
+        });
+        if (activation.status === 'indexed') {
+          console.log(`  ✓ Indexed MCP tools`);
+        }
       }
+
+      for (const transaction of deferredTransactions) {
+        await prepareDeferred(transaction);
+      }
+      for (const transaction of deferredTransactions) {
+        const commit = commitDeferred(transaction);
+        if (commit.cleanupError) {
+          console.warn(`  Warning: installed ${transaction.id}, but could not remove its backup: ${commit.cleanupError}`);
+        }
+      }
+      installsCommitted = true;
     } catch (stackError) {
-      await cleanupFailedStackInstall(result.id, result.path, stackRegistered);
+      let rollbackError = null;
+      try {
+        if (registrationAttempted) restoreStackRegistration(registrationSnapshot);
+        if (!installsCommitted && deferredTransactions.length > 0) {
+          await rollbackDeferredTransactions(deferredTransactions, rollbackDeferred);
+        } else if (deferredTransactions.length === 0) {
+          await cleanupFailedStackInstall(result.id, result.path, stackRegistered);
+        }
+      } catch (error) {
+        rollbackError = error;
+      }
+      if (rollbackError) {
+        throw new Error(`${stackError.message}; rollback also failed: ${rollbackError.message}`);
+      }
       throw stackError;
+    }
+
+    if (resolved.source?.type === 'github') {
+      try {
+        const wrapperSync = await syncRelatedSkillWrappers(
+          relatedSkillPlan.relatedSkills,
+          relatedSkillResults,
+          getInstalledAgents()
+        );
+        reportRelatedSkillWrapperSync(wrapperSync);
+      } catch (error) {
+        console.warn(`  Warning: native skill sync failed after install: ${error.message}`);
+      }
+
+      try {
+        const activation = await activateExternalStackSafely(
+          result.id,
+          resolved,
+          allowScripts,
+          { missingSecrets: secretsCheck.missing },
+          {
+            removeStackFromToolIndex: dependencies.removeStackFromToolIndex,
+            indexAllStacks: dependencies.indexAllStacks,
+          },
+        );
+        if (activation.status === 'indexed') {
+          console.log(`  ✓ Indexed MCP tools`);
+        } else if (activation.status === 'deferred') {
+          console.log(`  ○ MCP indexing deferred: ${activation.reason}`);
+        }
+      } catch (error) {
+        console.warn(`  Warning: stack installed, but MCP indexing failed: ${error.message}`);
+        console.warn(`  Retry after resolving the stack issue: rudi index ${result.id}`);
+      }
     }
 
     console.log(`\n✓ Installed ${result.id}`);
@@ -935,11 +1244,6 @@ export async function cmdInstall(args, flags, dependencies = {}) {
         console.log(`    - ${id}`);
       }
     }
-
-    const { installResults: relatedSkillResults } = await installAndSyncStackSkills(
-      relatedSkillPlan,
-      { allowScripts, withShims }
-    );
 
     // Check secrets status
     const { found, missing } = await checkSecrets(manifest);
@@ -1040,6 +1344,6 @@ export async function cmdInstall(args, flags, dependencies = {}) {
     if (flags.verbose) {
       console.error(error.stack);
     }
-    process.exit(1);
+    return exit(1);
   }
 }

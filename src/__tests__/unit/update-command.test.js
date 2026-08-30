@@ -118,6 +118,62 @@ test('runUpdate updates an explicit stack through core installer and rebuilds it
   );
 });
 
+test('runUpdate rejects an explicitly targeted pinned GitHub package before registry refresh', async () => {
+  const deps = createDeps({
+    async listInstalled() {
+      return [{
+        id: 'stack:demo',
+        kind: 'stack',
+        name: 'demo',
+        source: {
+          type: 'github',
+          requestedRef: 'main',
+          resolvedCommit: '0123456789abcdef0123456789abcdef01234567',
+        },
+      }];
+    },
+    async fetchIndex() {
+      assert.fail('pinned GitHub updates must stop before registry refresh');
+    },
+  });
+
+  await assert.rejects(
+    () => runUpdate(['stack:demo'], {}, deps),
+    /pinned GitHub source.*reinstall with an explicit GitHub tree URL/i,
+  );
+});
+
+test('runUpdate --all skips pinned GitHub packages in both planning and execution', async () => {
+  const deps = createDeps({
+    async listInstalled() {
+      return [
+        { id: 'stack:registry-demo', kind: 'stack', name: 'registry-demo' },
+        {
+          id: 'stack:github-demo',
+          kind: 'stack',
+          name: 'github-demo',
+          source: {
+            type: 'github',
+            resolvedCommit: '0123456789abcdef0123456789abcdef01234567',
+          },
+        },
+      ];
+    },
+  });
+
+  const result = await runUpdate([], { all: true }, deps);
+
+  assert.deepEqual(
+    deps.calls.filter((call) => call[0] === 'updatePackage').map((call) => call[1]),
+    ['stack:registry-demo'],
+  );
+  assert.deepEqual(result.plannedPackages, ['stack:registry-demo']);
+  assert.deepEqual(result.skippedPackages, [{
+    id: 'stack:github-demo',
+    error: 'Pinned GitHub source requires an explicit reinstall URL',
+  }]);
+});
+
 test('runUpdate preserves install-local state only when explicitly requested', async () => {
   const deps = createDeps();
 

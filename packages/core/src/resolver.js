@@ -4,13 +4,21 @@
  */
 
 import {
+  assertGitHubDirectoryFile,
   getPackage,
   getManifest,
+  isGitHubTreeUrl,
+  normalizeRegistryPackage,
+  readGitHubJsonFile,
+  resolveGitHubTreeSource,
   resolveRegistryPackageForPlatform,
 } from '@learnrudi/registry-client';
 import { getPlatformArch, isPackageInstalled, parsePackageId } from '@learnrudi/env';
+import { readLockfile } from './lockfile.js';
 
 const SINGLE_FILE_KINDS = new Set(['skill', 'prompt', 'workflow']);
+const EXTERNAL_STACK_ID_PATTERN = /^stack:[a-z0-9][a-z0-9-_]*$/;
+const EXTERNAL_SKILL_ID_PATTERN = /^skill:[a-z0-9][a-z0-9-_]*$/;
 
 async function getInstallableRegistryPackage(id) {
   const pkg = await getPackage(id);
@@ -39,21 +47,35 @@ export async function resolvePackage(id) {
     return resolveDynamicNpm(id);
   }
 
-  // 2. Get package from registry (searches all kinds if no prefix)
+  // 2. Handle public GitHub tree sources before registry lookup.
+  if (isGitHubTreeUrl(id) || /^https?:\/\//i.test(id)) {
+    return resolveGitHubPackage(id);
+  }
+
+  // 3. Get package from registry (searches all kinds if no prefix)
   const mergedPkg = await getInstallableRegistryPackage(id);
   if (!mergedPkg) {
     throw new Error(`Package not found: ${id}`);
   }
 
+  return buildResolvedPackage(mergedPkg, undefined, id);
+}
+
+async function buildResolvedPackage(mergedPkg, relatedSkillsOverride, requestedId = mergedPkg.id) {
+
   // Build full ID
-  const fullId = mergedPkg.id?.includes(':') ? mergedPkg.id : `${mergedPkg.kind}:${mergedPkg.id || id.split(':').pop()}`;
+  const fullId = mergedPkg.id?.includes(':')
+    ? mergedPkg.id
+    : `${mergedPkg.kind}:${mergedPkg.id || String(requestedId || '').split(':').pop()}`;
 
   // Check if installed
-  const installed = isPackageInstalled(fullId);
+  const installed = typeof mergedPkg.installed === 'boolean'
+    ? mergedPkg.installed
+    : isPackageInstalled(fullId);
 
   // Resolve dependencies
   const dependencies = await resolveDependencies(mergedPkg);
-  const relatedSkills = await resolveRelatedSkills(mergedPkg);
+  const relatedSkills = relatedSkillsOverride || await resolveRelatedSkills(mergedPkg);
 
   return {
     id: fullId,
@@ -65,6 +87,8 @@ export async function resolvePackage(id) {
     runtime: mergedPkg.runtime,
     entry: mergedPkg.entry,
     installed,
+    sourceMismatch: mergedPkg.sourceMismatch === true,
+    source: mergedPkg.source,
     dependencies,
     requires: mergedPkg.requires,
     related: mergedPkg.related,
@@ -92,6 +116,111 @@ export async function resolvePackage(id) {
     mcp: mergedPkg.mcp,
     _resolved: mergedPkg._resolved
   };
+}
+
+export function isMatchingPinnedGitHubLock(lockfile, source) {
+  return Boolean(
+    lockfile?.source?.type === 'github' &&
+    source?.type === 'github' &&
+    lockfile.source.repository === source.repository &&
+    lockfile.source.resolvedCommit === source.resolvedCommit &&
+    lockfile.source.path === source.path
+  );
+}
+
+function getPinnedGitHubInstallState(id, source) {
+  if (!isPackageInstalled(id)) {
+    return { installed: false, sourceMismatch: false };
+  }
+  const installed = isMatchingPinnedGitHubLock(readLockfile(id), source);
+  return { installed, sourceMismatch: !installed };
+}
+
+function normalizeExternalSourcePath(value, label) {
+  if (typeof value !== 'string' || !value) {
+    throw new Error(`${label} is required for a GitHub stack`);
+  }
+  const normalized = value.replaceAll('\\', '/');
+  const segments = normalized.split('/');
+  if (
+    normalized.startsWith('/') ||
+    segments.some((segment) => !segment || segment === '.' || segment === '..' || segment.includes('\0'))
+  ) {
+    throw new Error(`${label} must be a repository-relative path without traversal`);
+  }
+  return segments.join('/');
+}
+
+async function resolveGitHubPackage(url) {
+  const source = await resolveGitHubTreeSource(url);
+  const manifestPath = `${source.path}/manifest.json`;
+  const rawManifest = await readGitHubJsonFile(source, manifestPath);
+  const manifest = normalizeRegistryPackage(rawManifest, 'stack');
+  if (manifest.kind !== 'stack' || !EXTERNAL_STACK_ID_PATTERN.test(manifest.id)) {
+    throw new Error('GitHub tree manifest must use a canonical stack package id');
+  }
+
+  const operatorSkillId = normalizeSkillPackageId(manifest.related?.operatorSkill);
+  if (!operatorSkillId) {
+    throw new Error(`${manifest.id} requires related.operatorSkill`);
+  }
+  if (!EXTERNAL_SKILL_ID_PATTERN.test(operatorSkillId)) {
+    throw new Error(`${manifest.id} related.operatorSkill must use a canonical skill package id`);
+  }
+  const relatedSkillIds = Array.isArray(manifest.related?.skills)
+    ? manifest.related.skills.map(normalizeSkillPackageId).filter(Boolean)
+    : [];
+  if (!relatedSkillIds.includes(operatorSkillId)) {
+    throw new Error(`${manifest.id} related.operatorSkill must appear in related.skills`);
+  }
+
+  const operatorSkillPath = normalizeExternalSourcePath(
+    manifest.related?.operatorSkillPath,
+    'related.operatorSkillPath',
+  );
+  await assertGitHubDirectoryFile(source, operatorSkillPath, 'SKILL.md');
+  const operatorSource = { ...source, path: operatorSkillPath };
+  const operatorInstallState = getPinnedGitHubInstallState(operatorSkillId, operatorSource);
+
+  const relatedSkills = [];
+  for (const skillId of relatedSkillIds) {
+    if (skillId === operatorSkillId) {
+      relatedSkills.push({
+        id: skillId,
+        kind: 'skill',
+        name: skillId.slice('skill:'.length),
+        version: manifest.version,
+        installed: operatorInstallState.installed,
+        sourceMismatch: operatorInstallState.sourceMismatch,
+        isOperator: true,
+        dependencies: [],
+        path: operatorSkillPath,
+        source: operatorSource,
+      });
+      continue;
+    }
+
+    const skillPkg = await getPackage(skillId);
+    if (!skillPkg) continue;
+    relatedSkills.push({
+      id: skillId,
+      kind: 'skill',
+      name: skillPkg.name,
+      version: skillPkg.version,
+      installed: isPackageInstalled(skillId),
+      isOperator: false,
+      dependencies: [],
+    });
+  }
+
+  const stackInstallState = getPinnedGitHubInstallState(manifest.id, source);
+  return buildResolvedPackage({
+    ...manifest,
+    path: source.path,
+    source,
+    installed: stackInstallState.installed,
+    sourceMismatch: stackInstallState.sourceMismatch,
+  }, relatedSkills);
 }
 
 function normalizeSkillPackageId(id) {
