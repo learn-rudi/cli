@@ -17,6 +17,7 @@ import { PATHS, isPackageInstalled, getPackagePath, checkStackLifecycle, readRud
 import fs from 'fs';
 import path from 'path';
 import { inspectAgentHost } from '../agent-host/preflight.js';
+import { inspectRuntimeInstall } from '../runtime-inspection.js';
 import { createWhichCommand, runCommand, runCommandPlan } from '../utils/subprocess.js';
 
 const KNOWN_AGENT_HOSTS = new Set(['antigravity', 'claude', 'codex', 'gemini', 'google']);
@@ -148,19 +149,31 @@ export async function cmdCheck(args, flags) {
     }
 
     case 'runtime': {
-      // Check RUDI location first
-      const rudiPath = path.join(PATHS.runtimes, name, 'bin', name);
-      if (fs.existsSync(rudiPath)) {
+      const inspected = inspectRuntimeInstall(`runtime:${name}`);
+      if (inspected.installed) {
         result.installed = true;
-        result.path = rudiPath;
-        result.version = getVersion(rudiPath);
+        result.source = 'rudi';
+        result.path = inspected.primaryBinary.path;
+        result.version = getVersion(inspected.primaryBinary.path);
       } else {
-        // Check global
-        const globalPath = findGlobalBinary(name);
-        if (globalPath) {
+        // Preserve legacy unmanifested runtimes whose executable matched the
+        // package name, but fail closed when an installed manifest is invalid.
+        const legacyRudiPath = path.join(PATHS.runtimes, name, 'bin', name);
+        if (!inspected.manifestPresent && fs.existsSync(legacyRudiPath)) {
           result.installed = true;
-          result.path = globalPath;
-          result.version = getVersion(globalPath);
+          result.source = 'rudi';
+          result.path = legacyRudiPath;
+          result.version = getVersion(legacyRudiPath);
+        } else if (!inspected.rootExists) {
+          const globalPath = findGlobalBinary(name);
+          if (globalPath) {
+            result.installed = true;
+            result.source = 'global';
+            result.path = globalPath;
+            result.version = getVersion(globalPath);
+          }
+        } else if (inspected.error) {
+          result.error = inspected.error;
         }
       }
       result.ready = result.installed;

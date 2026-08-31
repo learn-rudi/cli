@@ -14,7 +14,16 @@ import fs from 'fs';
 import path from 'path';
 import { getPackagePath, parsePackageId, PATHS } from '@learnrudi/env';
 import { getShimOwner, validateShim } from '@learnrudi/core';
+import { inspectRuntimeInstall } from '../runtime-inspection.js';
 import { printPackageLifecycle } from './package-lifecycle.js';
+
+function resolvesToSameFile(leftPath, rightPath) {
+  try {
+    return fs.realpathSync(leftPath) === fs.realpathSync(rightPath);
+  } catch {
+    return false;
+  }
+}
 
 export async function cmdInfo(args, flags) {
   const pkgId = args[0];
@@ -44,6 +53,15 @@ export async function cmdInfo(args, flags) {
       } catch {
         console.warn('Warning: Could not parse manifest.json');
       }
+    }
+
+    let runtimeInspection = null;
+    if (kind === 'runtime') {
+      runtimeInspection = inspectRuntimeInstall(pkgId);
+      if (runtimeInspection.error) {
+        throw new Error(runtimeInspection.error);
+      }
+      manifest = runtimeInspection.manifest;
     }
 
     console.log(`\nPackage: ${pkgId}`);
@@ -95,12 +113,15 @@ export async function cmdInfo(args, flags) {
     }
 
     // Binaries and shims
-    const bins = manifest?.bins || manifest?.binaries || [];
+    const bins = runtimeInspection
+      ? runtimeInspection.binaries.map(binary => binary.name)
+      : manifest?.bins || manifest?.binaries || [];
     if (bins.length > 0) {
       console.log(`\nBinaries (${bins.length}):`);
       console.log('─'.repeat(50));
 
       for (const bin of bins) {
+        const installedRuntimeBinary = runtimeInspection?.binaries.find(binary => binary.name === bin);
         const shimPath = path.join(PATHS.bins, bin);
         const validation = validateShim(bin);
         const ownership = getShimOwner(bin);
@@ -108,13 +129,23 @@ export async function cmdInfo(args, flags) {
         let shimStatus = '✗ no shim';
         if (fs.existsSync(shimPath)) {
           if (validation.valid) {
-            shimStatus = `✓ ${validation.target}`;
+            if (
+              installedRuntimeBinary &&
+              !resolvesToSameFile(validation.target, installedRuntimeBinary.resolvedPath)
+            ) {
+              shimStatus = `↪ preserved for ${ownership?.owner || 'another package'}: ${validation.target}`;
+            } else {
+              shimStatus = `✓ ${validation.target}`;
+            }
           } else {
             shimStatus = `⚠ broken: ${validation.error}`;
           }
         }
 
         console.log(`  ${bin}:`);
+        if (installedRuntimeBinary) {
+          console.log(`    Installed: ✓ ${installedRuntimeBinary.path}`);
+        }
         console.log(`    Shim: ${shimStatus}`);
 
         if (ownership) {
