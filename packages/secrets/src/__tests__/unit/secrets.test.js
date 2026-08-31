@@ -194,6 +194,79 @@ test('hasSecret: returns false for null', () => {
   assert.ok(!has);
 });
 
+test('hasSecret: does not create an absent secrets store', () => {
+  const rudiHome = fs.mkdtempSync(path.join(os.tmpdir(), 'rudi-secrets-'));
+
+  try {
+    const result = runIsolatedSecretsScript(`
+      import { existsSync } from 'node:fs';
+      import { getStorageInfo, hasSecret } from '@learnrudi/secrets';
+
+      const file = getStorageInfo().file;
+      const before = existsSync(file);
+      const configured = await hasSecret('MISSING_SECRET');
+      const after = existsSync(file);
+      console.log(JSON.stringify({ before, configured, after }));
+    `, rudiHome);
+
+    assert.deepStrictEqual(result, {
+      before: false,
+      configured: false,
+      after: false,
+    });
+  } finally {
+    fs.rmSync(rudiHome, { recursive: true, force: true });
+  }
+});
+
+test('hasSecret: treats a whitespace-only stored value as not configured', () => {
+  const rudiHome = fs.mkdtempSync(path.join(os.tmpdir(), 'rudi-secrets-'));
+
+  try {
+    fs.writeFileSync(
+      path.join(rudiHome, 'secrets.json'),
+      JSON.stringify({ GITHUB_TOKEN: '   ' }),
+      { mode: 0o600 },
+    );
+
+    const result = runIsolatedSecretsScript(`
+      import { hasSecret } from '@learnrudi/secrets';
+      console.log(JSON.stringify({ configured: await hasSecret('GITHUB_TOKEN') }));
+    `, rudiHome);
+
+    assert.strictEqual(result.configured, false);
+  } finally {
+    fs.rmSync(rudiHome, { recursive: true, force: true });
+  }
+});
+
+test('getMaskedSecrets: preserves whitespace-only values as pending', () => {
+  const rudiHome = fs.mkdtempSync(path.join(os.tmpdir(), 'rudi-secrets-'));
+
+  try {
+    fs.writeFileSync(
+      path.join(rudiHome, 'secrets.json'),
+      JSON.stringify({ GITHUB_TOKEN: '   ' }),
+      { mode: 0o600 },
+    );
+
+    const result = runIsolatedSecretsScript(`
+      import { getMaskedSecrets, hasSecret } from '@learnrudi/secrets';
+      console.log(JSON.stringify({
+        configured: await hasSecret('GITHUB_TOKEN'),
+        masked: (await getMaskedSecrets()).GITHUB_TOKEN,
+      }));
+    `, rudiHome);
+
+    assert.deepStrictEqual(result, {
+      configured: false,
+      masked: '(pending)',
+    });
+  } finally {
+    fs.rmSync(rudiHome, { recursive: true, force: true });
+  }
+});
+
 // =============================================================================
 // LIST SECRETS LOGIC
 // =============================================================================
