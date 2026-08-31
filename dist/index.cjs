@@ -2239,13 +2239,13 @@ function guessArchiveType(filename) {
   return "tar.gz";
 }
 async function verifyHash(filePath, expectedHash) {
-  return new Promise((resolve3, reject) => {
+  return new Promise((resolve4, reject) => {
     const hash = import_crypto.default.createHash("sha256");
     const stream = import_fs2.default.createReadStream(filePath);
     stream.on("data", (data) => hash.update(data));
     stream.on("end", () => {
       const actualHash = hash.digest("hex");
-      resolve3(actualHash === expectedHash);
+      resolve4(actualHash === expectedHash);
     });
     stream.on("error", reject);
   });
@@ -2348,17 +2348,17 @@ var require_visit = __commonJS({
     visit.BREAK = BREAK;
     visit.SKIP = SKIP;
     visit.REMOVE = REMOVE;
-    function visit_(key, node, visitor, path53) {
-      const ctrl = callVisitor(key, node, visitor, path53);
+    function visit_(key, node, visitor, path55) {
+      const ctrl = callVisitor(key, node, visitor, path55);
       if (identity.isNode(ctrl) || identity.isPair(ctrl)) {
-        replaceNode(key, path53, ctrl);
-        return visit_(key, ctrl, visitor, path53);
+        replaceNode(key, path55, ctrl);
+        return visit_(key, ctrl, visitor, path55);
       }
       if (typeof ctrl !== "symbol") {
         if (identity.isCollection(node)) {
-          path53 = Object.freeze(path53.concat(node));
+          path55 = Object.freeze(path55.concat(node));
           for (let i = 0; i < node.items.length; ++i) {
-            const ci = visit_(i, node.items[i], visitor, path53);
+            const ci = visit_(i, node.items[i], visitor, path55);
             if (typeof ci === "number")
               i = ci - 1;
             else if (ci === BREAK)
@@ -2369,13 +2369,13 @@ var require_visit = __commonJS({
             }
           }
         } else if (identity.isPair(node)) {
-          path53 = Object.freeze(path53.concat(node));
-          const ck = visit_("key", node.key, visitor, path53);
+          path55 = Object.freeze(path55.concat(node));
+          const ck = visit_("key", node.key, visitor, path55);
           if (ck === BREAK)
             return BREAK;
           else if (ck === REMOVE)
             node.key = null;
-          const cv = visit_("value", node.value, visitor, path53);
+          const cv = visit_("value", node.value, visitor, path55);
           if (cv === BREAK)
             return BREAK;
           else if (cv === REMOVE)
@@ -2396,17 +2396,17 @@ var require_visit = __commonJS({
     visitAsync.BREAK = BREAK;
     visitAsync.SKIP = SKIP;
     visitAsync.REMOVE = REMOVE;
-    async function visitAsync_(key, node, visitor, path53) {
-      const ctrl = await callVisitor(key, node, visitor, path53);
+    async function visitAsync_(key, node, visitor, path55) {
+      const ctrl = await callVisitor(key, node, visitor, path55);
       if (identity.isNode(ctrl) || identity.isPair(ctrl)) {
-        replaceNode(key, path53, ctrl);
-        return visitAsync_(key, ctrl, visitor, path53);
+        replaceNode(key, path55, ctrl);
+        return visitAsync_(key, ctrl, visitor, path55);
       }
       if (typeof ctrl !== "symbol") {
         if (identity.isCollection(node)) {
-          path53 = Object.freeze(path53.concat(node));
+          path55 = Object.freeze(path55.concat(node));
           for (let i = 0; i < node.items.length; ++i) {
-            const ci = await visitAsync_(i, node.items[i], visitor, path53);
+            const ci = await visitAsync_(i, node.items[i], visitor, path55);
             if (typeof ci === "number")
               i = ci - 1;
             else if (ci === BREAK)
@@ -2417,13 +2417,13 @@ var require_visit = __commonJS({
             }
           }
         } else if (identity.isPair(node)) {
-          path53 = Object.freeze(path53.concat(node));
-          const ck = await visitAsync_("key", node.key, visitor, path53);
+          path55 = Object.freeze(path55.concat(node));
+          const ck = await visitAsync_("key", node.key, visitor, path55);
           if (ck === BREAK)
             return BREAK;
           else if (ck === REMOVE)
             node.key = null;
-          const cv = await visitAsync_("value", node.value, visitor, path53);
+          const cv = await visitAsync_("value", node.value, visitor, path55);
           if (cv === BREAK)
             return BREAK;
           else if (cv === REMOVE)
@@ -2450,23 +2450,23 @@ var require_visit = __commonJS({
       }
       return visitor;
     }
-    function callVisitor(key, node, visitor, path53) {
+    function callVisitor(key, node, visitor, path55) {
       if (typeof visitor === "function")
-        return visitor(key, node, path53);
+        return visitor(key, node, path55);
       if (identity.isMap(node))
-        return visitor.Map?.(key, node, path53);
+        return visitor.Map?.(key, node, path55);
       if (identity.isSeq(node))
-        return visitor.Seq?.(key, node, path53);
+        return visitor.Seq?.(key, node, path55);
       if (identity.isPair(node))
-        return visitor.Pair?.(key, node, path53);
+        return visitor.Pair?.(key, node, path55);
       if (identity.isScalar(node))
-        return visitor.Scalar?.(key, node, path53);
+        return visitor.Scalar?.(key, node, path55);
       if (identity.isAlias(node))
-        return visitor.Alias?.(key, node, path53);
+        return visitor.Alias?.(key, node, path55);
       return void 0;
     }
-    function replaceNode(key, path53, node) {
-      const parent = path53[path53.length - 1];
+    function replaceNode(key, path55, node) {
+      const parent = path55[path55.length - 1];
       if (identity.isCollection(parent)) {
         parent.items[key] = node;
       } else if (identity.isPair(parent)) {
@@ -3074,10 +3074,10 @@ var require_Collection = __commonJS({
     var createNode = require_createNode();
     var identity = require_identity();
     var Node = require_Node();
-    function collectionFromPath(schema, path53, value) {
+    function collectionFromPath(schema, path55, value) {
       let v = value;
-      for (let i = path53.length - 1; i >= 0; --i) {
-        const k = path53[i];
+      for (let i = path55.length - 1; i >= 0; --i) {
+        const k = path55[i];
         if (typeof k === "number" && Number.isInteger(k) && k >= 0) {
           const a = [];
           a[k] = v;
@@ -3096,7 +3096,7 @@ var require_Collection = __commonJS({
         sourceObjects: /* @__PURE__ */ new Map()
       });
     }
-    var isEmptyPath = (path53) => path53 == null || typeof path53 === "object" && !!path53[Symbol.iterator]().next().done;
+    var isEmptyPath = (path55) => path55 == null || typeof path55 === "object" && !!path55[Symbol.iterator]().next().done;
     var Collection = class extends Node.NodeBase {
       constructor(type, schema) {
         super(type);
@@ -3126,11 +3126,11 @@ var require_Collection = __commonJS({
        * be a Pair instance or a `{ key, value }` object, which may not have a key
        * that already exists in the map.
        */
-      addIn(path53, value) {
-        if (isEmptyPath(path53))
+      addIn(path55, value) {
+        if (isEmptyPath(path55))
           this.add(value);
         else {
-          const [key, ...rest] = path53;
+          const [key, ...rest] = path55;
           const node = this.get(key, true);
           if (identity.isCollection(node))
             node.addIn(rest, value);
@@ -3144,8 +3144,8 @@ var require_Collection = __commonJS({
        * Removes a value from the collection.
        * @returns `true` if the item was found and removed.
        */
-      deleteIn(path53) {
-        const [key, ...rest] = path53;
+      deleteIn(path55) {
+        const [key, ...rest] = path55;
         if (rest.length === 0)
           return this.delete(key);
         const node = this.get(key, true);
@@ -3159,8 +3159,8 @@ var require_Collection = __commonJS({
        * scalar values from their surrounding node; to disable set `keepScalar` to
        * `true` (collections are always returned intact).
        */
-      getIn(path53, keepScalar) {
-        const [key, ...rest] = path53;
+      getIn(path55, keepScalar) {
+        const [key, ...rest] = path55;
         const node = this.get(key, true);
         if (rest.length === 0)
           return !keepScalar && identity.isScalar(node) ? node.value : node;
@@ -3178,8 +3178,8 @@ var require_Collection = __commonJS({
       /**
        * Checks if the collection includes a value with the key `key`.
        */
-      hasIn(path53) {
-        const [key, ...rest] = path53;
+      hasIn(path55) {
+        const [key, ...rest] = path55;
         if (rest.length === 0)
           return this.has(key);
         const node = this.get(key, true);
@@ -3189,8 +3189,8 @@ var require_Collection = __commonJS({
        * Sets a value in this collection. For `!!set`, `value` needs to be a
        * boolean to add/remove the item from the set.
        */
-      setIn(path53, value) {
-        const [key, ...rest] = path53;
+      setIn(path55, value) {
+        const [key, ...rest] = path55;
         if (rest.length === 0) {
           this.set(key, value);
         } else {
@@ -5694,9 +5694,9 @@ var require_Document = __commonJS({
           this.contents.add(value);
       }
       /** Adds a value to the document. */
-      addIn(path53, value) {
+      addIn(path55, value) {
         if (assertCollection(this.contents))
-          this.contents.addIn(path53, value);
+          this.contents.addIn(path55, value);
       }
       /**
        * Create a new `Alias` node, ensuring that the target `node` has the required anchor.
@@ -5771,14 +5771,14 @@ var require_Document = __commonJS({
        * Removes a value from the document.
        * @returns `true` if the item was found and removed.
        */
-      deleteIn(path53) {
-        if (Collection.isEmptyPath(path53)) {
+      deleteIn(path55) {
+        if (Collection.isEmptyPath(path55)) {
           if (this.contents == null)
             return false;
           this.contents = null;
           return true;
         }
-        return assertCollection(this.contents) ? this.contents.deleteIn(path53) : false;
+        return assertCollection(this.contents) ? this.contents.deleteIn(path55) : false;
       }
       /**
        * Returns item at `key`, or `undefined` if not found. By default unwraps
@@ -5793,10 +5793,10 @@ var require_Document = __commonJS({
        * scalar values from their surrounding node; to disable set `keepScalar` to
        * `true` (collections are always returned intact).
        */
-      getIn(path53, keepScalar) {
-        if (Collection.isEmptyPath(path53))
+      getIn(path55, keepScalar) {
+        if (Collection.isEmptyPath(path55))
           return !keepScalar && identity.isScalar(this.contents) ? this.contents.value : this.contents;
-        return identity.isCollection(this.contents) ? this.contents.getIn(path53, keepScalar) : void 0;
+        return identity.isCollection(this.contents) ? this.contents.getIn(path55, keepScalar) : void 0;
       }
       /**
        * Checks if the document includes a value with the key `key`.
@@ -5807,10 +5807,10 @@ var require_Document = __commonJS({
       /**
        * Checks if the document includes a value at `path`.
        */
-      hasIn(path53) {
-        if (Collection.isEmptyPath(path53))
+      hasIn(path55) {
+        if (Collection.isEmptyPath(path55))
           return this.contents !== void 0;
-        return identity.isCollection(this.contents) ? this.contents.hasIn(path53) : false;
+        return identity.isCollection(this.contents) ? this.contents.hasIn(path55) : false;
       }
       /**
        * Sets a value in this document. For `!!set`, `value` needs to be a
@@ -5827,13 +5827,13 @@ var require_Document = __commonJS({
        * Sets a value in this document. For `!!set`, `value` needs to be a
        * boolean to add/remove the item from the set.
        */
-      setIn(path53, value) {
-        if (Collection.isEmptyPath(path53)) {
+      setIn(path55, value) {
+        if (Collection.isEmptyPath(path55)) {
           this.contents = value;
         } else if (this.contents == null) {
-          this.contents = Collection.collectionFromPath(this.schema, Array.from(path53), value);
+          this.contents = Collection.collectionFromPath(this.schema, Array.from(path55), value);
         } else if (assertCollection(this.contents)) {
-          this.contents.setIn(path53, value);
+          this.contents.setIn(path55, value);
         }
       }
       /**
@@ -6219,10 +6219,10 @@ var require_resolve_block_map = __commonJS({
       let offset = bm.offset;
       let commentEnd = null;
       for (const collItem of bm.items) {
-        const { start, key, sep: sep3, value } = collItem;
+        const { start, key, sep: sep4, value } = collItem;
         const keyProps = resolveProps.resolveProps(start, {
           indicator: "explicit-key-ind",
-          next: key ?? sep3?.[0],
+          next: key ?? sep4?.[0],
           offset,
           onError,
           parentIndent: bm.indent,
@@ -6236,7 +6236,7 @@ var require_resolve_block_map = __commonJS({
             else if ("indent" in key && key.indent !== bm.indent)
               onError(offset, "BAD_INDENT", startColMsg);
           }
-          if (!keyProps.anchor && !keyProps.tag && !sep3) {
+          if (!keyProps.anchor && !keyProps.tag && !sep4) {
             commentEnd = keyProps.end;
             if (keyProps.comment) {
               if (map.comment)
@@ -6260,7 +6260,7 @@ var require_resolve_block_map = __commonJS({
         ctx.atKey = false;
         if (utilMapIncludes.mapIncludes(ctx, map.items, keyNode))
           onError(keyStart, "DUPLICATE_KEY", "Map keys must be unique");
-        const valueProps = resolveProps.resolveProps(sep3 ?? [], {
+        const valueProps = resolveProps.resolveProps(sep4 ?? [], {
           indicator: "map-value-ind",
           next: value,
           offset: keyNode.range[2],
@@ -6276,7 +6276,7 @@ var require_resolve_block_map = __commonJS({
             if (ctx.options.strict && keyProps.start < valueProps.found.offset - 1024)
               onError(keyNode.range, "KEY_OVER_1024_CHARS", "The : indicator must be at most 1024 chars after the start of an implicit block mapping key");
           }
-          const valueNode = value ? composeNode(ctx, value, valueProps, onError) : composeEmptyNode(ctx, offset, sep3, null, valueProps, onError);
+          const valueNode = value ? composeNode(ctx, value, valueProps, onError) : composeEmptyNode(ctx, offset, sep4, null, valueProps, onError);
           if (ctx.schema.compat)
             utilFlowIndentCheck.flowIndentCheck(bm.indent, value, onError);
           offset = valueNode.range[2];
@@ -6367,7 +6367,7 @@ var require_resolve_end = __commonJS({
       let comment = "";
       if (end) {
         let hasSpace = false;
-        let sep3 = "";
+        let sep4 = "";
         for (const token of end) {
           const { source, type } = token;
           switch (type) {
@@ -6381,13 +6381,13 @@ var require_resolve_end = __commonJS({
               if (!comment)
                 comment = cb;
               else
-                comment += sep3 + cb;
-              sep3 = "";
+                comment += sep4 + cb;
+              sep4 = "";
               break;
             }
             case "newline":
               if (comment)
-                sep3 += source;
+                sep4 += source;
               hasSpace = true;
               break;
             default:
@@ -6430,18 +6430,18 @@ var require_resolve_flow_collection = __commonJS({
       let offset = fc.offset + fc.start.source.length;
       for (let i = 0; i < fc.items.length; ++i) {
         const collItem = fc.items[i];
-        const { start, key, sep: sep3, value } = collItem;
+        const { start, key, sep: sep4, value } = collItem;
         const props = resolveProps.resolveProps(start, {
           flow: fcName,
           indicator: "explicit-key-ind",
-          next: key ?? sep3?.[0],
+          next: key ?? sep4?.[0],
           offset,
           onError,
           parentIndent: fc.indent,
           startOnNewline: false
         });
         if (!props.found) {
-          if (!props.anchor && !props.tag && !sep3 && !value) {
+          if (!props.anchor && !props.tag && !sep4 && !value) {
             if (i === 0 && props.comma)
               onError(props.comma, "UNEXPECTED_TOKEN", `Unexpected , in ${fcName}`);
             else if (i < fc.items.length - 1)
@@ -6495,8 +6495,8 @@ var require_resolve_flow_collection = __commonJS({
             }
           }
         }
-        if (!isMap && !sep3 && !props.found) {
-          const valueNode = value ? composeNode(ctx, value, props, onError) : composeEmptyNode(ctx, props.end, sep3, null, props, onError);
+        if (!isMap && !sep4 && !props.found) {
+          const valueNode = value ? composeNode(ctx, value, props, onError) : composeEmptyNode(ctx, props.end, sep4, null, props, onError);
           coll.items.push(valueNode);
           offset = valueNode.range[2];
           if (isBlock(value))
@@ -6508,7 +6508,7 @@ var require_resolve_flow_collection = __commonJS({
           if (isBlock(key))
             onError(keyNode.range, "BLOCK_IN_FLOW", blockMsg);
           ctx.atKey = false;
-          const valueProps = resolveProps.resolveProps(sep3 ?? [], {
+          const valueProps = resolveProps.resolveProps(sep4 ?? [], {
             flow: fcName,
             indicator: "map-value-ind",
             next: value,
@@ -6519,8 +6519,8 @@ var require_resolve_flow_collection = __commonJS({
           });
           if (valueProps.found) {
             if (!isMap && !props.found && ctx.options.strict) {
-              if (sep3)
-                for (const st of sep3) {
+              if (sep4)
+                for (const st of sep4) {
                   if (st === valueProps.found)
                     break;
                   if (st.type === "newline") {
@@ -6537,7 +6537,7 @@ var require_resolve_flow_collection = __commonJS({
             else
               onError(valueProps.start, "MISSING_CHAR", `Missing , or : between ${fcName} items`);
           }
-          const valueNode = value ? composeNode(ctx, value, valueProps, onError) : valueProps.found ? composeEmptyNode(ctx, valueProps.end, sep3, null, valueProps, onError) : null;
+          const valueNode = value ? composeNode(ctx, value, valueProps, onError) : valueProps.found ? composeEmptyNode(ctx, valueProps.end, sep4, null, valueProps, onError) : null;
           if (valueNode) {
             if (isBlock(value))
               onError(valueNode.range, "BLOCK_IN_FLOW", blockMsg);
@@ -6717,7 +6717,7 @@ var require_resolve_block_scalar = __commonJS({
           chompStart = i + 1;
       }
       let value = "";
-      let sep3 = "";
+      let sep4 = "";
       let prevMoreIndented = false;
       for (let i = 0; i < contentStart; ++i)
         value += lines[i][0].slice(trimIndent) + "\n";
@@ -6734,24 +6734,24 @@ var require_resolve_block_scalar = __commonJS({
           indent = "";
         }
         if (type === Scalar.Scalar.BLOCK_LITERAL) {
-          value += sep3 + indent.slice(trimIndent) + content;
-          sep3 = "\n";
+          value += sep4 + indent.slice(trimIndent) + content;
+          sep4 = "\n";
         } else if (indent.length > trimIndent || content[0] === "	") {
-          if (sep3 === " ")
-            sep3 = "\n";
-          else if (!prevMoreIndented && sep3 === "\n")
-            sep3 = "\n\n";
-          value += sep3 + indent.slice(trimIndent) + content;
-          sep3 = "\n";
+          if (sep4 === " ")
+            sep4 = "\n";
+          else if (!prevMoreIndented && sep4 === "\n")
+            sep4 = "\n\n";
+          value += sep4 + indent.slice(trimIndent) + content;
+          sep4 = "\n";
           prevMoreIndented = true;
         } else if (content === "") {
-          if (sep3 === "\n")
+          if (sep4 === "\n")
             value += "\n";
           else
-            sep3 = "\n";
+            sep4 = "\n";
         } else {
-          value += sep3 + content;
-          sep3 = " ";
+          value += sep4 + content;
+          sep4 = " ";
           prevMoreIndented = false;
         }
       }
@@ -6933,25 +6933,25 @@ var require_resolve_flow_scalar = __commonJS({
       if (!match)
         return source;
       let res = match[1];
-      let sep3 = " ";
+      let sep4 = " ";
       let pos = first.lastIndex;
       line.lastIndex = pos;
       while (match = line.exec(source)) {
         if (match[1] === "") {
-          if (sep3 === "\n")
-            res += sep3;
+          if (sep4 === "\n")
+            res += sep4;
           else
-            sep3 = "\n";
+            sep4 = "\n";
         } else {
-          res += sep3 + match[1];
-          sep3 = " ";
+          res += sep4 + match[1];
+          sep4 = " ";
         }
         pos = line.lastIndex;
       }
       const last = /[ \t]*(.*)/sy;
       last.lastIndex = pos;
       match = last.exec(source);
-      return res + sep3 + (match?.[1] ?? "");
+      return res + sep4 + (match?.[1] ?? "");
     }
     function doubleQuotedValue(source, onError) {
       let res = "";
@@ -7753,14 +7753,14 @@ var require_cst_stringify = __commonJS({
         }
       }
     }
-    function stringifyItem({ start, key, sep: sep3, value }) {
+    function stringifyItem({ start, key, sep: sep4, value }) {
       let res = "";
       for (const st of start)
         res += st.source;
       if (key)
         res += stringifyToken(key);
-      if (sep3)
-        for (const st of sep3)
+      if (sep4)
+        for (const st of sep4)
           res += st.source;
       if (value)
         res += stringifyToken(value);
@@ -7785,9 +7785,9 @@ var require_cst_visit = __commonJS({
     visit.BREAK = BREAK;
     visit.SKIP = SKIP;
     visit.REMOVE = REMOVE;
-    visit.itemAtPath = (cst, path53) => {
+    visit.itemAtPath = (cst, path55) => {
       let item = cst;
-      for (const [field, index] of path53) {
+      for (const [field, index] of path55) {
         const tok = item?.[field];
         if (tok && "items" in tok) {
           item = tok.items[index];
@@ -7796,23 +7796,23 @@ var require_cst_visit = __commonJS({
       }
       return item;
     };
-    visit.parentCollection = (cst, path53) => {
-      const parent = visit.itemAtPath(cst, path53.slice(0, -1));
-      const field = path53[path53.length - 1][0];
+    visit.parentCollection = (cst, path55) => {
+      const parent = visit.itemAtPath(cst, path55.slice(0, -1));
+      const field = path55[path55.length - 1][0];
       const coll = parent?.[field];
       if (coll && "items" in coll)
         return coll;
       throw new Error("Parent collection not found");
     };
-    function _visit(path53, item, visitor) {
-      let ctrl = visitor(item, path53);
+    function _visit(path55, item, visitor) {
+      let ctrl = visitor(item, path55);
       if (typeof ctrl === "symbol")
         return ctrl;
       for (const field of ["key", "value"]) {
         const token = item[field];
         if (token && "items" in token) {
           for (let i = 0; i < token.items.length; ++i) {
-            const ci = _visit(Object.freeze(path53.concat([[field, i]])), token.items[i], visitor);
+            const ci = _visit(Object.freeze(path55.concat([[field, i]])), token.items[i], visitor);
             if (typeof ci === "number")
               i = ci - 1;
             else if (ci === BREAK)
@@ -7823,10 +7823,10 @@ var require_cst_visit = __commonJS({
             }
           }
           if (typeof ctrl === "function" && field === "key")
-            ctrl = ctrl(item, path53);
+            ctrl = ctrl(item, path55);
         }
       }
-      return typeof ctrl === "function" ? ctrl(item, path53) : ctrl;
+      return typeof ctrl === "function" ? ctrl(item, path55) : ctrl;
     }
     exports2.visit = visit;
   }
@@ -8910,18 +8910,18 @@ var require_parser = __commonJS({
         if (this.type === "map-value-ind") {
           const prev = getPrevProps(this.peek(2));
           const start = getFirstKeyStartProps(prev);
-          let sep3;
+          let sep4;
           if (scalar.end) {
-            sep3 = scalar.end;
-            sep3.push(this.sourceToken);
+            sep4 = scalar.end;
+            sep4.push(this.sourceToken);
             delete scalar.end;
           } else
-            sep3 = [this.sourceToken];
+            sep4 = [this.sourceToken];
           const map = {
             type: "block-map",
             offset: scalar.offset,
             indent: scalar.indent,
-            items: [{ start, key: scalar, sep: sep3 }]
+            items: [{ start, key: scalar, sep: sep4 }]
           };
           this.onKeyLine = true;
           this.stack[this.stack.length - 1] = map;
@@ -9074,15 +9074,15 @@ var require_parser = __commonJS({
                 } else if (isFlowToken(it.key) && !includesToken(it.sep, "newline")) {
                   const start2 = getFirstKeyStartProps(it.start);
                   const key = it.key;
-                  const sep3 = it.sep;
-                  sep3.push(this.sourceToken);
+                  const sep4 = it.sep;
+                  sep4.push(this.sourceToken);
                   delete it.key;
                   delete it.sep;
                   this.stack.push({
                     type: "block-map",
                     offset: this.offset,
                     indent: this.indent,
-                    items: [{ start: start2, key, sep: sep3 }]
+                    items: [{ start: start2, key, sep: sep4 }]
                   });
                 } else if (start.length > 0) {
                   it.sep = it.sep.concat(start, this.sourceToken);
@@ -9111,14 +9111,14 @@ var require_parser = __commonJS({
             case "scalar":
             case "single-quoted-scalar":
             case "double-quoted-scalar": {
-              const fs52 = this.flowScalar(this.type);
+              const fs54 = this.flowScalar(this.type);
               if (atNextItem || it.value) {
-                map.items.push({ start, key: fs52, sep: [] });
+                map.items.push({ start, key: fs54, sep: [] });
                 this.onKeyLine = true;
               } else if (it.sep) {
-                this.stack.push(fs52);
+                this.stack.push(fs54);
               } else {
-                Object.assign(it, { key: fs52, sep: [] });
+                Object.assign(it, { key: fs54, sep: [] });
                 this.onKeyLine = true;
               }
               return;
@@ -9246,13 +9246,13 @@ var require_parser = __commonJS({
             case "scalar":
             case "single-quoted-scalar":
             case "double-quoted-scalar": {
-              const fs52 = this.flowScalar(this.type);
+              const fs54 = this.flowScalar(this.type);
               if (!it || it.value)
-                fc.items.push({ start: [], key: fs52, sep: [] });
+                fc.items.push({ start: [], key: fs54, sep: [] });
               else if (it.sep)
-                this.stack.push(fs52);
+                this.stack.push(fs54);
               else
-                Object.assign(it, { key: fs52, sep: [] });
+                Object.assign(it, { key: fs54, sep: [] });
               return;
             }
             case "flow-map-end":
@@ -9276,13 +9276,13 @@ var require_parser = __commonJS({
             const prev = getPrevProps(parent);
             const start = getFirstKeyStartProps(prev);
             fixFlowSeqItems(fc);
-            const sep3 = fc.end.splice(1, fc.end.length);
-            sep3.push(this.sourceToken);
+            const sep4 = fc.end.splice(1, fc.end.length);
+            sep4.push(this.sourceToken);
             const map = {
               type: "block-map",
               offset: fc.offset,
               indent: fc.indent,
-              items: [{ start, key: fc, sep: sep3 }]
+              items: [{ start, key: fc, sep: sep4 }]
             };
             this.onKeyLine = true;
             this.stack[this.stack.length - 1] = map;
@@ -12486,6 +12486,8 @@ function addStack(stackId, stackInfo) {
           stack: stackId,
           required: secret.required
         };
+      } else if (config.secrets[secret.name].stack === stackId) {
+        config.secrets[secret.name].required = secret.required;
       }
     }
   });
@@ -12642,7 +12644,7 @@ async function discoverStackTools(stackId, stackConfig, options = {}) {
   const env = { ...process.env, ...secrets };
   prependRudiExecutionPath(env);
   log(`  Spawning ${stackId}...`);
-  return new Promise((resolve3) => {
+  return new Promise((resolve4) => {
     let resolved = false;
     let childProcess;
     let childProcessStartedAtMs = null;
@@ -12764,7 +12766,7 @@ async function discoverStackTools(stackId, stackConfig, options = {}) {
       if (!resolved) {
         resolved = true;
         cleanup();
-        resolve3({
+        resolve4({
           tools: [],
           error: `Timeout after ${timeout}ms`,
           missingSecrets: []
@@ -12820,7 +12822,7 @@ async function discoverStackTools(stackId, stackConfig, options = {}) {
           resolved = true;
           clearTimeout(timeoutId);
           cleanup();
-          resolve3({
+          resolve4({
             tools: [],
             error: `Spawn error: ${err.message}`,
             missingSecrets: []
@@ -12833,7 +12835,7 @@ async function discoverStackTools(stackId, stackConfig, options = {}) {
           resolved = true;
           clearTimeout(timeoutId);
           cleanup();
-          resolve3({
+          resolve4({
             tools: [],
             error: `Process exited with code ${code}`,
             missingSecrets: []
@@ -12861,7 +12863,7 @@ async function discoverStackTools(stackId, stackConfig, options = {}) {
             resolved = true;
             clearTimeout(timeoutId);
             cleanup();
-            resolve3({
+            resolve4({
               tools,
               error: null,
               missingSecrets: []
@@ -12872,7 +12874,7 @@ async function discoverStackTools(stackId, stackConfig, options = {}) {
             resolved = true;
             clearTimeout(timeoutId);
             cleanup();
-            resolve3({
+            resolve4({
               tools: [],
               error: err.message,
               missingSecrets: []
@@ -12884,7 +12886,7 @@ async function discoverStackTools(stackId, stackConfig, options = {}) {
       if (!resolved) {
         resolved = true;
         clearTimeout(timeoutId);
-        resolve3({
+        resolve4({
           tools: [],
           error: `Failed to spawn: ${err.message}`,
           missingSecrets: []
@@ -13194,6 +13196,16 @@ function loadSecrets2() {
     return {};
   }
 }
+function loadSecretsWithoutMutation() {
+  try {
+    if (!fs11.existsSync(SECRETS_FILE)) return {};
+    const content = fs11.readFileSync(SECRETS_FILE, "utf-8");
+    const secrets = JSON.parse(content);
+    return isSecretsObject(secrets) ? secrets : {};
+  } catch {
+    return {};
+  }
+}
 function saveSecrets(secrets) {
   ensureSecretsFile();
   const normalized = isSecretsObject(secrets) ? secrets : {};
@@ -13235,19 +13247,20 @@ async function listSecrets() {
   return Object.keys(secrets).sort();
 }
 async function hasSecret(name) {
-  const secrets = loadSecrets2();
-  return secrets[name] !== void 0 && secrets[name] !== null && secrets[name] !== "";
+  const secrets = loadSecretsWithoutMutation();
+  const value = secrets[name];
+  return typeof value === "string" && value.trim() !== "";
 }
 async function getMaskedSecrets() {
   const secrets = loadSecrets2();
   const masked = {};
   for (const [name, value] of Object.entries(secrets)) {
-    if (value && typeof value === "string" && value.length > 8) {
-      masked[name] = value.slice(0, 4) + "..." + value.slice(-4);
-    } else if (value && typeof value === "string" && value.length > 0) {
-      masked[name] = "****";
-    } else {
+    if (typeof value !== "string" || value.trim() === "") {
       masked[name] = "(pending)";
+    } else if (value.length > 8) {
+      masked[name] = value.slice(0, 4) + "..." + value.slice(-4);
+    } else {
+      masked[name] = "****";
     }
   }
   return masked;
@@ -16651,7 +16664,7 @@ var require_compile = __commonJS({
       const schOrFunc = root.refs[ref];
       if (schOrFunc)
         return schOrFunc;
-      let _sch = resolve3.call(this, root, ref);
+      let _sch = resolve4.call(this, root, ref);
       if (_sch === void 0) {
         const schema = (_a = root.localRefs) === null || _a === void 0 ? void 0 : _a[ref];
         const { schemaId } = this.opts;
@@ -16678,7 +16691,7 @@ var require_compile = __commonJS({
     function sameSchemaEnv(s1, s2) {
       return s1.schema === s2.schema && s1.root === s2.root && s1.baseId === s2.baseId;
     }
-    function resolve3(root, ref) {
+    function resolve4(root, ref) {
       let sch;
       while (typeof (sch = this.refs[ref]) == "string")
         ref = sch;
@@ -16893,8 +16906,8 @@ var require_utils = __commonJS({
       }
       return ind;
     }
-    function removeDotSegments(path53) {
-      let input = path53;
+    function removeDotSegments(path55) {
+      let input = path55;
       const output = [];
       let nextSlash = -1;
       let len = 0;
@@ -17093,8 +17106,8 @@ var require_schemes = __commonJS({
         wsComponent.secure = void 0;
       }
       if (wsComponent.resourceName) {
-        const [path53, query] = wsComponent.resourceName.split("?");
-        wsComponent.path = path53 && path53 !== "/" ? path53 : void 0;
+        const [path55, query] = wsComponent.resourceName.split("?");
+        wsComponent.path = path55 && path55 !== "/" ? path55 : void 0;
         wsComponent.query = query;
         wsComponent.resourceName = void 0;
       }
@@ -17253,55 +17266,55 @@ var require_fast_uri = __commonJS({
       }
       return uri;
     }
-    function resolve3(baseURI, relativeURI, options) {
+    function resolve4(baseURI, relativeURI, options) {
       const schemelessOptions = options ? Object.assign({ scheme: "null" }, options) : { scheme: "null" };
       const resolved = resolveComponent(parse(baseURI, schemelessOptions), parse(relativeURI, schemelessOptions), schemelessOptions, true);
       schemelessOptions.skipEscape = true;
       return serialize(resolved, schemelessOptions);
     }
-    function resolveComponent(base, relative3, options, skipNormalization) {
+    function resolveComponent(base, relative4, options, skipNormalization) {
       const target = {};
       if (!skipNormalization) {
         base = parse(serialize(base, options), options);
-        relative3 = parse(serialize(relative3, options), options);
+        relative4 = parse(serialize(relative4, options), options);
       }
       options = options || {};
-      if (!options.tolerant && relative3.scheme) {
-        target.scheme = relative3.scheme;
-        target.userinfo = relative3.userinfo;
-        target.host = relative3.host;
-        target.port = relative3.port;
-        target.path = removeDotSegments(relative3.path || "");
-        target.query = relative3.query;
+      if (!options.tolerant && relative4.scheme) {
+        target.scheme = relative4.scheme;
+        target.userinfo = relative4.userinfo;
+        target.host = relative4.host;
+        target.port = relative4.port;
+        target.path = removeDotSegments(relative4.path || "");
+        target.query = relative4.query;
       } else {
-        if (relative3.userinfo !== void 0 || relative3.host !== void 0 || relative3.port !== void 0) {
-          target.userinfo = relative3.userinfo;
-          target.host = relative3.host;
-          target.port = relative3.port;
-          target.path = removeDotSegments(relative3.path || "");
-          target.query = relative3.query;
+        if (relative4.userinfo !== void 0 || relative4.host !== void 0 || relative4.port !== void 0) {
+          target.userinfo = relative4.userinfo;
+          target.host = relative4.host;
+          target.port = relative4.port;
+          target.path = removeDotSegments(relative4.path || "");
+          target.query = relative4.query;
         } else {
-          if (!relative3.path) {
+          if (!relative4.path) {
             target.path = base.path;
-            if (relative3.query !== void 0) {
-              target.query = relative3.query;
+            if (relative4.query !== void 0) {
+              target.query = relative4.query;
             } else {
               target.query = base.query;
             }
           } else {
-            if (relative3.path[0] === "/") {
-              target.path = removeDotSegments(relative3.path);
+            if (relative4.path[0] === "/") {
+              target.path = removeDotSegments(relative4.path);
             } else {
               if ((base.userinfo !== void 0 || base.host !== void 0 || base.port !== void 0) && !base.path) {
-                target.path = "/" + relative3.path;
+                target.path = "/" + relative4.path;
               } else if (!base.path) {
-                target.path = relative3.path;
+                target.path = relative4.path;
               } else {
-                target.path = base.path.slice(0, base.path.lastIndexOf("/") + 1) + relative3.path;
+                target.path = base.path.slice(0, base.path.lastIndexOf("/") + 1) + relative4.path;
               }
               target.path = removeDotSegments(target.path);
             }
-            target.query = relative3.query;
+            target.query = relative4.query;
           }
           target.userinfo = base.userinfo;
           target.host = base.host;
@@ -17309,7 +17322,7 @@ var require_fast_uri = __commonJS({
         }
         target.scheme = base.scheme;
       }
-      target.fragment = relative3.fragment;
+      target.fragment = relative4.fragment;
       return target;
     }
     function equal(uriA, uriB, options) {
@@ -17480,7 +17493,7 @@ var require_fast_uri = __commonJS({
     var fastUri = {
       SCHEMES,
       normalize: normalize2,
-      resolve: resolve3,
+      resolve: resolve4,
       resolveComponent,
       equal,
       serialize,
@@ -20447,12 +20460,12 @@ var require_dist2 = __commonJS({
         throw new Error(`Unknown format "${name}"`);
       return f;
     };
-    function addFormats2(ajv2, list, fs52, exportName) {
+    function addFormats2(ajv2, list, fs54, exportName) {
       var _a;
       var _b;
       (_a = (_b = ajv2.opts.code).formats) !== null && _a !== void 0 ? _a : _b.formats = (0, codegen_1._)`require("ajv-formats/dist/formats").${exportName}`;
       for (const f of list)
-        ajv2.addFormat(f, fs52[f]);
+        ajv2.addFormat(f, fs54[f]);
     }
     module2.exports = exports2 = formatsPlugin;
     Object.defineProperty(exports2, "__esModule", { value: true });
@@ -23108,7 +23121,7 @@ async function attachAgentLaunch(launchId, dependencies = {}) {
         if (buffered.trim()) renderLine(buffered);
         return launch;
       }
-      await new Promise((resolve3) => setTimeout(resolve3, pollIntervalMs));
+      await new Promise((resolve4) => setTimeout(resolve4, pollIntervalMs));
     }
     return store.get(launchId);
   } finally {
@@ -25355,7 +25368,7 @@ function executeForegroundLaunch({
   if (!Number.isSafeInteger(timeoutMs) || timeoutMs < 1 || timeoutMs > 24 * 60 * 60 * 1e3) {
     throw new Error("timeoutMs must be an integer between 1 and 86400000");
   }
-  return new Promise((resolve3, reject) => {
+  return new Promise((resolve4, reject) => {
     const privateAutomation = plan.privateAutomationProfile != null;
     const normalizer = createAgentEventNormalizer(plan.provider);
     let child;
@@ -25588,7 +25601,7 @@ function executeForegroundLaunch({
       if (jsonOutput) {
         if (!privateAutomation) writeLine2(stdout, JSON.stringify(terminalEvent));
       }
-      resolve3(updated);
+      resolve4(updated);
     }
     const runtimeTimer = setTimeout(() => {
       timedOut = true;
@@ -25796,14 +25809,14 @@ function createWorkspaceManifest(rootDirectory) {
   function visit(directory, prefix = "") {
     const children = import_node_fs11.default.readdirSync(directory, { withFileTypes: true }).sort((left, right) => left.name.localeCompare(right.name));
     for (const child of children) {
-      const relative3 = prefix ? import_node_path11.default.join(prefix, child.name) : child.name;
-      if (shouldSkip(relative3)) continue;
+      const relative4 = prefix ? import_node_path11.default.join(prefix, child.name) : child.name;
+      if (shouldSkip(relative4)) continue;
       const absolute = import_node_path11.default.join(directory, child.name);
       const stat = import_node_fs11.default.lstatSync(absolute);
-      const key = portablePath(relative3);
+      const key = portablePath(relative4);
       if (stat.isDirectory()) {
         entries[key] = { mode: stat.mode & 511, type: "directory" };
-        visit(absolute, relative3);
+        visit(absolute, relative4);
       } else if (stat.isFile()) {
         entries[key] = {
           hash: hashFile(absolute),
@@ -25900,8 +25913,8 @@ function existingDirectory2(candidate, label) {
   return import_node_fs12.default.realpathSync(resolved);
 }
 function isInside2(candidate, parent) {
-  const relative3 = import_node_path12.default.relative(parent, candidate);
-  return relative3 === "" || !relative3.startsWith(`..${import_node_path12.default.sep}`) && relative3 !== ".." && !import_node_path12.default.isAbsolute(relative3);
+  const relative4 = import_node_path12.default.relative(parent, candidate);
+  return relative4 === "" || !relative4.startsWith(`..${import_node_path12.default.sep}`) && relative4 !== ".." && !import_node_path12.default.isAbsolute(relative4);
 }
 function findGitProjectRoot(workspace, execFileSyncImpl) {
   try {
@@ -25978,8 +25991,8 @@ function copyIsolatedWorkspace({ destination, projectRoot }) {
     import_node_fs12.default.cpSync(projectRoot, destination, {
       errorOnExist: true,
       filter(candidate) {
-        const relative3 = import_node_path12.default.relative(projectRoot, candidate);
-        const firstPart = relative3.split(import_node_path12.default.sep)[0];
+        const relative4 = import_node_path12.default.relative(projectRoot, candidate);
+        const firstPart = relative4.split(import_node_path12.default.sep)[0];
         if (firstPart === ".git" || firstPart === ".rudi") return false;
         const stat = import_node_fs12.default.lstatSync(candidate);
         if (stat.isSymbolicLink()) {
@@ -26383,7 +26396,7 @@ async function dispatchDetachedAgent({ launchId, operation, options }, dependenc
   if (Buffer.byteLength(request, "utf8") > MAX_WORKER_REQUEST_BYTES) {
     throw new Error(`Detached worker request exceeds ${MAX_WORKER_REQUEST_BYTES} bytes`);
   }
-  return await new Promise((resolve3, reject) => {
+  return await new Promise((resolve4, reject) => {
     let buffer = "";
     let settled = false;
     const child = spawnImpl(nodePath, [entrypoint, "agent", "_worker", launchId], {
@@ -26408,7 +26421,7 @@ async function dispatchDetachedAgent({ launchId, operation, options }, dependenc
       child.stdout?.destroy?.();
       child.unref?.();
       if (error) reject(error);
-      else resolve3(launch);
+      else resolve4(launch);
     }
     child.once("spawn", () => {
       child.stdin.end(`${request}
@@ -26569,7 +26582,7 @@ async function stopAgentLaunch(launchId, dependencies = {}) {
       if (TERMINAL_STATUSES3.has(current2.status)) {
         return { alreadyTerminal: false, launch: current2 };
       }
-      await new Promise((resolve3) => setTimeout(resolve3, pollIntervalMs));
+      await new Promise((resolve4) => setTimeout(resolve4, pollIntervalMs));
     }
     const current = store.get(launchId);
     if (current.ownerPid && verifyWorkerImpl(current, dependencies)) {
@@ -26615,8 +26628,8 @@ function noIndexDiff(execFileSyncImpl, left, right) {
   }
 }
 function isInside3(candidate, parent) {
-  const relative3 = import_node_path14.default.relative(parent, candidate);
-  return relative3 === "" || !relative3.startsWith(`..${import_node_path14.default.sep}`) && relative3 !== ".." && !import_node_path14.default.isAbsolute(relative3);
+  const relative4 = import_node_path14.default.relative(parent, candidate);
+  return relative4 === "" || !relative4.startsWith(`..${import_node_path14.default.sep}`) && relative4 !== ".." && !import_node_path14.default.isAbsolute(relative4);
 }
 function safeRelative(root, relativePath) {
   if (typeof relativePath !== "string" || relativePath === "" || relativePath.includes("\0")) {
@@ -27612,7 +27625,7 @@ var DEFAULT_START_TIMEOUT_MS2 = 45e3;
 var DEFAULT_STOP_TIMEOUT_MS = 1e4;
 var DEFAULT_POLL_INTERVAL_MS = 250;
 function sleep(ms) {
-  return new Promise((resolve3) => setTimeout(resolve3, ms));
+  return new Promise((resolve4) => setTimeout(resolve4, ms));
 }
 function isOfflineStatus(status) {
   return status?.reason === "not_running" || status?.reason === "unreachable" || status?.reason === "invalid_connection_files";
@@ -29521,7 +29534,14 @@ function validateStackEntryPoint(stackPath, manifest) {
   return { valid: true };
 }
 async function buildStackIfNeeded(stackPath, manifest, options = {}) {
-  const { nodeProject, verbose = false, allowScripts = true } = options;
+  const {
+    allowScripts = true,
+    force = false,
+    nodeProject,
+    npmCommand,
+    runBuildCommand = runCommand,
+    verbose = false
+  } = options;
   const runtime = getStackRuntime(manifest);
   if (runtime !== "node") {
     return { built: false, reason: "Non-node runtime" };
@@ -29530,7 +29550,7 @@ async function buildStackIfNeeded(stackPath, manifest, options = {}) {
   if (entryPoint.error) {
     return { built: false, reason: entryPoint.error };
   }
-  if (!entryPoint.entryPath || fsSync.existsSync(entryPoint.entryPath)) {
+  if (!entryPoint.entryPath || fsSync.existsSync(entryPoint.entryPath) && !force) {
     return { built: false, reason: "Entry point already present" };
   }
   const project = nodeProject || getNodeProjectInfo(stackPath);
@@ -29548,10 +29568,10 @@ async function buildStackIfNeeded(stackPath, manifest, options = {}) {
       "External stack build scripts are disabled by default; review the pinned source and rerun with --allow-scripts"
     );
   }
-  const npmCmd = getBundledBinary("node", "npm");
+  const npmCmd = npmCommand || getBundledBinary("node", "npm");
   console.log(`  Building stack...`);
   try {
-    runCommand(npmCmd, ["run", "build"], {
+    runBuildCommand(npmCmd, ["run", "build"], {
       cwd: project.root,
       stdio: verbose ? "inherit" : "pipe"
     });
@@ -30191,11 +30211,11 @@ async function runStack(id, options = {}) {
   const startTime = Date.now();
   const packagePath = getPackagePath(id);
   const manifestPath = import_path12.default.join(packagePath, "manifest.json");
-  const { default: fs52 } = await import("fs");
-  if (!fs52.existsSync(manifestPath)) {
+  const { default: fs54 } = await import("fs");
+  if (!fs54.existsSync(manifestPath)) {
     throw new Error(`Stack manifest not found: ${id}`);
   }
-  const manifest = JSON.parse(fs52.readFileSync(manifestPath, "utf-8"));
+  const manifest = JSON.parse(fs54.readFileSync(manifestPath, "utf-8"));
   const { command, args } = resolveCommandFromManifest(manifest, packagePath);
   const secrets = await getSecrets(manifest.requires?.secrets || []);
   const runEnv = buildStackRunEnv({
@@ -30229,7 +30249,7 @@ async function runStack(id, options = {}) {
       onStderr(redactSecrets(text, secrets));
     }
   });
-  return new Promise((resolve3, reject) => {
+  return new Promise((resolve4, reject) => {
     proc.on("error", (error) => {
       reject(error);
     });
@@ -30244,7 +30264,7 @@ async function runStack(id, options = {}) {
       if (onExit) {
         onExit(result);
       }
-      resolve3(result);
+      resolve4(result);
     });
   });
 }
@@ -31166,7 +31186,7 @@ function secretsInfo() {
   console.log("  Same approach as AWS CLI, SSH, GitHub CLI.");
 }
 function promptSecret(prompt) {
-  return new Promise((resolve3) => {
+  return new Promise((resolve4) => {
     const rl = import_readline.default.createInterface({
       input: process.stdin,
       output: process.stdout
@@ -31182,7 +31202,7 @@ function promptSecret(prompt) {
         process.stdin.removeListener("data", onData);
         console.log();
         rl.close();
-        resolve3(input);
+        resolve4(input);
       } else if (char === "") {
         process.exit(0);
       } else if (char === "\x7F") {
@@ -32348,7 +32368,12 @@ function createShim(shimPath, targetPath) {
 }
 
 // src/commands/update.js
+var import_node_crypto5 = require("node:crypto");
+var import_node_fs18 = require("node:fs");
+var fs39 = __toESM(require("node:fs/promises"), 1);
+var path38 = __toESM(require("path"), 1);
 init_src5();
+init_src();
 init_src3();
 var KNOWN_PACKAGE_KINDS = /* @__PURE__ */ new Set(["stack", "skill", "prompt", "workflow", "runtime", "binary", "agent", "npm"]);
 function rebuildToolIndex(options = {}) {
@@ -32358,11 +32383,415 @@ function rebuildToolIndex(options = {}) {
     timeout: options.timeout
   });
 }
+async function resolveManagedPath(candidate, rootInput, options) {
+  const { candidateLabel, rootLabel, createRoot = false } = options;
+  if (typeof candidate !== "string" || candidate.trim() !== candidate || !candidate) {
+    throw new Error(`${candidateLabel} is required for transactional update`);
+  }
+  const root = path38.resolve(rootInput);
+  const targetPath = path38.resolve(candidate);
+  if (targetPath === root || !targetPath.startsWith(`${root}${path38.sep}`)) {
+    throw new Error(`Refusing to snapshot ${candidateLabel.toLowerCase()} outside the managed ${rootLabel}: ${candidate}`);
+  }
+  if (createRoot) {
+    await fs39.mkdir(root, { recursive: true });
+  }
+  const rootStat = await fs39.lstat(root);
+  if (!rootStat.isDirectory() || rootStat.isSymbolicLink()) {
+    throw new Error(`Managed ${rootLabel} must be a real directory: ${root}`);
+  }
+  const relative4 = path38.relative(root, targetPath);
+  let current = root;
+  for (const segment of relative4.split(path38.sep)) {
+    current = path38.join(current, segment);
+    try {
+      const stat = await fs39.lstat(current);
+      if (stat.isSymbolicLink()) {
+        throw new Error(`Refusing symlinked path within managed ${rootLabel}: ${current}`);
+      }
+    } catch (error) {
+      if (error.code === "ENOENT") break;
+      throw error;
+    }
+  }
+  return { root, targetPath };
+}
+function resolveManagedStackPath(stackPath, stacksRoot = PATHS.stacks, options = {}) {
+  return resolveManagedPath(stackPath, stacksRoot, {
+    candidateLabel: "Installed stack path",
+    rootLabel: "stack root",
+    ...options
+  });
+}
+function resolveManagedLockfilePath(lockfilePath, locksRoot = PATHS.locks, options = {}) {
+  return resolveManagedPath(lockfilePath, locksRoot, {
+    candidateLabel: "Stack lockfile path",
+    rootLabel: "lock root",
+    ...options
+  });
+}
+function resolveManagedStackStatePath(stateRoot, stateStacksRoot = path38.join(PATHS.home, "state", "stacks"), options = {}) {
+  return resolveManagedPath(stateRoot, stateStacksRoot, {
+    candidateLabel: "Stack state path",
+    rootLabel: "stack state root",
+    ...options
+  });
+}
+async function buildTreeManifest(rootPath, prefix = "") {
+  const entries = [];
+  async function visit(currentPath, relativePath) {
+    let stat;
+    try {
+      stat = await fs39.lstat(currentPath);
+    } catch (error) {
+      if (error.code === "ENOENT" && relativePath === prefix) return;
+      throw error;
+    }
+    const manifestPath = relativePath || ".";
+    if (stat.isSymbolicLink()) {
+      entries.push([manifestPath, "symlink", await fs39.readlink(currentPath)]);
+      return;
+    }
+    if (stat.isDirectory()) {
+      entries.push([manifestPath, "directory", ""]);
+      const names = await fs39.readdir(currentPath);
+      names.sort();
+      for (const name of names) {
+        const childRelative = relativePath ? path38.join(relativePath, name) : name;
+        await visit(path38.join(currentPath, name), childRelative);
+      }
+      return;
+    }
+    if (stat.isFile()) {
+      const digest = (0, import_node_crypto5.createHash)("sha256").update(await fs39.readFile(currentPath)).digest("hex");
+      entries.push([manifestPath, "file", digest]);
+      return;
+    }
+    throw new Error(`Unsupported state entry type: ${currentPath}`);
+  }
+  await visit(rootPath, prefix);
+  return entries.sort((left, right) => left[0].localeCompare(right[0]));
+}
+function mergeExpectedStateManifest(initialManifest, migratedRunsManifest) {
+  if (migratedRunsManifest.length === 0) return initialManifest;
+  const byPath = new Map(initialManifest.map((entry) => [entry[0], entry]));
+  if (!byPath.has(".")) byPath.set(".", [".", "directory", ""]);
+  for (const entry of migratedRunsManifest) {
+    const existing = byPath.get(entry[0]);
+    if (existing) {
+      if (existing[1] !== "directory" || entry[1] !== "directory") return null;
+      continue;
+    }
+    byPath.set(entry[0], entry);
+  }
+  return [...byPath.values()].sort((left, right) => left[0].localeCompare(right[0]));
+}
+function validTreeManifest(value) {
+  return Array.isArray(value) && value.every((entry) => Array.isArray(entry) && entry.length === 3 && entry.every((part) => typeof part === "string"));
+}
+function treeManifestsEqual(left, right) {
+  return JSON.stringify(left) === JSON.stringify(right);
+}
+async function assertSnapshotComponent(componentPath, type, label) {
+  let stat;
+  try {
+    stat = await fs39.lstat(componentPath);
+  } catch (error) {
+    if (error.code === "ENOENT") throw new Error(`Missing ${label}: ${componentPath}`);
+    throw error;
+  }
+  const validType = type === "directory" ? stat.isDirectory() : stat.isFile();
+  if (!validType || stat.isSymbolicLink()) {
+    throw new Error(`Invalid ${label}: ${componentPath}`);
+  }
+}
+async function copyPathWithoutOverwrite(sourcePath, destinationPath, label) {
+  const sourceStat = await fs39.lstat(sourcePath);
+  if (sourceStat.isSymbolicLink()) {
+    throw new Error(`Refusing to copy symlinked ${label}: ${sourcePath}`);
+  }
+  await fs39.mkdir(path38.dirname(destinationPath), { recursive: true });
+  const expectedManifest = await buildTreeManifest(sourcePath);
+  if (sourceStat.isFile()) {
+    await fs39.copyFile(sourcePath, destinationPath, import_node_fs18.constants.COPYFILE_EXCL);
+  } else if (sourceStat.isDirectory()) {
+    await fs39.cp(sourcePath, destinationPath, {
+      errorOnExist: true,
+      force: false,
+      preserveTimestamps: true,
+      recursive: true
+    });
+  } else {
+    throw new Error(`Unsupported ${label} type: ${sourcePath}`);
+  }
+  const copiedManifest = await buildTreeManifest(destinationPath);
+  if (!treeManifestsEqual(copiedManifest, expectedManifest)) {
+    throw new Error(
+      `Concurrent ${label} mutation detected at ${destinationPath}; exact source retained at ${sourcePath}`
+    );
+  }
+}
+async function validateStackUpdateSnapshot(snapshot, options = {}) {
+  if (!snapshot || typeof snapshot !== "object") {
+    throw new Error("Invalid stack update snapshot");
+  }
+  const { root, targetPath } = await resolveManagedStackPath(
+    snapshot.targetPath,
+    options.stacksRoot || PATHS.stacks
+  );
+  const { targetPath: lockfilePath } = await resolveManagedLockfilePath(
+    snapshot.lockfilePath,
+    snapshot.locksRoot || PATHS.locks
+  );
+  const { targetPath: stateRoot } = await resolveManagedStackStatePath(
+    snapshot.stateRoot,
+    options.stateStacksRoot || snapshot.stateStacksRoot || path38.join(PATHS.home, "state", "stacks")
+  );
+  const backupRoot = path38.resolve(String(snapshot.backupRoot || ""));
+  const snapshotPath = path38.resolve(String(snapshot.snapshotPath || ""));
+  const lockfileSnapshotPath = path38.resolve(String(snapshot.lockfileSnapshotPath || ""));
+  const stateSnapshotPath = path38.resolve(String(snapshot.stateSnapshotPath || ""));
+  const expectedPrefix = `.${path38.basename(targetPath)}.update-backup-`;
+  if (path38.dirname(backupRoot) !== root || !path38.basename(backupRoot).startsWith(expectedPrefix) || snapshotPath !== path38.join(backupRoot, "snapshot") || lockfileSnapshotPath !== path38.join(backupRoot, "lockfile") || stateSnapshotPath !== path38.join(backupRoot, "state")) {
+    throw new Error("Invalid stack update snapshot paths");
+  }
+  await assertSnapshotComponent(backupRoot, "directory", "stack update backup root");
+  if (!validTreeManifest(snapshot.stateInitialManifest)) {
+    throw new Error("Invalid initial state manifest in stack update snapshot");
+  }
+  if (snapshot.stateExpectedManifest !== null && !validTreeManifest(snapshot.stateExpectedManifest)) {
+    throw new Error("Invalid expected state manifest in stack update snapshot");
+  }
+  return {
+    backupRoot,
+    lockfileExisted: snapshot.lockfileExisted === true,
+    lockfilePath,
+    lockfileSnapshotPath,
+    snapshotPath,
+    stateRoot,
+    stateRootExisted: snapshot.stateRootExisted === true,
+    stateExpectedManifest: snapshot.stateExpectedManifest,
+    stateInitialManifest: snapshot.stateInitialManifest,
+    stateSnapshotPath,
+    targetPath
+  };
+}
+async function createStackUpdateSnapshot(stackPath, options = {}) {
+  const { root, targetPath } = await resolveManagedStackPath(stackPath, options.stacksRoot);
+  const locksRoot = path38.resolve(options.locksRoot || PATHS.locks);
+  const { targetPath: lockfilePath } = await resolveManagedLockfilePath(
+    options.lockfilePath,
+    locksRoot,
+    { createRoot: true }
+  );
+  const stateStacksRoot = path38.resolve(
+    options.stateStacksRoot || (options.stacksRoot ? path38.join(path38.dirname(root), "state", "stacks") : path38.join(PATHS.home, "state", "stacks"))
+  );
+  const { targetPath: stateRoot } = await resolveManagedStackStatePath(
+    options.stateRoot || path38.join(stateStacksRoot, path38.basename(targetPath)),
+    stateStacksRoot,
+    { createRoot: true }
+  );
+  const stackStat = await fs39.lstat(targetPath);
+  if (!stackStat.isDirectory() || stackStat.isSymbolicLink()) {
+    throw new Error(`Installed stack path must be a real directory: ${stackPath}`);
+  }
+  const backupRoot = await fs39.mkdtemp(
+    path38.join(root, `.${path38.basename(targetPath)}.update-backup-`)
+  );
+  const snapshotPath = path38.join(backupRoot, "snapshot");
+  const lockfileSnapshotPath = path38.join(backupRoot, "lockfile");
+  const stateSnapshotPath = path38.join(backupRoot, "state");
+  let lockfileExisted = false;
+  let stateRootExisted = false;
+  const stateInitialManifest = await buildTreeManifest(stateRoot);
+  const migratedRunsManifest = await buildTreeManifest(path38.join(targetPath, "runs"), "runs");
+  const stateExpectedManifest = mergeExpectedStateManifest(
+    stateInitialManifest,
+    migratedRunsManifest
+  );
+  try {
+    await fs39.chmod(backupRoot, 448);
+    await fs39.cp(targetPath, snapshotPath, {
+      errorOnExist: true,
+      force: false,
+      preserveTimestamps: true,
+      recursive: true
+    });
+    try {
+      const lockfileStat = await fs39.lstat(lockfilePath);
+      if (!lockfileStat.isFile() || lockfileStat.isSymbolicLink()) {
+        throw new Error(`Stack lockfile path must be a real file: ${lockfilePath}`);
+      }
+      await fs39.copyFile(lockfilePath, lockfileSnapshotPath);
+      lockfileExisted = true;
+    } catch (error) {
+      if (error.code !== "ENOENT") throw error;
+    }
+    try {
+      const stateStat = await fs39.lstat(stateRoot);
+      if (!stateStat.isDirectory() || stateStat.isSymbolicLink()) {
+        throw new Error(`Stack state path must be a real directory: ${stateRoot}`);
+      }
+      await fs39.cp(stateRoot, stateSnapshotPath, {
+        errorOnExist: true,
+        force: false,
+        preserveTimestamps: true,
+        recursive: true
+      });
+      stateRootExisted = true;
+    } catch (error) {
+      if (error.code !== "ENOENT") throw error;
+    }
+  } catch (error) {
+    await fs39.rm(backupRoot, { force: true, recursive: true });
+    throw error;
+  }
+  return {
+    backupRoot,
+    lockfileExisted,
+    lockfilePath,
+    lockfileSnapshotPath,
+    locksRoot,
+    snapshotPath,
+    stateRoot,
+    stateRootExisted,
+    stateExpectedManifest,
+    stateInitialManifest,
+    stateSnapshotPath,
+    stateStacksRoot,
+    targetPath
+  };
+}
+async function restoreStackUpdateSnapshot(snapshot, options = {}) {
+  const {
+    backupRoot,
+    lockfileExisted,
+    lockfilePath,
+    lockfileSnapshotPath,
+    snapshotPath,
+    stateRoot,
+    stateRootExisted,
+    stateExpectedManifest,
+    stateInitialManifest,
+    stateSnapshotPath,
+    targetPath
+  } = await validateStackUpdateSnapshot(snapshot, options);
+  await assertSnapshotComponent(snapshotPath, "directory", "stack snapshot");
+  if (lockfileExisted) {
+    await assertSnapshotComponent(lockfileSnapshotPath, "file", "lockfile snapshot");
+  }
+  if (stateRootExisted) {
+    await assertSnapshotComponent(stateSnapshotPath, "directory", "state snapshot");
+  }
+  const components = [
+    {
+      currentPath: stateRoot,
+      existedBefore: stateRootExisted,
+      label: "state",
+      snapshotPath: stateSnapshotPath
+    },
+    {
+      currentPath: targetPath,
+      existedBefore: true,
+      label: "install",
+      snapshotPath
+    },
+    {
+      currentPath: lockfilePath,
+      existedBefore: lockfileExisted,
+      label: "lockfile",
+      snapshotPath: lockfileSnapshotPath
+    }
+  ];
+  const stateComponent = components[0];
+  for (const component of components) {
+    component.stagedPath = path38.join(backupRoot, `failed-${component.label}`);
+    component.staged = false;
+    component.promoted = false;
+  }
+  try {
+    for (const component of components) {
+      try {
+        const currentStat = await fs39.lstat(component.currentPath);
+        if (currentStat.isSymbolicLink()) {
+          throw new Error(`Refusing to stage symlinked ${component.label}: ${component.currentPath}`);
+        }
+        await fs39.rename(component.currentPath, component.stagedPath);
+        component.staged = true;
+      } catch (error) {
+        if (error.code !== "ENOENT") throw error;
+      }
+    }
+    const stagedStateManifest = stateComponent.staged ? await buildTreeManifest(stateComponent.stagedPath) : [];
+    const stateMatchesInitial = treeManifestsEqual(stagedStateManifest, stateInitialManifest);
+    const stateMatchesExpected = stateExpectedManifest !== null && treeManifestsEqual(stagedStateManifest, stateExpectedManifest);
+    if (!stateMatchesInitial && !stateMatchesExpected) {
+      throw new Error(`Stack state changed during update; refusing to rewind: ${stateRoot}`);
+    }
+    for (const component of components) {
+      if (!component.existedBefore) continue;
+      await fs39.mkdir(path38.dirname(component.currentPath), { recursive: true });
+      await fs39.rename(component.snapshotPath, component.currentPath);
+      component.promoted = true;
+    }
+  } catch (error) {
+    const compensationErrors = [];
+    for (const component of [...components].reverse()) {
+      if (component.promoted) {
+        try {
+          await copyPathWithoutOverwrite(
+            component.currentPath,
+            component.snapshotPath,
+            `accepted ${component.label}`
+          );
+        } catch (compensationError) {
+          compensationErrors.push(compensationError.message);
+        }
+        compensationErrors.push(
+          `Rollback could not atomically restore the failed ${component.label}; accepted data remains at ${component.currentPath} and failed data remains at ${component.stagedPath}`
+        );
+        continue;
+      }
+      if (component.staged) {
+        try {
+          await copyPathWithoutOverwrite(
+            component.stagedPath,
+            component.currentPath,
+            `failed ${component.label}`
+          );
+        } catch (compensationError) {
+          compensationErrors.push(compensationError.message);
+        }
+      }
+    }
+    if (compensationErrors.length > 0) {
+      throw new Error(
+        `${error.message}; rollback compensation failed: ${compensationErrors.join("; ")}`,
+        { cause: error }
+      );
+    }
+    throw error;
+  }
+  await fs39.rm(backupRoot, { force: true, recursive: true });
+}
+async function discardStackUpdateSnapshot(snapshot, options = {}) {
+  const { backupRoot } = await validateStackUpdateSnapshot(snapshot, options);
+  await fs39.rm(backupRoot, { force: true, recursive: true });
+}
 var defaultDependencies = {
   fetchIndex,
   listInstalled,
   resolvePackage,
   updatePackage,
+  getPackageLockfilePath: getLockfilePath,
+  createStackUpdateSnapshot,
+  restoreStackUpdateSnapshot,
+  discardStackUpdateSnapshot,
+  loadStackManifest: loadManifest,
+  buildStack: buildStackIfNeeded,
+  validateStack: validateStackEntryPoint,
+  registerStack: addStack,
   rebuildToolIndex,
   log: console.log,
   error: console.error
@@ -32467,15 +32896,67 @@ function logSkillProjectionFailures(skillProjection, deps) {
 }
 async function updateOnePackage(pkg, flags, deps) {
   deps.log(`Updating ${pkg.id}...`);
-  const result = await deps.updatePackage(pkg.id, {
-    preserveState: shouldPreserveInstallState(flags)
-  });
-  if (!result?.success) {
-    throw new Error(result?.error || `Failed to update ${pkg.id}`);
+  const kind = pkg.kind || packageKindFromId(pkg.id);
+  const snapshot = kind === "stack" ? await deps.createStackUpdateSnapshot(pkg.path, {
+    lockfilePath: deps.getPackageLockfilePath(pkg.id)
+  }) : null;
+  let result;
+  try {
+    result = await deps.updatePackage(pkg.id, {
+      preserveState: shouldPreserveInstallState(flags)
+    });
+    if (!result?.success) {
+      throw new Error(result?.error || `Failed to update ${pkg.id}`);
+    }
+    if (kind === "stack") {
+      if (path38.resolve(result.path) !== path38.resolve(snapshot.targetPath)) {
+        throw new Error(`Updated stack path changed unexpectedly for ${pkg.id}`);
+      }
+      const manifest = await deps.loadStackManifest(result.path);
+      if (!manifest) {
+        throw new Error(`Stack manifest not found after updating ${pkg.id}`);
+      }
+      await deps.buildStack(result.path, manifest, {
+        force: true,
+        verbose: Boolean(flags.verbose)
+      });
+      const validation = deps.validateStack(result.path, manifest);
+      if (!validation.valid) {
+        throw new Error(`Stack validation failed: ${validation.error}`);
+      }
+      deps.registerStack(pkg.id, {
+        path: result.path,
+        runtime: getStackRuntime(manifest),
+        command: getStackCommand(manifest),
+        secrets: getManifestSecrets(manifest),
+        version: manifest.version
+      });
+    }
+  } catch (error) {
+    if (snapshot) {
+      try {
+        await deps.restoreStackUpdateSnapshot(snapshot);
+      } catch (rollbackError) {
+        throw new Error(
+          `${error.message}; stack rollback failed: ${rollbackError.message}`,
+          { cause: error }
+        );
+      }
+    }
+    throw error;
+  }
+  if (snapshot) {
+    try {
+      await deps.discardStackUpdateSnapshot(snapshot);
+    } catch (cleanupError) {
+      deps.error(
+        `  ! ${pkg.id}: update applied, but snapshot cleanup failed: ${cleanupError.message}`
+      );
+    }
   }
   return {
     id: pkg.id,
-    kind: pkg.kind || packageKindFromId(pkg.id),
+    kind,
     result
   };
 }
@@ -32591,6 +33072,9 @@ async function runUpdate(args = [], flags = {}, deps = defaultDependencies) {
         const updated = await updateOnePackage(pkg, flags, deps);
         updatedPackages.push(updated);
       } catch (error) {
+        if (pkg.id === target.id) {
+          throw error;
+        }
         failedPackages.push({ id: pkg.id, error: error.message });
         deps.error(`  x ${pkg.id}: ${error.message}`);
       }
@@ -32685,10 +33169,11 @@ async function cmdUpdate(args, flags, dependencies = {}) {
 }
 
 // src/commands/which.js
-var fs39 = __toESM(require("fs/promises"), 1);
-var path38 = __toESM(require("path"), 1);
+var fs40 = __toESM(require("fs/promises"), 1);
+var path39 = __toESM(require("path"), 1);
 init_src5();
 init_src();
+init_src4();
 async function cmdWhich(args, flags) {
   const stackId = args[0];
   if (!stackId) {
@@ -32715,7 +33200,7 @@ Installed stacks:`);
     }
     const stackPath = stack.path;
     const runtimeInfo = await detectRuntime(stackPath);
-    const authStatus = await checkAuth(stackPath, runtimeInfo.runtime);
+    const authStatus = await checkAuth(stackPath, runtimeInfo.runtime, { stack });
     const isRunning = checkIfRunning(stack.name || stack.id.replace("stack:", ""));
     console.log("");
     console.log("\u2550".repeat(60));
@@ -32767,7 +33252,7 @@ Installed stacks:`);
     if (runtimeInfo.entry) {
       console.log("");
       console.log("Run MCP server directly:");
-      const entryPath = path38.join(stackPath, runtimeInfo.entry);
+      const entryPath = path39.join(stackPath, runtimeInfo.entry);
       if (runtimeInfo.runtime === "node") {
         console.log(`  echo '{"jsonrpc":"2.0","method":"tools/list","id":1}' | node ${entryPath}`);
       } else if (runtimeInfo.runtime === "python") {
@@ -32785,32 +33270,32 @@ Installed stacks:`);
 }
 async function detectRuntime(stackPath) {
   const layouts = [
-    { runtime: "node", runtimePath: path38.join(stackPath, "node"), entryPrefix: "node/", explicit: true },
-    { runtime: "python", runtimePath: path38.join(stackPath, "python"), entryPrefix: "python/", explicit: true },
+    { runtime: "node", runtimePath: path39.join(stackPath, "node"), entryPrefix: "node/", explicit: true },
+    { runtime: "python", runtimePath: path39.join(stackPath, "python"), entryPrefix: "python/", explicit: true },
     { runtime: "node", runtimePath: stackPath, entryPrefix: "", explicit: false },
     { runtime: "python", runtimePath: stackPath, entryPrefix: "", explicit: false }
   ];
   for (const { runtime, runtimePath, entryPrefix, explicit } of layouts) {
     try {
-      await fs39.access(runtimePath);
+      await fs40.access(runtimePath);
       if (runtime === "node") {
-        const distEntry = path38.join(runtimePath, "dist", "index.js");
-        const srcEntry = path38.join(runtimePath, "src", "index.ts");
+        const distEntry = path39.join(runtimePath, "dist", "index.js");
+        const srcEntry = path39.join(runtimePath, "src", "index.ts");
         try {
-          await fs39.access(distEntry);
+          await fs40.access(distEntry);
           return { runtime: "node", entry: `${entryPrefix}dist/index.js` };
         } catch {
           try {
-            await fs39.access(srcEntry);
+            await fs40.access(srcEntry);
             return { runtime: "node", entry: `${entryPrefix}src/index.ts` };
           } catch {
             if (explicit) return { runtime: "node", entry: null };
           }
         }
       } else if (runtime === "python") {
-        const entry = path38.join(runtimePath, "src", "index.py");
+        const entry = path39.join(runtimePath, "src", "index.py");
         try {
-          await fs39.access(entry);
+          await fs40.access(entry);
           return { runtime: "python", entry: `${entryPrefix}src/index.py` };
         } catch {
           if (explicit) return { runtime: "python", entry: null };
@@ -32830,18 +33315,18 @@ async function checkAuth(stackPath, runtime, options = {}) {
     if (!rootPath || checkedRoots.has(rootPath)) return;
     checkedRoots.add(rootPath);
     try {
-      await fs39.access(path38.join(rootPath, "token.json"));
+      await fs40.access(path39.join(rootPath, "token.json"));
       authFiles.push(labelPrefix ? `${labelPrefix}/token.json` : "token.json");
       configured = true;
     } catch {
-      const accountsPath = path38.join(rootPath, "accounts");
+      const accountsPath = path39.join(rootPath, "accounts");
       try {
-        const accounts = await fs39.readdir(accountsPath);
+        const accounts = await fs40.readdir(accountsPath);
         for (const account of accounts) {
           if (account.startsWith(".")) continue;
-          const accountTokenPath = path38.join(accountsPath, account, "token.json");
+          const accountTokenPath = path39.join(accountsPath, account, "token.json");
           try {
-            await fs39.access(accountTokenPath);
+            await fs40.access(accountTokenPath);
             const label = labelPrefix ? `${labelPrefix}/accounts/${account}/token.json` : `accounts/${account}/token.json`;
             authFiles.push(label);
             configured = true;
@@ -32853,29 +33338,76 @@ async function checkAuth(stackPath, runtime, options = {}) {
     }
   }
   if (runtime === "node" || runtime === "python") {
-    await scanAuthRoot(path38.join(stackPath, runtime), runtime);
+    await scanAuthRoot(path39.join(stackPath, runtime), runtime);
     await scanAuthRoot(stackPath, "");
   }
-  const stackName = options.stackName || path38.basename(stackPath);
+  const stackName = options.stackName || path39.basename(stackPath);
   const rudiHome = options.rudiHome || PATHS.home;
   await scanAuthRoot(
-    path38.join(rudiHome, "state", "stacks", stackName),
+    path39.join(rudiHome, "state", "stacks", stackName),
     `state/stacks/${stackName}`
   );
-  const envPath = path38.join(stackPath, ".env");
+  const envCredentialNames = /* @__PURE__ */ new Set();
+  const envPath = path39.join(stackPath, ".env");
   try {
-    const envContent = await fs39.readFile(envPath, "utf-8");
-    const hasValues = envContent.split("\n").some((line) => {
+    const envContent = await fs40.readFile(envPath, "utf-8");
+    for (const line of envContent.split("\n")) {
       const trimmed = line.trim();
-      if (!trimmed || trimmed.startsWith("#")) return false;
-      const [key, value] = trimmed.split("=");
-      return value && value.trim() && !value.includes("YOUR_") && !value.includes("your_");
-    });
-    if (hasValues) {
-      authFiles.push(".env");
-      configured = true;
+      if (!trimmed || trimmed.startsWith("#")) continue;
+      const separatorIndex = trimmed.indexOf("=");
+      if (separatorIndex <= 0) continue;
+      const name = trimmed.slice(0, separatorIndex).trim();
+      let value = trimmed.slice(separatorIndex + 1).trim();
+      const quotedValue = value.match(/^(["'])(.*?)\1(?:\s*#.*)?$/);
+      if (quotedValue) {
+        value = quotedValue[2].trim();
+      } else {
+        value = value.replace(/\s+#.*$/, "").trim();
+      }
+      if (/^[A-Za-z_][A-Za-z0-9_]*$/.test(name) && value && !value.includes("YOUR_") && !value.includes("your_")) {
+        envCredentialNames.add(name);
+      }
     }
   } catch {
+  }
+  const manifestSecrets = options.stack?.requires?.secrets || options.stack?.secrets || [];
+  if (Array.isArray(manifestSecrets) && manifestSecrets.length > 0) {
+    const hasSecret2 = options.hasSecret || hasSecret;
+    let requiredCount = 0;
+    let requiredPresent = 0;
+    let presentCount = 0;
+    let envCredentialPresent = false;
+    for (const [index, secret] of manifestSecrets.entries()) {
+      const rawName = typeof secret === "string" ? secret : secret?.name || secret?.key;
+      if (typeof rawName !== "string" || !rawName || rawName !== rawName.trim()) {
+        throw new Error(`Invalid stack secret name at index ${index}`);
+      }
+      const name = rawName;
+      if (!/^[A-Za-z_][A-Za-z0-9_]*$/.test(name)) {
+        throw new Error(`Invalid stack secret name at index ${index}`);
+      }
+      const required = typeof secret !== "object" || secret === null || secret.required !== false;
+      if (required) requiredCount += 1;
+      const storedCredentialPresent = await hasSecret2(name);
+      const localEnvCredentialPresent = envCredentialNames.has(name);
+      if (storedCredentialPresent || localEnvCredentialPresent) {
+        presentCount += 1;
+        if (required) requiredPresent += 1;
+        if (storedCredentialPresent) {
+          authFiles.push(`RUDI secrets (${name})`);
+        }
+        if (localEnvCredentialPresent) {
+          envCredentialPresent = true;
+        }
+      }
+    }
+    if (requiredCount > 0 && requiredPresent === requiredCount || requiredCount === 0 && presentCount === manifestSecrets.length) {
+      configured = true;
+      if (envCredentialPresent) authFiles.push(".env");
+    }
+  } else if (envCredentialNames.size > 0) {
+    authFiles.push(".env");
+    configured = true;
   }
   if (configured) {
     return {
@@ -32911,8 +33443,8 @@ function checkIfRunning(stackName, options = {}) {
 }
 
 // src/commands/auth.js
-var fs40 = __toESM(require("fs/promises"), 1);
-var path39 = __toESM(require("path"), 1);
+var fs41 = __toESM(require("fs/promises"), 1);
+var path40 = __toESM(require("path"), 1);
 var import_child_process8 = require("child_process");
 init_src5();
 init_src4();
@@ -32926,49 +33458,49 @@ async function findAvailablePort(basePort = 3456) {
   throw new Error(`No available ports found in range ${basePort}-${basePort + 10}`);
 }
 function isPortAvailable(port) {
-  return new Promise((resolve3) => {
+  return new Promise((resolve4) => {
     const server = net.createServer();
     server.once("error", (err) => {
       if (err.code === "EADDRINUSE") {
-        resolve3(false);
+        resolve4(false);
       } else {
-        resolve3(false);
+        resolve4(false);
       }
     });
     server.once("listening", () => {
       server.close();
-      resolve3(true);
+      resolve4(true);
     });
     server.listen(port);
   });
 }
 async function detectRuntime2(stackPath) {
   const layouts = [
-    { runtime: "node", runtimePath: path39.join(stackPath, "node") },
+    { runtime: "node", runtimePath: path40.join(stackPath, "node") },
     { runtime: "node", runtimePath: stackPath },
-    { runtime: "python", runtimePath: path39.join(stackPath, "python") },
+    { runtime: "python", runtimePath: path40.join(stackPath, "python") },
     { runtime: "python", runtimePath: stackPath }
   ];
   for (const { runtime, runtimePath } of layouts) {
     try {
-      await fs40.access(runtimePath);
+      await fs41.access(runtimePath);
       if (runtime === "node") {
-        const authTs = path39.join(runtimePath, "src", "auth.ts");
-        const authJs = path39.join(runtimePath, "dist", "auth.js");
+        const authTs = path40.join(runtimePath, "src", "auth.ts");
+        const authJs = path40.join(runtimePath, "dist", "auth.js");
         try {
-          await fs40.access(authTs);
+          await fs41.access(authTs);
           return { runtime: "node", authScript: authTs, useTsx: true };
         } catch {
           try {
-            await fs40.access(authJs);
+            await fs41.access(authJs);
             return { runtime: "node", authScript: authJs, useTsx: false };
           } catch {
           }
         }
       } else if (runtime === "python") {
-        const authPy = path39.join(runtimePath, "src", "auth.py");
+        const authPy = path40.join(runtimePath, "src", "auth.py");
         try {
-          await fs40.access(authPy);
+          await fs41.access(authPy);
           return { runtime: "python", authScript: authPy, useTsx: false };
         } catch {
         }
@@ -33083,7 +33615,7 @@ function runAuthSubprocess(plan, options = {}) {
 function getTempAuthScriptPath(authScript, useTsx) {
   const safeAuthScript = requireSubprocessArg(authScript, "auth script path");
   const tempExt = useTsx ? ".ts" : ".mjs";
-  return path39.join(path39.dirname(safeAuthScript), `auth-temp${tempExt}`);
+  return path40.join(path40.dirname(safeAuthScript), `auth-temp${tempExt}`);
 }
 async function cmdAuth(args, flags) {
   const stackId = args[0];
@@ -33124,14 +33656,14 @@ Installed stacks:`);
     const port = await findAvailablePort(3456);
     console.log(`Using port: ${port}`);
     console.log("");
-    const cwd = path39.dirname(authInfo.authScript);
+    const cwd = path40.dirname(authInfo.authScript);
     if (authInfo.runtime === "node") {
-      const distAuth = path39.join(cwd, "..", "dist", "auth.js");
+      const distAuth = path40.join(cwd, "..", "dist", "auth.js");
       let useBuiltInPort = false;
       let tempAuthScript = null;
       try {
-        await fs40.access(distAuth);
-        const distContent = await fs40.readFile(distAuth, "utf-8");
+        await fs41.access(distAuth);
+        const distContent = await fs41.readFile(distAuth, "utf-8");
         if (distContent.includes("findAvailablePort")) {
           console.log("Using compiled authentication script...");
           useBuiltInPort = true;
@@ -33139,10 +33671,10 @@ Installed stacks:`);
       } catch {
       }
       if (!useBuiltInPort) {
-        const authContent = await fs40.readFile(authInfo.authScript, "utf-8");
+        const authContent = await fs41.readFile(authInfo.authScript, "utf-8");
         tempAuthScript = getTempAuthScriptPath(authInfo.authScript, authInfo.useTsx);
         const modifiedContent = authContent.replace(/localhost:3456/g, `localhost:${port}`).replace(/server\.listen\(3456/g, `server.listen(${port}`);
-        await fs40.writeFile(tempAuthScript, modifiedContent);
+        await fs41.writeFile(tempAuthScript, modifiedContent);
       }
       console.log("Starting OAuth flow...");
       console.log("");
@@ -33159,12 +33691,12 @@ Installed stacks:`);
           env: authEnv
         });
         if (tempAuthScript) {
-          await fs40.unlink(tempAuthScript);
+          await fs41.unlink(tempAuthScript);
         }
       } catch (error) {
         if (tempAuthScript) {
           try {
-            await fs40.unlink(tempAuthScript);
+            await fs41.unlink(tempAuthScript);
           } catch {
           }
         }
@@ -33200,22 +33732,22 @@ Installed stacks:`);
 }
 
 // src/commands/mcp.js
-var fs41 = __toESM(require("fs"), 1);
-var path40 = __toESM(require("path"), 1);
+var fs42 = __toESM(require("fs"), 1);
+var path41 = __toESM(require("path"), 1);
 var import_child_process9 = require("child_process");
 init_src();
 init_src4();
 function getBundledRuntime(runtime) {
   const platform = process.platform;
   if (runtime === "node") {
-    const nodePath = platform === "win32" ? path40.join(PATHS.runtimes, "node", "node.exe") : path40.join(PATHS.runtimes, "node", "bin", "node");
-    if (fs41.existsSync(nodePath)) {
+    const nodePath = platform === "win32" ? path41.join(PATHS.runtimes, "node", "node.exe") : path41.join(PATHS.runtimes, "node", "bin", "node");
+    if (fs42.existsSync(nodePath)) {
       return nodePath;
     }
   }
   if (runtime === "python") {
-    const pythonPath = platform === "win32" ? path40.join(PATHS.runtimes, "python", "python.exe") : path40.join(PATHS.runtimes, "python", "bin", "python3");
-    if (fs41.existsSync(pythonPath)) {
+    const pythonPath = platform === "win32" ? path41.join(PATHS.runtimes, "python", "python.exe") : path41.join(PATHS.runtimes, "python", "bin", "python3");
+    if (fs42.existsSync(pythonPath)) {
       return pythonPath;
     }
   }
@@ -33223,18 +33755,18 @@ function getBundledRuntime(runtime) {
 }
 function getBundledNpx() {
   const platform = process.platform;
-  const npxPath = platform === "win32" ? path40.join(PATHS.runtimes, "node", "npx.cmd") : path40.join(PATHS.runtimes, "node", "bin", "npx");
-  if (fs41.existsSync(npxPath)) {
+  const npxPath = platform === "win32" ? path41.join(PATHS.runtimes, "node", "npx.cmd") : path41.join(PATHS.runtimes, "node", "bin", "npx");
+  if (fs42.existsSync(npxPath)) {
     return npxPath;
   }
   return null;
 }
 function loadManifest2(stackPath) {
-  const manifestPath = path40.join(stackPath, "manifest.json");
-  if (!fs41.existsSync(manifestPath)) {
+  const manifestPath = path41.join(stackPath, "manifest.json");
+  if (!fs42.existsSync(manifestPath)) {
     return null;
   }
-  return JSON.parse(fs41.readFileSync(manifestPath, "utf-8"));
+  return JSON.parse(fs42.readFileSync(manifestPath, "utf-8"));
 }
 function getRequiredSecrets(manifest) {
   const secrets = manifest?.requires?.secrets || manifest?.secrets || [];
@@ -33267,8 +33799,8 @@ async function cmdMcp(args, flags) {
     console.error("Example: rudi mcp slack");
     process.exit(1);
   }
-  const stackPath = path40.join(PATHS.stacks, stackName);
-  if (!fs41.existsSync(stackPath)) {
+  const stackPath = path41.join(PATHS.stacks, stackName);
+  if (!fs42.existsSync(stackPath)) {
     console.error(`Stack not found: ${stackName}`);
     console.error(`Expected at: ${stackPath}`);
     console.error("");
@@ -33317,22 +33849,22 @@ async function cmdMcp(args, flags) {
       }
       return part;
     }
-    if (part.startsWith("./") || part.startsWith("../") || !path40.isAbsolute(part)) {
-      const resolved = path40.join(stackPath, part);
-      if (fs41.existsSync(resolved)) {
+    if (part.startsWith("./") || part.startsWith("../") || !path41.isAbsolute(part)) {
+      const resolved = path41.join(stackPath, part);
+      if (fs42.existsSync(resolved)) {
         return resolved;
       }
     }
     return part;
   });
   const [cmd, ...cmdArgs] = resolvedCommand;
-  const bundledNodeBin = path40.join(PATHS.runtimes, "node", "bin");
-  const bundledPythonBin = path40.join(PATHS.runtimes, "python", "bin");
-  if (fs41.existsSync(bundledNodeBin) || fs41.existsSync(bundledPythonBin)) {
+  const bundledNodeBin = path41.join(PATHS.runtimes, "node", "bin");
+  const bundledPythonBin = path41.join(PATHS.runtimes, "python", "bin");
+  if (fs42.existsSync(bundledNodeBin) || fs42.existsSync(bundledPythonBin)) {
     const runtimePaths = [];
-    if (fs41.existsSync(bundledNodeBin)) runtimePaths.push(bundledNodeBin);
-    if (fs41.existsSync(bundledPythonBin)) runtimePaths.push(bundledPythonBin);
-    env.PATH = runtimePaths.join(path40.delimiter) + path40.delimiter + (env.PATH || "");
+    if (fs42.existsSync(bundledNodeBin)) runtimePaths.push(bundledNodeBin);
+    if (fs42.existsSync(bundledPythonBin)) runtimePaths.push(bundledPythonBin);
+    env.PATH = runtimePaths.join(path41.delimiter) + path41.delimiter + (env.PATH || "");
   }
   if (flags.debug) {
     console.error(`[rudi mcp] Stack: ${stackName}`);
@@ -33362,47 +33894,47 @@ async function cmdMcp(args, flags) {
 }
 
 // src/commands/integrate.js
-var fs42 = __toESM(require("fs"), 1);
-var path41 = __toESM(require("path"), 1);
+var fs43 = __toESM(require("fs"), 1);
+var path42 = __toESM(require("path"), 1);
 var import_os8 = __toESM(require("os"), 1);
 init_src();
 var HOME2 = import_os8.default.homedir();
-var ROUTER_SHIM_PATH = path41.join(PATHS.bins, "rudi-router");
-var LEGACY_ROUTER_SHIM_PATH = path41.join(PATHS.home, "shims", "rudi-router");
+var ROUTER_SHIM_PATH = path42.join(PATHS.bins, "rudi-router");
+var LEGACY_ROUTER_SHIM_PATH = path42.join(PATHS.home, "shims", "rudi-router");
 function checkRouterShim() {
-  if (fs42.existsSync(ROUTER_SHIM_PATH)) return ROUTER_SHIM_PATH;
-  if (fs42.existsSync(LEGACY_ROUTER_SHIM_PATH)) return LEGACY_ROUTER_SHIM_PATH;
+  if (fs43.existsSync(ROUTER_SHIM_PATH)) return ROUTER_SHIM_PATH;
+  if (fs43.existsSync(LEGACY_ROUTER_SHIM_PATH)) return LEGACY_ROUTER_SHIM_PATH;
   throw new Error(
     `Router shim not found at ${ROUTER_SHIM_PATH}
 Run: rudi shims rebuild`
   );
 }
 function backupConfig(configPath) {
-  if (!fs42.existsSync(configPath)) return null;
+  if (!fs43.existsSync(configPath)) return null;
   const backupPath = configPath + ".backup." + Date.now();
-  fs42.copyFileSync(configPath, backupPath);
+  fs43.copyFileSync(configPath, backupPath);
   return backupPath;
 }
 function readJsonConfig(configPath) {
-  if (!fs42.existsSync(configPath)) {
+  if (!fs43.existsSync(configPath)) {
     return {};
   }
   try {
-    return JSON.parse(fs42.readFileSync(configPath, "utf-8"));
+    return JSON.parse(fs43.readFileSync(configPath, "utf-8"));
   } catch {
     return {};
   }
 }
 function writeJsonConfig(configPath, config) {
-  const dir = path41.dirname(configPath);
-  if (!fs42.existsSync(dir)) {
-    fs42.mkdirSync(dir, { recursive: true });
+  const dir = path42.dirname(configPath);
+  if (!fs43.existsSync(dir)) {
+    fs43.mkdirSync(dir, { recursive: true });
   }
-  fs42.writeFileSync(configPath, JSON.stringify(config, null, 2));
+  fs43.writeFileSync(configPath, JSON.stringify(config, null, 2));
 }
 function getAgentTargetPath(agentConfig) {
   const configPath = findAgentConfig(agentConfig);
-  return configPath || path41.join(HOME2, agentConfig.paths[process.platform]?.[0] || agentConfig.paths.darwin[0]);
+  return configPath || path42.join(HOME2, agentConfig.paths[process.platform]?.[0] || agentConfig.paths.darwin[0]);
 }
 function tomlString(value) {
   return `"${String(value).replaceAll("\\", "\\\\").replaceAll('"', '\\"')}"`;
@@ -33441,9 +33973,9 @@ function buildCodexRouterTomlBlock(routerPath) {
   ].join("\n");
 }
 function patchCodexTomlRouter(content, routerPath, options = {}) {
-  const rudiMcpShimPath = options.rudiMcpShimPath || path41.join(PATHS.bins, "rudi-mcp");
-  const legacyMcpShimPath = options.legacyMcpShimPath || path41.join(PATHS.home, "shims", "rudi-mcp");
-  const rudiStacksPath = options.rudiStacksPath || path41.join(PATHS.home, "stacks");
+  const rudiMcpShimPath = options.rudiMcpShimPath || path42.join(PATHS.bins, "rudi-mcp");
+  const legacyMcpShimPath = options.legacyMcpShimPath || path42.join(PATHS.home, "shims", "rudi-mcp");
+  const rudiStacksPath = options.rudiStacksPath || path42.join(PATHS.home, "stacks");
   const blocks = splitTomlBlocks(content || "");
   const removedEntries = [];
   const removedServers = /* @__PURE__ */ new Set();
@@ -33504,23 +34036,23 @@ async function integrateCodexAgent(agentConfig, targetPath, flags) {
 ${agentConfig.name}:`);
   console.log(`  Config: ${targetPath}`);
   const routerPath = checkRouterShim();
-  const existing = fs42.existsSync(targetPath) ? fs42.readFileSync(targetPath, "utf-8") : "";
+  const existing = fs43.existsSync(targetPath) ? fs43.readFileSync(targetPath, "utf-8") : "";
   const result = patchCodexTomlRouter(existing, routerPath);
   if (result.removed.length > 0) {
     console.log(`  Removed old entries: ${result.removed.join(", ")}`);
   }
   if (result.action !== "none" || result.removed.length > 0) {
-    const dir = path41.dirname(targetPath);
-    if (!fs42.existsSync(dir)) {
-      fs42.mkdirSync(dir, { recursive: true });
+    const dir = path42.dirname(targetPath);
+    if (!fs43.existsSync(dir)) {
+      fs43.mkdirSync(dir, { recursive: true });
     }
-    if (fs42.existsSync(targetPath)) {
+    if (fs43.existsSync(targetPath)) {
       const backup = backupConfig(targetPath);
       if (backup && flags.verbose) {
         console.log(`  Backup: ${backup}`);
       }
     }
-    fs42.writeFileSync(targetPath, result.content);
+    fs43.writeFileSync(targetPath, result.content);
     if (result.action !== "none") {
       console.log(`  ${result.action === "added" ? "\u2713 Added" : "\u2713 Updated"} rudi router`);
     }
@@ -33543,7 +34075,7 @@ ${agentConfig.name}:`);
   console.log(`  Config: ${targetPath}`);
   if (agentId === "codex") {
     const routerPath = checkRouterShim();
-    const existing = fs42.existsSync(targetPath) ? fs42.readFileSync(targetPath, "utf-8") : "";
+    const existing = fs43.existsSync(targetPath) ? fs43.readFileSync(targetPath, "utf-8") : "";
     const result = patchCodexTomlRouter(existing, routerPath);
     if (result.removed.length > 0) {
       console.log(`  Would remove old entries: ${result.removed.join(", ")}`);
@@ -33578,9 +34110,9 @@ ${agentConfig.name}:`);
   if (!config[key]) {
     config[key] = {};
   }
-  const rudiMcpShimPath = path41.join(PATHS.bins, "rudi-mcp");
-  const legacyMcpShimPath = path41.join(PATHS.home, "shims", "rudi-mcp");
-  const rudiStacksPath = path41.join(PATHS.home, "stacks");
+  const rudiMcpShimPath = path42.join(PATHS.bins, "rudi-mcp");
+  const legacyMcpShimPath = path42.join(PATHS.home, "shims", "rudi-mcp");
+  const rudiStacksPath = path42.join(PATHS.home, "stacks");
   const removedEntries = [];
   for (const [serverName, serverConfig] of Object.entries(config[key])) {
     if (serverName === "rudi") continue;
@@ -33619,7 +34151,7 @@ ${agentConfig.name}:`);
     action = "updated";
   }
   if (action !== "none" || removedEntries.length > 0) {
-    if (fs42.existsSync(targetPath)) {
+    if (fs43.existsSync(targetPath)) {
       const backup = backupConfig(targetPath);
       if (backup && flags.verbose) {
         console.log(`  Backup: ${backup}`);
@@ -34996,6 +35528,98 @@ async function cmdStatus(args, flags) {
 init_src5();
 var import_fs22 = __toESM(require("fs"), 1);
 var import_path20 = __toESM(require("path"), 1);
+
+// src/runtime-inspection.js
+var import_node_fs19 = __toESM(require("node:fs"), 1);
+var import_node_path17 = __toESM(require("node:path"), 1);
+init_src();
+function isWithinRoot(rootPath, candidatePath) {
+  const relative4 = import_node_path17.default.relative(rootPath, candidatePath);
+  return relative4 === "" || !relative4.startsWith(`..${import_node_path17.default.sep}`) && relative4 !== ".." && !import_node_path17.default.isAbsolute(relative4);
+}
+function declaredRuntimeBins(manifest) {
+  if (Array.isArray(manifest?.bins)) {
+    return manifest.bins.map((name) => ({ name, relativePath: import_node_path17.default.join("bin", name) }));
+  }
+  if (manifest?.bins && typeof manifest.bins === "object") {
+    return Object.entries(manifest.bins).map(([name, descriptor]) => ({
+      name,
+      relativePath: descriptor?.path || import_node_path17.default.join("bin", name)
+    }));
+  }
+  return [];
+}
+function inspectRuntimeInstall(packageId) {
+  const installRoot = getPackagePath(packageId);
+  const manifestPath = import_node_path17.default.join(installRoot, "manifest.json");
+  const rootExists = import_node_fs19.default.existsSync(installRoot);
+  const resolvedInstallRoot = rootExists ? import_node_fs19.default.realpathSync(installRoot) : installRoot;
+  const manifestPresent = import_node_fs19.default.existsSync(manifestPath);
+  if (!manifestPresent) {
+    return {
+      binaries: [],
+      error: rootExists ? "Installed runtime manifest is missing" : null,
+      installRoot,
+      installed: false,
+      manifest: null,
+      manifestPresent: false,
+      rootExists
+    };
+  }
+  try {
+    const manifest = JSON.parse(import_node_fs19.default.readFileSync(manifestPath, "utf8"));
+    if (manifest.id !== packageId) {
+      const actualId = Object.hasOwn(manifest, "id") ? JSON.stringify(manifest.id) : "(missing)";
+      throw new Error(`Installed runtime manifest ID mismatch: expected ${packageId}, got ${actualId}`);
+    }
+    const binaries = declaredRuntimeBins(manifest).map(({ name, relativePath }) => {
+      if (typeof name !== "string" || !name || typeof relativePath !== "string" || !relativePath) {
+        throw new Error("Installed runtime manifest contains an invalid binary declaration");
+      }
+      const binaryPath = import_node_path17.default.resolve(installRoot, relativePath);
+      if (!isWithinRoot(installRoot, binaryPath)) {
+        throw new Error(`Installed runtime binary escapes its package root: ${name}`);
+      }
+      if (!import_node_fs19.default.existsSync(binaryPath)) {
+        throw new Error(`Installed runtime binary is missing: ${name}`);
+      }
+      const resolvedPath = import_node_fs19.default.realpathSync(binaryPath);
+      if (!isWithinRoot(resolvedInstallRoot, resolvedPath)) {
+        throw new Error(`Installed runtime binary resolves outside its package root: ${name}`);
+      }
+      if (!import_node_fs19.default.statSync(resolvedPath).isFile()) {
+        throw new Error(`Installed runtime binary is not a regular file: ${name}`);
+      }
+      import_node_fs19.default.accessSync(resolvedPath, import_node_fs19.default.constants.X_OK);
+      return { name, path: binaryPath, resolvedPath };
+    });
+    if (binaries.length === 0) {
+      throw new Error("Installed runtime manifest declares no binaries");
+    }
+    return {
+      binaries,
+      error: null,
+      installRoot,
+      installed: true,
+      manifest,
+      manifestPresent: true,
+      primaryBinary: binaries[0],
+      rootExists: true
+    };
+  } catch (error) {
+    return {
+      binaries: [],
+      error: error.message,
+      installRoot,
+      installed: false,
+      manifest: null,
+      manifestPresent: true,
+      rootExists: true
+    };
+  }
+}
+
+// src/commands/check.js
 var KNOWN_AGENT_HOSTS = /* @__PURE__ */ new Set(["antigravity", "claude", "codex", "gemini", "google"]);
 function getVersion3(binaryPath, versionFlag = "--version") {
   try {
@@ -35097,17 +35721,29 @@ async function cmdCheck(args, flags) {
       break;
     }
     case "runtime": {
-      const rudiPath = import_path20.default.join(PATHS.runtimes, name, "bin", name);
-      if (import_fs22.default.existsSync(rudiPath)) {
+      const inspected = inspectRuntimeInstall(`runtime:${name}`);
+      if (inspected.installed) {
         result.installed = true;
-        result.path = rudiPath;
-        result.version = getVersion3(rudiPath);
+        result.source = "rudi";
+        result.path = inspected.primaryBinary.path;
+        result.version = getVersion3(inspected.primaryBinary.path);
       } else {
-        const globalPath = findGlobalBinary2(name);
-        if (globalPath) {
+        const legacyRudiPath = import_path20.default.join(PATHS.runtimes, name, "bin", name);
+        if (!inspected.manifestPresent && import_fs22.default.existsSync(legacyRudiPath)) {
           result.installed = true;
-          result.path = globalPath;
-          result.version = getVersion3(globalPath);
+          result.source = "rudi";
+          result.path = legacyRudiPath;
+          result.version = getVersion3(legacyRudiPath);
+        } else if (!inspected.rootExists) {
+          const globalPath = findGlobalBinary2(name);
+          if (globalPath) {
+            result.installed = true;
+            result.source = "global";
+            result.path = globalPath;
+            result.version = getVersion3(globalPath);
+          }
+        } else if (inspected.error) {
+          result.error = inspected.error;
         }
       }
       result.ready = result.installed;
@@ -35674,6 +36310,13 @@ var import_fs24 = __toESM(require("fs"), 1);
 var import_path22 = __toESM(require("path"), 1);
 init_src();
 init_src5();
+function resolvesToSameFile(leftPath, rightPath) {
+  try {
+    return import_fs24.default.realpathSync(leftPath) === import_fs24.default.realpathSync(rightPath);
+  } catch {
+    return false;
+  }
+}
 async function cmdInfo(args, flags) {
   const pkgId = args[0];
   if (!pkgId) {
@@ -35697,6 +36340,14 @@ async function cmdInfo(args, flags) {
       } catch {
         console.warn("Warning: Could not parse manifest.json");
       }
+    }
+    let runtimeInspection = null;
+    if (kind === "runtime") {
+      runtimeInspection = inspectRuntimeInstall(pkgId);
+      if (runtimeInspection.error) {
+        throw new Error(runtimeInspection.error);
+      }
+      manifest = runtimeInspection.manifest;
     }
     console.log(`
 Package: ${pkgId}`);
@@ -35733,24 +36384,32 @@ Package: ${pkgId}`);
     if (manifest?.installedAt) {
       console.log(`  Installed:   ${new Date(manifest.installedAt).toLocaleString()}`);
     }
-    const bins = manifest?.bins || manifest?.binaries || [];
+    const bins = runtimeInspection ? runtimeInspection.binaries.map((binary) => binary.name) : manifest?.bins || manifest?.binaries || [];
     if (bins.length > 0) {
       console.log(`
 Binaries (${bins.length}):`);
       console.log("\u2500".repeat(50));
       for (const bin of bins) {
+        const installedRuntimeBinary = runtimeInspection?.binaries.find((binary) => binary.name === bin);
         const shimPath = import_path22.default.join(PATHS.bins, bin);
         const validation = validateShim(bin);
         const ownership = getShimOwner(bin);
         let shimStatus = "\u2717 no shim";
         if (import_fs24.default.existsSync(shimPath)) {
           if (validation.valid) {
-            shimStatus = `\u2713 ${validation.target}`;
+            if (installedRuntimeBinary && !resolvesToSameFile(validation.target, installedRuntimeBinary.resolvedPath)) {
+              shimStatus = `\u21AA preserved for ${ownership?.owner || "another package"}: ${validation.target}`;
+            } else {
+              shimStatus = `\u2713 ${validation.target}`;
+            }
           } else {
             shimStatus = `\u26A0 broken: ${validation.error}`;
           }
         }
         console.log(`  ${bin}:`);
+        if (installedRuntimeBinary) {
+          console.log(`    Installed: \u2713 ${installedRuntimeBinary.path}`);
+        }
         console.log(`    Shim: ${shimStatus}`);
         if (ownership) {
           const ownerMatch = ownership.owner === pkgId;
@@ -36020,7 +36679,7 @@ var import_node_http = __toESM(require("node:http"), 1);
 var import_node_url2 = require("node:url");
 
 // src/daemon/http/context.js
-var import_node_crypto5 = __toESM(require("node:crypto"), 1);
+var import_node_crypto6 = __toESM(require("node:crypto"), 1);
 var import_node_url = require("node:url");
 
 // src/daemon/http/errors.js
@@ -36092,7 +36751,7 @@ function createDaemonHttpContext() {
     } catch {
     }
     return {
-      requestId: import_node_crypto5.default.randomUUID(),
+      requestId: import_node_crypto6.default.randomUUID(),
       method: req?.method || null,
       path: pathname,
       startedAt: Date.now(),
@@ -36183,7 +36842,7 @@ function createDaemonHttpContext() {
   function readBody(req, options = {}) {
     const maxBodySize = Number.isFinite(options.maxBodySize) && options.maxBodySize > 0 ? options.maxBodySize : DEFAULT_MAX_BODY_BYTES;
     const timeoutMs = Number.isFinite(options.timeoutMs) && options.timeoutMs > 0 ? options.timeoutMs : DEFAULT_BODY_TIMEOUT_MS;
-    return new Promise((resolve3, reject) => {
+    return new Promise((resolve4, reject) => {
       const chunks = [];
       let size = 0;
       let settled = false;
@@ -36219,9 +36878,9 @@ function createDaemonHttpContext() {
       req.on("end", () => {
         if (settled) return;
         const raw = Buffer.concat(chunks).toString("utf8");
-        if (!raw) return finish(resolve3, {});
+        if (!raw) return finish(resolve4, {});
         try {
-          finish(resolve3, JSON.parse(raw));
+          finish(resolve4, JSON.parse(raw));
         } catch {
           const failure = new Error("Invalid JSON in request body");
           failure.statusCode = 400;
@@ -36240,7 +36899,7 @@ function createDaemonHttpContext() {
     if (!token || typeof candidate !== "string") return false;
     const expected = Buffer.from(token);
     const actual = Buffer.from(candidate);
-    return expected.length === actual.length && import_node_crypto5.default.timingSafeEqual(expected, actual);
+    return expected.length === actual.length && import_node_crypto6.default.timingSafeEqual(expected, actual);
   }
   return {
     REQUEST_ID_HEADER,
@@ -36250,7 +36909,7 @@ function createDaemonHttpContext() {
     checkAuth: checkAuth2,
     createRequestContext,
     error,
-    generateToken: () => import_node_crypto5.default.randomBytes(32).toString("hex"),
+    generateToken: () => import_node_crypto6.default.randomBytes(32).toString("hex"),
     getRequestContext,
     invalidField,
     json,
@@ -36808,7 +37467,7 @@ function buildLocalLlmRoutes(ctx, deps = {}) {
 }
 
 // src/daemon/routes/agent-host-validation.js
-var import_node_path17 = __toESM(require("node:path"), 1);
+var import_node_path18 = __toESM(require("node:path"), 1);
 var MAX_AGENT_HOST_BODY_BYTES = 12 * 1024 * 1024;
 var LAUNCH_FIELDS = /* @__PURE__ */ new Set([
   "approvalMode",
@@ -36909,7 +37568,7 @@ function validateRequest(body, allowed, { resume = false } = {}) {
   }
   if (!resume) {
     Object.assign(options, {
-      originDirectory: import_node_path17.default.resolve(requireText(body.originDirectory, "originDirectory")),
+      originDirectory: import_node_path18.default.resolve(requireText(body.originDirectory, "originDirectory")),
       outputDirectory: body.outputDirectory == null ? void 0 : requireText(body.outputDirectory, "outputDirectory"),
       provider: requireText(body.provider, "provider", 64),
       workspace: body.workspace == null ? void 0 : requireText(body.workspace, "workspace"),
@@ -36979,7 +37638,7 @@ function validateAgentGroupRequest(body) {
   });
   return {
     groupId: assertAgentGroupId(body.groupId),
-    originDirectory: import_node_path17.default.resolve(requireText(body.originDirectory, "originDirectory")),
+    originDirectory: import_node_path18.default.resolve(requireText(body.originDirectory, "originDirectory")),
     tasks,
     workspace: requireText(body.workspace, "workspace"),
     workspaceMode: body.workspaceMode == null ? "auto" : requireText(body.workspaceMode, "workspaceMode", 32)
@@ -37207,7 +37866,7 @@ function buildAgentHostRoutes(ctx, dependencies = {}) {
 
 // src/daemon/routes/packages.js
 var import_crypto2 = __toESM(require("crypto"), 1);
-var fs49 = __toESM(require("fs/promises"), 1);
+var fs51 = __toESM(require("fs/promises"), 1);
 var fsSync2 = __toESM(require("fs"), 1);
 var import_path24 = __toESM(require("path"), 1);
 init_src5();
@@ -37279,7 +37938,7 @@ var defaultDeps = {
 async function loadManifest3(installPath) {
   const manifestPath = import_path24.default.join(installPath, "manifest.json");
   try {
-    const content = await fs49.readFile(manifestPath, "utf-8");
+    const content = await fs51.readFile(manifestPath, "utf-8");
     return JSON.parse(content);
   } catch {
     return null;
@@ -37424,7 +38083,7 @@ async function checkSecrets3(manifest, deps) {
 async function parseEnvExample2(installPath) {
   const examplePath = import_path24.default.join(installPath, ".env.example");
   try {
-    const content = await fs49.readFile(examplePath, "utf-8");
+    const content = await fs51.readFile(examplePath, "utf-8");
     const keys = [];
     for (const line of content.split("\n")) {
       const trimmed = line.trim();
@@ -37440,7 +38099,7 @@ async function parseEnvExample2(installPath) {
 async function cleanupFailedStackInstall2(stackId, stackPath, removeConfig, deps) {
   if (stackPath) {
     try {
-      await fs49.rm(stackPath, { recursive: true, force: true });
+      await fs51.rm(stackPath, { recursive: true, force: true });
     } catch {
     }
   }
@@ -37893,10 +38552,10 @@ function printStartupBanner({
 var DEFAULT_SHUTDOWN_TIMEOUT_MS = 5e3;
 async function closeHttpServer(server) {
   if (!server || typeof server.close !== "function") return;
-  await new Promise((resolve3, reject) => {
+  await new Promise((resolve4, reject) => {
     server.close((err) => {
       if (!err || err.code === "ERR_SERVER_NOT_RUNNING") {
-        resolve3();
+        resolve4();
         return;
       }
       reject(err);
@@ -38916,7 +39575,7 @@ async function cmdLeverage(args, flags) {
 }
 
 // src/index.js
-var VERSION = true ? "1.10.22" : process.env.npm_package_version || "0.0.0";
+var VERSION = true ? "1.10.25" : process.env.npm_package_version || "0.0.0";
 var RETIRED_COMMANDS = /* @__PURE__ */ new Map([
   ["apply", "Provider transcripts remain authoritative; organization-plan execution was removed."],
   ["database", "Use Studio only if you still need the isolated compatibility database."],

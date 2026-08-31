@@ -131,6 +131,43 @@ test('check fails closed when a runtime manifest binary escapes its package root
   }
 });
 
+for (const manifestId of [undefined, '']) {
+  const label = manifestId === undefined ? 'missing' : 'empty';
+
+  test(`check fails closed when a runtime manifest ID is ${label}`, () => {
+    const rudiHome = fs.mkdtempSync(path.join(os.tmpdir(), `rudi-versioned-runtime-${label}-id-`));
+    const runtimeRoot = path.join(rudiHome, 'runtimes', 'node-20-20-2');
+    createExecutable(path.join(runtimeRoot, 'bin', 'node'), 'v20.20.2');
+    const manifest = {
+      bins: ['node'],
+      kind: 'runtime',
+      version: '20.20.2',
+    };
+    if (manifestId !== undefined) manifest.id = manifestId;
+    fs.writeFileSync(path.join(runtimeRoot, 'manifest.json'), JSON.stringify(manifest));
+
+    try {
+      const result = spawnSync(process.execPath, [
+        cliPath,
+        'check',
+        'runtime:node-20-20-2',
+        '--json',
+      ], {
+        encoding: 'utf8',
+        env: { ...process.env, RUDI_HOME: rudiHome },
+      });
+
+      assert.equal(result.status, 1, `${result.stderr}\n${result.stdout}`);
+      const output = JSON.parse(result.stdout);
+      assert.equal(output.installed, false);
+      assert.equal(output.ready, false);
+      assert.match(output.error, /manifest ID mismatch: expected runtime:node-20-20-2/);
+    } finally {
+      fs.rmSync(rudiHome, { force: true, recursive: true });
+    }
+  });
+}
+
 test('info keeps an exact shared runtime shim attributed to that runtime', () => {
   const rudiHome = fs.mkdtempSync(path.join(os.tmpdir(), 'rudi-shared-runtime-info-'));
   const runtimeRoot = path.join(rudiHome, 'runtimes', 'node');

@@ -118,9 +118,24 @@ Status: implementation active
 - Results: both unchanged red commands pass. Two additional boundary tests also
   pass: a manifest binary that escapes the package root fails closed, and the
   ordinary shared `runtime:node` continues to report its exact owned shim.
+- Independent review found that a missing or empty manifest ID was still
+  accepted because mismatch validation was conditional on a truthy ID. Two
+  unchanged regression cases failed red with exit 0 and `installed:true`, then
+  passed green after the inspector required exact `manifest.id === packageId`.
 - Focused/adjacent command: `node --test --test-concurrency=1` over the new test,
   binary/runtime, legacy-runtime, shim, external-agent, and environment suites;
   result: 88 passed, 0 failed. `git diff --check` passed.
+- Release-lineage reconciliation merged verified commit
+  `9629087d278f9265006c5625240de5bfac67e355` into the current-main branch.
+  The newer GitHub-tree installer overlapped in `buildStackIfNeeded` and update
+  tests. Resolution preserved both contracts: explicit authorization for
+  downloaded build scripts plus the reconciliation's forced-build, injectable
+  npm/runner, transaction, rollback, and suite behavior. The generated bundle
+  was regenerated rather than hand-resolved.
+- Post-resolution union command: `pnpm test -- --test-concurrency=1` over the
+  runtime inspection, update/snapshot/build/suite, GitHub resolver/installer,
+  secrets, runtime-detection, command-surface, and argument suites; result:
+  146 passed, 0 failed.
 - Exit criteria: focused and adjacent tests pass without assertion weakening.
 
 ## Phase 5: Full Verification
@@ -132,7 +147,41 @@ Status: implementation active
 - Live smoke: install the exact reviewed CLI artifact, run check/info against the
   versioned runtime, and rehash both versioned/shared binaries and generic shims.
 - Independent review: fresh read-only diff and evidence review before publication.
-- Results: pending.
+- Results:
+  - `pnpm test`: 748 passed, 0 failed across 599 top-level tests and 43
+    suites.
+  - Two consecutive `pnpm build` runs reproduced `dist/index.cjs` SHA-256
+    `1248e743a7e7f24eb5aebc2a87df49f98ca5c2fb94dce46f0dfe1c9fd5dee976`,
+    `dist/router-mcp.js`
+    `3c5f0d94fb4d44a8220c0331ba3b68f2918a56dfbebf0122fbdcdbdc2a6881f6`,
+    and `dist/packages-manifest.json`
+    `607aaf582c29aa92627e51823525fe43f38fa1db54a2874db457122771dbadc6`.
+    Built smoke reports `rudi v1.10.25`.
+  - Repository changed-file debt runner: 0 findings. Packaged SWE debt scan
+    with the repository's `pr-review` profile: 0 errors, warnings, or
+    informational findings. A first packaged scan without that profile produced
+    12 false orphan warnings because it omitted the repository entrypoint
+    configuration; it was superseded by the canonical profile result.
+  - `npm pack --dry-run`: six-file `@learnrudi/cli@1.10.25` payload; no tarball
+    was written.
+  - Pre-install built-artifact smoke binds `runtime:node-20-20-2` to version
+    `20.20.2` at `/Users/admin/.rudi/runtimes/node-20-20-2/bin/node` and the
+    shared runtime to version `20.10.0` at
+    `/Users/admin/.rudi/runtimes/node/bin/node`. Their SHA-256 values remain
+    `afea68f4c6280aa32707b2c037084931114a72b5c65412371244e060390c1fc6`
+    and `f77cb37948c962b3d171f48db7589335ee244299eaf8e267f9840e047cf1ff40`;
+    the generic Node shim still targets the shared runtime.
+  - Initial independent review: P0 0, P1 1, P2 0. The sole P1 was the missing
+    or empty manifest-ID acceptance above. It was reproduced and resolved;
+    final-delta independent review returned PASS with P0 0, P1 0, P2 0 and no
+    remaining findings. The reviewer matched the exact corrected source, test,
+    bundle, and compliance blobs and confirmed the bundle's strict identity
+    check, version, and recorded SHA-256.
+  - `pnpm audit`: unchanged dependency graph reports eight existing advisories
+    (three moderate, five high) in `ajv`/`fast-uri`, `yaml`, and `uuid`. No
+    dependency or lockfile changed in this release. Treat as disclosed existing
+    dependency debt for a separate dependency-upgrade gate, not as a reason to
+    broaden this runtime-identity repair.
 - Exit criteria: no blocking finding or provenance gap.
 
 ## Phase 6: Docs, Contracts, And Closure
@@ -142,7 +191,8 @@ Status: implementation active
 - Horizontal obligation: close the command-adapter inference drift with exact
   tests; no installer/shim consolidation obligation expected.
 - Verdict: active.
-- Accepted debt: none.
+- Accepted debt: eight pre-existing workspace dependency advisories disclosed
+  above; no dependency or lockfile delta is present in this release.
 - Proof gaps: implementation through live readback and closeout are pending.
 - Definition of Done: merged reviewed source, verified artifact installed through
   an accepted release mechanism, live `check`/`info` truthfully bind the exact

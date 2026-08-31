@@ -44,8 +44,9 @@ export function inspectRuntimeInstall(packageId) {
 
   try {
     const manifest = JSON.parse(fs.readFileSync(manifestPath, 'utf8'));
-    if (manifest.id && manifest.id !== packageId) {
-      throw new Error(`Installed runtime manifest ID mismatch: expected ${packageId}, got ${manifest.id}`);
+    if (manifest.id !== packageId) {
+      const actualId = Object.hasOwn(manifest, 'id') ? JSON.stringify(manifest.id) : '(missing)';
+      throw new Error(`Installed runtime manifest ID mismatch: expected ${packageId}, got ${actualId}`);
     }
 
     const binaries = declaredRuntimeBins(manifest).map(({ name, relativePath }) => {

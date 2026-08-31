@@ -406,6 +406,8 @@ export function addStack(stackId, stackInfo) {
           stack: stackId,
           required: secret.required
         };
+      } else if (config.secrets[secret.name].stack === stackId) {
+        config.secrets[secret.name].required = secret.required;
       }
     }
   });
