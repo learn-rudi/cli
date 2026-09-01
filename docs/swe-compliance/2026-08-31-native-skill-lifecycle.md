@@ -135,12 +135,16 @@
 - Post-correction proof: focused tests 89/89, full tests 774/774, reproducible
   build, changed-file debt scan with zero findings, whitespace validation, and
   the six-file package dry run all passed. The dry-run reported 324,462 packed
-  bytes and 1,563,056 unpacked bytes. Focused independent confirmation of the
-  four findings remains required before push.
+  bytes and 1,563,056 unpacked bytes.
+- Final focused confirmation: all four findings are closed; the unchanged
+  hostile command passed 6/6; the recorded focused, full, bundle-hash, package,
+  and whitespace evidence matched the committed tree. Standards, Spec, Proof,
+  and Overall all returned pass with no remaining blocker.
 - Installed-state consequence: the complete-package digest correction changes
   receipt identity for bundled skills even when rendered projections are
   unchanged. After merge, the accepted CLI artifact and Registry-main package
   state must be reconciled on both Macs before final parity is claimed.
-- Publication state at evidence refresh: issue #37 and six scoped commits exist
-  locally; focused confirmation, final ledger commit, push, PR, CI, merge, and
-  cross-machine reconciliation are authorized and pending.
+- Publication state at final local evidence refresh: issue #37 and six scoped
+  implementation/evidence commits exist locally; this final ledger update,
+  push, PR, CI, merge, and cross-machine reconciliation are authorized and
+  pending.
