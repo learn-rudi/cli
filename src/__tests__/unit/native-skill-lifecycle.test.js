@@ -145,6 +145,69 @@ test('managed source identity updates return the identity committed to the recei
   }
 });
 
+test('complete canonical package changes refresh the package digest without rewriting an unchanged projection', async () => {
+  const state = fixture();
+  try {
+    const agentsDir = path.join(path.dirname(state.skill.entryPath), 'agents');
+    const agentMetadata = path.join(agentsDir, 'openai.yaml');
+    fs.mkdirSync(agentsDir, { recursive: true });
+    fs.writeFileSync(agentMetadata, 'interface:\n  display_name: Demo\n');
+
+    const created = await reconcileNativeSkill({
+      host: 'claude',
+      skill: state.skill,
+      targetRoot: state.nativeRoot,
+      receiptRoot: state.receiptRoot,
+    });
+    const originalReceipt = JSON.parse(fs.readFileSync(created.receiptPath, 'utf8'));
+    fs.appendFileSync(agentMetadata, '  short_description: Updated metadata\n');
+
+    const inspected = await inspectNativeSkillProjection({
+      host: 'claude',
+      skill: state.skill,
+      targetRoot: state.nativeRoot,
+      receiptRoot: state.receiptRoot,
+    });
+    assert.equal(inspected.state, 'update_available');
+    assert.notEqual(inspected.packageDigest, originalReceipt.packageDigest);
+
+    const refreshed = await reconcileNativeSkill({
+      host: 'claude',
+      skill: state.skill,
+      targetRoot: state.nativeRoot,
+      receiptRoot: state.receiptRoot,
+    });
+    assert.equal(refreshed.action, 'updated');
+    assert.equal(refreshed.restartRequired, false);
+    const refreshedReceipt = JSON.parse(fs.readFileSync(created.receiptPath, 'utf8'));
+    assert.equal(refreshedReceipt.packageDigest, inspected.packageDigest);
+  } finally {
+    fs.rmSync(state.root, { recursive: true, force: true });
+  }
+});
+
+test('a symlink anywhere in the canonical package fails closed even when it is not projected', async () => {
+  const state = fixture();
+  try {
+    const agentsDir = path.join(path.dirname(state.skill.entryPath), 'agents');
+    fs.mkdirSync(agentsDir, { recursive: true });
+    fs.symlinkSync(state.skill.entryPath, path.join(agentsDir, 'unsafe-link'));
+
+    const result = await reconcileNativeSkill({
+      host: 'claude',
+      skill: state.skill,
+      targetRoot: state.nativeRoot,
+      receiptRoot: state.receiptRoot,
+    });
+    assert.equal(result.action, 'failed');
+    assert.match(result.error, /symbolic link/i);
+    assert.equal(fs.existsSync(state.nativeRoot), false);
+    assert.equal(fs.existsSync(state.receiptRoot), false);
+  } finally {
+    fs.rmSync(state.root, { recursive: true, force: true });
+  }
+});
+
 test('drifted and unmanaged wrappers are preserved unless exact force is supplied', async () => {
   const state = fixture();
   try {
@@ -443,6 +506,110 @@ test('source, target, and receipt root symlinks fail closed', async () => {
     assert.equal(removal.action, 'failed');
     assert.match(removal.error, /symbolic link/i);
     assert.equal(fs.existsSync(created.targetDir), true);
+  } finally {
+    fs.rmSync(state.root, { recursive: true, force: true });
+  }
+});
+
+test('inspection rejects a symlinked per-host receipt directory without following it', async () => {
+  const state = fixture();
+  try {
+    const created = await reconcileNativeSkill({
+      host: 'codex',
+      skill: state.skill,
+      targetRoot: state.nativeRoot,
+      receiptRoot: state.receiptRoot,
+    });
+    const outsideHostRoot = path.join(state.root, 'outside-receipts', 'codex');
+    fs.mkdirSync(outsideHostRoot, { recursive: true });
+    const outsideReceipt = path.join(outsideHostRoot, 'demo-skill.json');
+    fs.copyFileSync(created.receiptPath, outsideReceipt);
+    fs.rmSync(path.dirname(created.receiptPath), { recursive: true });
+    fs.symlinkSync(outsideHostRoot, path.dirname(created.receiptPath));
+
+    await assert.rejects(
+      () => inspectNativeSkillProjection({
+        host: 'codex',
+        skill: state.skill,
+        targetRoot: state.nativeRoot,
+        receiptRoot: state.receiptRoot,
+      }),
+      /symbolic link/i,
+    );
+    assert.equal(fs.existsSync(created.targetDir), true);
+    assert.equal(fs.existsSync(outsideReceipt), true);
+  } finally {
+    fs.rmSync(state.root, { recursive: true, force: true });
+  }
+});
+
+test('removal rejects a symlinked per-host receipt directory without deleting either side', async () => {
+  const state = fixture();
+  try {
+    const created = await reconcileNativeSkill({
+      host: 'codex',
+      skill: state.skill,
+      targetRoot: state.nativeRoot,
+      receiptRoot: state.receiptRoot,
+    });
+    const outsideHostRoot = path.join(state.root, 'outside-removal-receipts', 'codex');
+    fs.mkdirSync(outsideHostRoot, { recursive: true });
+    const outsideReceipt = path.join(outsideHostRoot, 'demo-skill.json');
+    fs.copyFileSync(created.receiptPath, outsideReceipt);
+    fs.rmSync(path.dirname(created.receiptPath), { recursive: true });
+    fs.symlinkSync(outsideHostRoot, path.dirname(created.receiptPath));
+
+    const result = await removeNativeSkillProjection({
+      host: 'codex',
+      skill: state.skill,
+      targetRoot: state.nativeRoot,
+      receiptRoot: state.receiptRoot,
+    });
+    assert.equal(result.action, 'failed');
+    assert.match(result.error, /symbolic link/i);
+    assert.equal(fs.existsSync(created.targetDir), true);
+    assert.equal(fs.existsSync(outsideReceipt), true);
+  } finally {
+    fs.rmSync(state.root, { recursive: true, force: true });
+  }
+});
+
+test('orphan receipt cleanup preserves a concurrently recreated target and receipt pair', async () => {
+  const state = fixture();
+  try {
+    const created = await reconcileNativeSkill({
+      host: 'codex',
+      skill: state.skill,
+      targetRoot: state.nativeRoot,
+      receiptRoot: state.receiptRoot,
+    });
+    const originalReceipt = JSON.parse(fs.readFileSync(created.receiptPath, 'utf8'));
+    fs.rmSync(created.targetDir, { recursive: true });
+
+    const result = await removeNativeSkillProjection({
+      host: 'codex',
+      skill: state.skill,
+      targetRoot: state.nativeRoot,
+      receiptRoot: state.receiptRoot,
+      operations: {
+        async afterOrphanReceiptIsolation() {
+          fs.appendFileSync(state.skill.entryPath, '\nConcurrent canonical update.\n');
+          const concurrent = await reconcileNativeSkill({
+            host: 'codex',
+            skill: state.skill,
+            targetRoot: state.nativeRoot,
+            receiptRoot: state.receiptRoot,
+          });
+          assert.equal(concurrent.action, 'created');
+        },
+      },
+    });
+
+    assert.equal(result.action, 'failed');
+    assert.match(result.error, /changed during orphan receipt removal/i);
+    assert.match(fs.readFileSync(path.join(created.targetDir, 'SKILL.md'), 'utf8'), /Concurrent canonical update/);
+    const concurrentReceipt = JSON.parse(fs.readFileSync(created.receiptPath, 'utf8'));
+    assert.notEqual(concurrentReceipt.sourceDigest, originalReceipt.sourceDigest);
   } finally {
     fs.rmSync(state.root, { recursive: true, force: true });
   }

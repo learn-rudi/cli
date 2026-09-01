@@ -226,6 +226,7 @@ function assertBooleanSkillSyncFlags(flags) {
 
 export async function cmdSkills(args = [], flags = {}, dependencies = {}) {
   const log = dependencies.log || console.log;
+  const exit = dependencies.exit || ((code) => process.exit(code));
   const subcommand = args[0];
 
   if (subcommand === 'help' || flags.help || flags.h) {
@@ -275,6 +276,7 @@ export async function cmdSkills(args = [], flags = {}, dependencies = {}) {
 
   if (flags.json) {
     log(JSON.stringify(result, null, 2));
+    if (result.failed > 0) return exit(1);
     return;
   }
 
@@ -306,4 +308,5 @@ export async function cmdSkills(args = [], flags = {}, dependencies = {}) {
   if (result.restartRequired) {
     log(`Restart ${targetName} to load native skill changes; hot reload was not performed.`);
   }
+  if (result.failed > 0) return exit(1);
 }

@@ -174,6 +174,41 @@ test('cmdSkills allows an explicitly acknowledged whole-inventory force sync', a
   assert.equal(calls[0].dryRun, true);
 });
 
+test('cmdSkills exits nonzero for projection failures in human and JSON modes', async () => {
+  for (const json of [false, true]) {
+    const exits = [];
+    const logs = [];
+    await cmdSkills(
+      ['sync', 'codex'],
+      { all: true, json },
+      {
+        async syncCodexSkills() {
+          return {
+            codexRoot: '/tmp/codex-skills',
+            total: 1,
+            failed: 1,
+            restartRequired: false,
+            results: [{
+              id: 'skill:demo',
+              action: 'failed',
+              error: 'fixture projection failure',
+            }],
+          };
+        },
+        exit(code) {
+          exits.push(code);
+        },
+        log(message) {
+          logs.push(message);
+        },
+      },
+    );
+
+    assert.deepEqual(exits, [1]);
+    assert.match(logs.join('\n'), /fixture projection failure/);
+  }
+});
+
 test('syncSelectedSkillsToNativeHosts converts thrown host failures into structured results', async () => {
   const result = await syncSelectedSkillsToNativeHosts(
     {

@@ -359,19 +359,26 @@ async function buildProjection(host, skill) {
       content: Buffer.from(generated.openaiYaml),
     });
   }
+  let packageDigest;
   if (path.basename(sourcePath) === 'SKILL.md') {
     const sourceRoot = path.dirname(sourcePath);
+    const completePackage = await inspectTree(sourceRoot);
+    if (!completePackage) {
+      throw new Error(`Source skill package not found: ${sourceRoot}`);
+    }
+    packageDigest = completePackage.digest;
     for (const resourceName of RESOURCE_DIRECTORIES) {
       await collectResourceEntries(sourceRoot, resourceName, entries, sourceEntries);
     }
+  } else {
+    packageDigest = digestEntries(sourceEntries).digest;
   }
   const rendered = digestEntries(entries);
-  const source = digestEntries(sourceEntries);
   const sourceIdentity = resolveSourceIdentity(skill.source);
   return {
     entries,
     packageVersion: String(skill.version || 'unknown'),
-    packageDigest: source.digest,
+    packageDigest,
     renderedTreeDigest: rendered.digest,
     renderedTreeManifest: rendered.manifest,
     skillId: skill.id,
@@ -503,6 +510,9 @@ function validateReceipt(receipt, expected = {}) {
 }
 
 async function readReceipt(receiptPath, expected = {}) {
+  await assertNoSymlinkPathComponents(receiptPath, 'Native skill receipt path', {
+    allowMissingTail: true,
+  });
   let stat;
   try {
     stat = await fsp.lstat(receiptPath);
@@ -905,9 +915,62 @@ export async function reconcileNativeSkills(options = {}) {
 }
 
 async function unlinkReceipt(receiptPath) {
+  await assertNoSymlinkPathComponents(receiptPath, 'Native skill receipt path');
   const stat = await fsp.lstat(receiptPath);
   assertRealEntry(stat, receiptPath, 'file');
   await fsp.unlink(receiptPath);
+}
+
+async function removeOrphanReceipt({
+  receiptPath,
+  receipt,
+  receiptExpectation,
+  targetDir,
+  operations = {},
+}) {
+  const receiptDirectory = path.dirname(receiptPath);
+  await assertSafeRoot(receiptDirectory, 'Native skill receipt directory');
+  await assertReceiptUnchanged(receiptPath, receipt, receiptExpectation);
+  const isolatedReceiptPath = path.join(
+    receiptDirectory,
+    `.${path.basename(receiptPath)}.rudi-orphan-${crypto.randomUUID()}`,
+  );
+  await fsp.rename(receiptPath, isolatedReceiptPath);
+
+  try {
+    await operations.afterOrphanReceiptIsolation?.(isolatedReceiptPath);
+    const isolatedReceipt = await readReceipt(isolatedReceiptPath, receiptExpectation);
+    if (receiptIdentityDigest(isolatedReceipt) !== receiptIdentityDigest(receipt)) {
+      throw new Error(`Native skill receipt changed during orphan receipt removal: ${receiptPath}`);
+    }
+    const [currentTarget, currentReceipt] = await Promise.all([
+      inspectTree(targetDir),
+      readReceipt(receiptPath, receiptExpectation),
+    ]);
+    if (currentTarget || currentReceipt) {
+      throw new Error(`Native skill state changed during orphan receipt removal: ${receiptPath}`);
+    }
+    await unlinkReceipt(isolatedReceiptPath);
+  } catch (error) {
+    let preservation = `prior receipt preserved at ${isolatedReceiptPath}`;
+    try {
+      const [currentTarget, currentReceipt] = await Promise.all([
+        inspectTree(targetDir),
+        readReceipt(receiptPath, receiptExpectation),
+      ]);
+      if (
+        !currentReceipt
+        && (!currentTarget || currentTarget.digest === receipt.renderedTreeDigest)
+      ) {
+        await fsp.link(isolatedReceiptPath, receiptPath);
+        await fsp.unlink(isolatedReceiptPath);
+        preservation = 'prior receipt restored';
+      }
+    } catch (restoreError) {
+      preservation = `${preservation}; restoration check failed: ${restoreError.message}`;
+    }
+    throw new Error(`${error.message}; ${preservation}`, { cause: error });
+  }
 }
 
 export async function removeNativeSkillProjection(options = {}) {
@@ -933,7 +996,13 @@ export async function removeNativeSkillProjection(options = {}) {
     }
     if (!actual) {
       if (options.dryRun === true) return { ...base, action: 'would_remove_receipt' };
-      await unlinkReceipt(receiptPath);
+      await removeOrphanReceipt({
+        receiptPath,
+        receipt,
+        receiptExpectation,
+        targetDir,
+        operations: options.operations,
+      });
       return { ...base, action: 'removed_receipt' };
     }
     if (actual.digest !== receipt.renderedTreeDigest) {
