@@ -110,7 +110,37 @@
   addendum as a final ledger commit. PR CI must pass before merge.
 - Commit ledger: source, tests, and command integration are commit `e402348`;
   the reproducible tracked bundle is the dedicated build commit `cd390db`.
-  Documentation and this ledger form the final branch commit.
-- Publication state at evidence refresh: issue #37 and the two implementation
-  commits exist locally; documentation commit, push, PR, CI, and merge are
-  authorized and pending.
+  Documentation and the initial publication ledger are commit `41d234a`.
+- Final publication review: a fresh review of `origin/main...41d234a` returned
+  revise with four findings: per-host receipt-directory symlinks were not
+  rejected before ownership reads/removal; `packageDigest` omitted unprojected
+  canonical package files; explicit `rudi skills sync` did not exit nonzero for
+  projection failures; and orphan-receipt cleanup could unlink ownership during
+  concurrent reconciliation.
+- Review red command:
+  `node --test --test-name-pattern='complete canonical|symlink anywhere|symlinked per-host|orphan receipt cleanup|cmdSkills exits nonzero' src/__tests__/unit/native-skill-lifecycle.test.js src/__tests__/unit/skills-sync.test.js`
+  failed 0/6 for the expected behavioral reasons on the reviewed tree. The
+  unchanged command passed 6/6 after the corrections.
+- Review corrections: every receipt-path component is validated before reads or
+  deletion; `packageDigest` now validates and hashes the entire canonical skill
+  tree independently of host-specific projection selection; human and JSON sync
+  failures exit nonzero; and orphan cleanup atomically isolates the prior
+  receipt, rechecks target and receipt state, and restores or preserves the
+  isolated receipt on conflict.
+- Review-fix commit ledger: source and hostile regressions are commit `0a64e62`;
+  the dedicated regenerated bundle is commit `4ecfbb1` with SHA-256
+  `32733e510d83b50f707a13e0ecb4bbe3d8c3a320cb8ac8d04f453ed652eff02b`.
+  `dist/router-mcp.js` and `dist/packages-manifest.json` retain their accepted
+  hashes.
+- Post-correction proof: focused tests 89/89, full tests 774/774, reproducible
+  build, changed-file debt scan with zero findings, whitespace validation, and
+  the six-file package dry run all passed. The dry-run reported 324,462 packed
+  bytes and 1,563,056 unpacked bytes. Focused independent confirmation of the
+  four findings remains required before push.
+- Installed-state consequence: the complete-package digest correction changes
+  receipt identity for bundled skills even when rendered projections are
+  unchanged. After merge, the accepted CLI artifact and Registry-main package
+  state must be reconciled on both Macs before final parity is claimed.
+- Publication state at evidence refresh: issue #37 and six scoped commits exist
+  locally; focused confirmation, final ledger commit, push, PR, CI, merge, and
+  cross-machine reconciliation are authorized and pending.
