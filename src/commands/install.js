@@ -28,11 +28,73 @@ import {
   rollbackDeferredInstall,
   readRudiConfig,
   updateRudiConfig,
+  listInstalled,
 } from '@learnrudi/core';
 import { hasSecret, listSecrets, setSecret, getSecret } from '@learnrudi/secrets';
 import { getInstalledAgents } from '@learnrudi/mcp';
 import { runCommand } from '../utils/subprocess.js';
-import { syncClaudeSkills, syncCodexSkills } from './skills.js';
+import {
+  configuredNativeSkillHosts,
+  reconcileNativeSkills,
+} from '../native-skills/lifecycle.js';
+import { parseNativeSkillSyncTargets } from './skills.js';
+
+export function resolveInstallNativeSkillHosts(flags = {}, installedAgents = []) {
+  const noSync = flags['no-sync-skills'] === true || flags.noSyncSkills === true;
+  const explicit = flags['sync-skills'] ?? flags.syncSkills;
+  if (noSync && explicit !== undefined) {
+    throw new Error('Choose --no-sync-skills or --sync-skills=<host[,host]>, not both');
+  }
+  if (noSync) return [];
+  if (explicit !== undefined) return parseNativeSkillSyncTargets(explicit);
+  return configuredNativeSkillHosts(installedAgents);
+}
+
+function installedSkillDescriptor(resolved, installedPath) {
+  const packagePath = path.resolve(installedPath);
+  const isDirectory = fsSync.existsSync(packagePath) && fsSync.lstatSync(packagePath).isDirectory();
+  return {
+    ...resolved,
+    source: resolved.source?.type ? resolved.source : 'rudi',
+    path: packagePath,
+    entryPath: isDirectory ? path.join(packagePath, 'SKILL.md') : packagePath,
+  };
+}
+
+export async function reconcileInstalledSkillsAfterInstall(
+  skills,
+  flags = {},
+  dependencies = {},
+) {
+  const installedAgents = dependencies.installedAgents ?? getInstalledAgents();
+  const hosts = resolveInstallNativeSkillHosts(flags, installedAgents);
+  if (hosts.length === 0 || skills.length === 0) {
+    return { hosts, skillIds: [], results: {}, failed: 0, failures: [], restartRequired: false };
+  }
+  const reconcile = dependencies.reconcileNativeSkills || reconcileNativeSkills;
+  return reconcile({
+    hosts,
+    skills,
+    force: flags.force === true && skills.length === 1,
+  });
+}
+
+function reportInstalledSkillProjection(projection) {
+  for (const host of projection.hosts || []) {
+    for (const item of projection.results?.[host] || []) {
+      if (item.action === 'failed') {
+        console.log(`  x ${host} ${item.id}: ${item.error}`);
+      } else if (['drifted', 'unmanaged'].includes(item.action)) {
+        console.log(`  ! ${host} ${item.id}: ${item.action} wrapper preserved`);
+      } else {
+        console.log(`  ✓ ${host} ${item.id}: ${item.action}`);
+      }
+    }
+  }
+  if (projection.restartRequired) {
+    console.log('  Restart affected native agent sessions to load skill changes (hot reload was not performed).');
+  }
+}
 
 /**
  * Load manifest from installed stack path
@@ -369,49 +431,52 @@ export async function syncRelatedSkillWrappers(
       };
     });
   if (skills.length === 0) {
-    return { targets: [], skillIds: [], results: {}, errors: {}, outcomes: {} };
+    return {
+      targets: [],
+      skillIds: [],
+      results: {},
+      errors: {},
+      outcomes: {},
+      restartRequired: false,
+    };
   }
 
-  const agentIds = new Set((installedAgents || []).map((agent) => agent.id));
-  const targets = [];
+  const targets = dependencies.hosts || configuredNativeSkillHosts(installedAgents);
   const results = {};
   const errors = {};
   const outcomes = {};
-  const codexSync = dependencies.syncCodexSkills || syncCodexSkills;
-  const claudeSync = dependencies.syncClaudeSkills || syncClaudeSkills;
-
-  if (agentIds.has('codex')) {
-    targets.push('codex');
-    try {
-      results.codex = await codexSync({ skills, force: false });
-    } catch (error) {
-      errors.codex = error instanceof Error ? error.message : String(error);
-    }
+  const reconcile = dependencies.reconcileNativeSkills || reconcileNativeSkills;
+  let coordinated;
+  try {
+    coordinated = await reconcile({ hosts: targets, skills, force: false });
+  } catch (error) {
+    const message = error instanceof Error ? error.message : String(error);
+    for (const target of targets) errors[target] = message;
+    coordinated = { results: {}, failures: [], failed: targets.length };
   }
-  if ([...agentIds].some((id) => id === 'claude-code' || id === 'claude-desktop')) {
-    targets.push('claude');
-    try {
-      results.claude = await claudeSync({ skills, force: false });
-    } catch (error) {
-      errors.claude = error instanceof Error ? error.message : String(error);
-    }
+  for (const target of targets) {
+    results[target] = { results: coordinated.results?.[target] || [] };
   }
 
   for (const target of targets) {
     const items = Array.isArray(results[target]?.results) ? results[target].results : [];
-    const changed = items.filter((item) => ['created', 'updated'].includes(item.action)).length;
-    const skipped = items.filter((item) => item.action === 'skipped').length;
+    const changed = items.filter((item) => ['adopted', 'created', 'updated'].includes(item.action)).length;
+    const skipped = items.filter((item) => item.action === 'current').length;
+    const conflicts = items.filter((item) => ['drifted', 'unmanaged'].includes(item.action)).length;
     const failed = items.filter((item) => item.action === 'failed').length;
     outcomes[target] = {
       status: failed > 0
         ? 'failed'
+        : conflicts > 0
+          ? 'conflict'
         : changed > 0
           ? 'changed'
           : skipped > 0
-            ? 'preserved'
+            ? 'current'
             : 'unchanged',
       changed,
       skipped,
+      conflicts,
       failed,
     };
   }
@@ -422,6 +487,7 @@ export async function syncRelatedSkillWrappers(
     results,
     errors,
     outcomes,
+    restartRequired: coordinated.restartRequired === true,
   };
 }
 
@@ -572,14 +638,19 @@ function reportRelatedSkillWrapperSync(wrapperSync) {
     if (wrapperSync.errors[target]) {
       console.log(`    - ${target} native skill sync failed: ${wrapperSync.errors[target]}`);
       console.log(`      Retry with: rudi skills sync ${target} ${wrapperSync.skillIds.join(' ')}`);
-    } else if (wrapperSync.outcomes[target]?.status === 'preserved') {
-      console.log(`    - ${target} native skill wrapper preserved (${wrapperSync.outcomes[target].skipped} existing)`);
-      console.log(`      Update only these wrappers with: rudi skills sync ${target} ${wrapperSync.skillIds.join(' ')} --force`);
+    } else if (wrapperSync.outcomes[target]?.status === 'conflict') {
+      console.log(`    - ${target} native skill conflict preserved (${wrapperSync.outcomes[target].conflicts})`);
+      console.log(`      Review, then replace only these wrappers with: rudi skills sync ${target} ${wrapperSync.skillIds.join(' ')} --force`);
+    } else if (wrapperSync.outcomes[target]?.status === 'current') {
+      console.log(`    - ${target} native skill wrapper current (${wrapperSync.outcomes[target].skipped})`);
     } else if (wrapperSync.outcomes[target]?.status === 'failed') {
       console.log(`    - ${target} native skill sync reported ${wrapperSync.outcomes[target].failed} failure(s)`);
     } else {
       console.log(`    - ${target} native skill wrapper synced (${wrapperSync.outcomes[target]?.changed || 0} changed)`);
     }
+  }
+  if (wrapperSync.restartRequired) {
+    console.log('    Restart affected native agent sessions to load skill changes; hot reload was not performed.');
   }
 }
 
@@ -981,6 +1052,27 @@ export async function cmdInstall(args, flags, dependencies = {}) {
         });
         return;
       }
+      if (resolved.kind === 'skill') {
+        const inventory = await (dependencies.listInstalled || listInstalled)('skill');
+        const installedSkill = inventory.find(item => item.id === resolved.id && (
+          !item.source || item.source === 'rudi' || item.source?.type
+        ));
+        if (!installedSkill) {
+          throw new Error(`Installed RUDI skill could not be resolved for native reconciliation: ${resolved.id}`);
+        }
+        const projection = await reconcileInstalledSkillsAfterInstall(
+          [installedSkill],
+          flags,
+          {
+            installedAgents: dependencies.installedAgents,
+            reconcileNativeSkills: dependencies.reconcileNativeSkills,
+          },
+        );
+        console.log('\nAlready installed. Native skill projections reconciled.');
+        reportInstalledSkillProjection(projection);
+        if (projection.failed > 0) return exit(1);
+        return;
+      }
       console.log(`\nAlready installed. Use --force to reinstall.`);
       return;
     }
@@ -1074,6 +1166,22 @@ export async function cmdInstall(args, flags, dependencies = {}) {
       // For skills, show required stacks if any
       if (resolved.kind === 'skill' && resolved.requires?.stacks?.length > 0) {
         console.log(`  Required stacks: ${resolved.requires.stacks.join(', ')}`);
+      }
+
+      if (resolved.kind === 'skill') {
+        const projection = await reconcileInstalledSkillsAfterInstall(
+          [installedSkillDescriptor(resolved, result.path)],
+          flags,
+          {
+            installedAgents: dependencies.installedAgents,
+            reconcileNativeSkills: dependencies.reconcileNativeSkills,
+          },
+        );
+        reportInstalledSkillProjection(projection);
+        if (projection.failed > 0) {
+          console.error('Native skill projection failed; the canonical RUDI skill remains installed.');
+          return exit(1);
+        }
       }
 
       console.log(`\n✓ Installed successfully.`);

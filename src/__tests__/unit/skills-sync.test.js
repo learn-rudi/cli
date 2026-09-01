@@ -28,6 +28,13 @@ test('parseNativeSkillSyncTargets rejects an explicitly empty host selection', (
   );
 });
 
+test('CLI keeps --no-sync-skills boolean when it precedes an exact install target', () => {
+  const parsed = parseArgs(['install', '--no-sync-skills', 'skill:demo']);
+  assert.equal(parsed.command, 'install');
+  assert.deepEqual(parsed.args, ['skill:demo']);
+  assert.equal(parsed.flags['no-sync-skills'], true);
+});
+
 test('cmdSkills projects only explicitly requested installed RUDI skill IDs', async () => {
   const calls = [];
   const installedSkills = [
@@ -167,6 +174,41 @@ test('cmdSkills allows an explicitly acknowledged whole-inventory force sync', a
   assert.equal(calls[0].dryRun, true);
 });
 
+test('cmdSkills exits nonzero for projection failures in human and JSON modes', async () => {
+  for (const json of [false, true]) {
+    const exits = [];
+    const logs = [];
+    await cmdSkills(
+      ['sync', 'codex'],
+      { all: true, json },
+      {
+        async syncCodexSkills() {
+          return {
+            codexRoot: '/tmp/codex-skills',
+            total: 1,
+            failed: 1,
+            restartRequired: false,
+            results: [{
+              id: 'skill:demo',
+              action: 'failed',
+              error: 'fixture projection failure',
+            }],
+          };
+        },
+        exit(code) {
+          exits.push(code);
+        },
+        log(message) {
+          logs.push(message);
+        },
+      },
+    );
+
+    assert.deepEqual(exits, [1]);
+    assert.match(logs.join('\n'), /fixture projection failure/);
+  }
+});
+
 test('syncSelectedSkillsToNativeHosts converts thrown host failures into structured results', async () => {
   const result = await syncSelectedSkillsToNativeHosts(
     {
@@ -248,6 +290,7 @@ test('syncCodexSkills creates native Codex skill wrappers for RUDI skills', asyn
   try {
     const source = path.join(root, 'grill-with-docs.md');
     const codexRoot = path.join(root, 'codex-skills');
+    const receiptRoot = path.join(root, 'receipts');
     fs.writeFileSync(source, [
       '---',
       'name: Grill With Docs',
@@ -260,6 +303,7 @@ test('syncCodexSkills creates native Codex skill wrappers for RUDI skills', asyn
 
     const result = await syncCodexSkills({
       codexRoot,
+      receiptRoot,
       skills: [
         {
           id: 'skill:grill-with-docs',
@@ -290,6 +334,7 @@ test('syncCodexSkills skips existing wrappers unless force is set', async () => 
   try {
     const source = path.join(root, 'skill.md');
     const codexRoot = path.join(root, 'codex-skills');
+    const receiptRoot = path.join(root, 'receipts');
     const targetDir = path.join(codexRoot, 'example-skill');
     fs.mkdirSync(targetDir, { recursive: true });
     fs.writeFileSync(path.join(targetDir, 'SKILL.md'), 'existing');
@@ -306,11 +351,11 @@ test('syncCodexSkills skips existing wrappers unless force is set', async () => 
       },
     ];
 
-    const skipped = await syncCodexSkills({ codexRoot, skills });
-    assert.equal(skipped.results[0].action, 'skipped');
+    const skipped = await syncCodexSkills({ codexRoot, receiptRoot, skills });
+    assert.equal(skipped.results[0].action, 'unmanaged');
     assert.equal(fs.readFileSync(path.join(targetDir, 'SKILL.md'), 'utf-8'), 'existing');
 
-    const updated = await syncCodexSkills({ codexRoot, skills, force: true });
+    const updated = await syncCodexSkills({ codexRoot, receiptRoot, skills, force: true });
     assert.equal(updated.results[0].action, 'updated');
     assert.match(fs.readFileSync(path.join(targetDir, 'SKILL.md'), 'utf-8'), /new body/);
   } finally {
@@ -324,6 +369,7 @@ test('syncClaudeSkills creates native Claude skill wrappers for RUDI skills', as
   try {
     const source = path.join(root, 'grill-with-docs.md');
     const claudeRoot = path.join(root, 'claude-skills');
+    const receiptRoot = path.join(root, 'receipts');
     fs.writeFileSync(source, [
       '---',
       'name: Grill With Docs',
@@ -336,6 +382,7 @@ test('syncClaudeSkills creates native Claude skill wrappers for RUDI skills', as
 
     const result = await syncClaudeSkills({
       claudeRoot,
+      receiptRoot,
       skills: [
         {
           id: 'skill:grill-with-docs',
@@ -368,6 +415,7 @@ test('native skill sync preserves supported bundled resources for Codex and Clau
     const source = path.join(sourceDir, 'SKILL.md');
     const codexRoot = path.join(root, 'codex-skills');
     const claudeRoot = path.join(root, 'claude-skills');
+    const receiptRoot = path.join(root, 'receipts');
     fs.mkdirSync(path.join(sourceDir, 'scripts'), { recursive: true });
     fs.mkdirSync(path.join(sourceDir, 'references'), { recursive: true });
     fs.mkdirSync(path.join(sourceDir, 'assets'), { recursive: true });
@@ -388,8 +436,8 @@ test('native skill sync preserves supported bundled resources for Codex and Clau
       },
     ];
 
-    await syncCodexSkills({ codexRoot, skills });
-    await syncClaudeSkills({ claudeRoot, skills });
+    await syncCodexSkills({ codexRoot, receiptRoot, skills });
+    await syncClaudeSkills({ claudeRoot, receiptRoot, skills });
 
     for (const targetRoot of [codexRoot, claudeRoot]) {
       const target = path.join(targetRoot, 'demo-bundle');
@@ -409,6 +457,7 @@ test('Gemini CLI and Antigravity receive portable RUDI skill wrappers', async ()
     const source = path.join(root, 'source', 'example-skill', 'SKILL.md');
     const geminiRoot = path.join(root, 'gemini-skills');
     const antigravityRoot = path.join(root, 'antigravity-skills');
+    const receiptRoot = path.join(root, 'receipts');
     fs.mkdirSync(path.dirname(source), { recursive: true });
     fs.writeFileSync(source, '---\nname: Example Skill\ndescription: Google host proof\n---\n\nRun the workflow.\n');
 
@@ -421,8 +470,8 @@ test('Gemini CLI and Antigravity receive portable RUDI skill wrappers', async ()
       entryPath: source,
     }];
 
-    const gemini = await syncGeminiSkills({ geminiRoot, skills });
-    const antigravity = await syncAntigravitySkills({ antigravityRoot, skills });
+    const gemini = await syncGeminiSkills({ geminiRoot, receiptRoot, skills });
+    const antigravity = await syncAntigravitySkills({ antigravityRoot, receiptRoot, skills });
 
     assert.equal(gemini.results[0].action, 'created');
     assert.equal(antigravity.results[0].action, 'created');
@@ -440,6 +489,7 @@ test('syncClaudeSkills skips existing wrappers unless force is set', async () =>
   try {
     const source = path.join(root, 'skill.md');
     const claudeRoot = path.join(root, 'claude-skills');
+    const receiptRoot = path.join(root, 'receipts');
     const targetDir = path.join(claudeRoot, 'example-skill');
     fs.mkdirSync(targetDir, { recursive: true });
     fs.writeFileSync(path.join(targetDir, 'SKILL.md'), 'existing');
@@ -456,11 +506,11 @@ test('syncClaudeSkills skips existing wrappers unless force is set', async () =>
       },
     ];
 
-    const skipped = await syncClaudeSkills({ claudeRoot, skills });
-    assert.equal(skipped.results[0].action, 'skipped');
+    const skipped = await syncClaudeSkills({ claudeRoot, receiptRoot, skills });
+    assert.equal(skipped.results[0].action, 'unmanaged');
     assert.equal(fs.readFileSync(path.join(targetDir, 'SKILL.md'), 'utf-8'), 'existing');
 
-    const updated = await syncClaudeSkills({ claudeRoot, skills, force: true });
+    const updated = await syncClaudeSkills({ claudeRoot, receiptRoot, skills, force: true });
     assert.equal(updated.results[0].action, 'updated');
     assert.match(fs.readFileSync(path.join(targetDir, 'SKILL.md'), 'utf-8'), /new body/);
   } finally {

@@ -183,12 +183,22 @@ rudi integrate codex
 rudi integrate gemini
 rudi integrate antigravity
 
-# Explicit whole-inventory overwrite; name exact skill:<id> targets for bounded updates.
-rudi skills sync claude --all --force
-rudi skills sync codex --all --force
-rudi skills sync gemini --all --force
-rudi skills sync antigravity --all --force
+# Reconcile the whole inventory without replacing drifted/unmanaged conflicts.
+rudi skills sync claude --all
+rudi skills sync codex --all
+rudi skills sync gemini --all
+rudi skills sync antigravity --all
 ```
+
+`~/.rudi/skills` remains canonical. Host directories are complete derived
+projections whose ownership receipts live under
+`~/.rudi/state/native-skills/<host>/<skill>.json`. Receipts bind the source,
+complete canonical package, and rendered-tree digests to the exact host target. Missing trees are created,
+identical legacy trees are adopted, and unchanged managed trees update
+automatically. Drifted or unmanaged trees are preserved; replace one only after
+review with `rudi skills sync <host> skill:<id> --force`. Complete replacement
+prunes stale resources. Projection changes require restarting active native
+sessions and never imply hot reload.
 
 Each host then discovers the same `rudi` MCP router and the installed portable RUDI skills. Google clients receive stable portable tool aliases because their MCP implementation rejects the namespace punctuation accepted by Claude and Codex; the router maps those aliases back to the same canonical stack tools. Native subagents run inside their owning host. This does not create an automatic Claude-to-Codex-to-Google delegation mesh; cross-provider dispatch uses `rudi agent group launch` and still preserves each host's native session boundary.
 

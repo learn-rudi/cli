@@ -324,9 +324,76 @@ test('runUpdate reports native skill wrapper sync commands after updating a skil
     .map(call => call[1])
     .join('\n');
 
-  assert.match(logOutput, /rudi skills sync codex skill:video-editor --force/);
-  assert.match(logOutput, /rudi skills sync claude skill:video-editor --force/);
-  assert.match(logOutput, /not overwritten automatically/i);
+  assert.match(logOutput, /rudi skills sync codex skill:video-editor/);
+  assert.match(logOutput, /rudi skills sync claude skill:video-editor/);
+  assert.doesNotMatch(logOutput, /skill:video-editor --force/);
+  assert.match(logOutput, /No already-managed native projections were selected/i);
+});
+
+test('runUpdate reconciles an exact skill to its already-managed native hosts by default', async () => {
+  const deps = createDeps({
+    async getManagedNativeSkillHosts(skill) {
+      deps.calls.push(['getManagedNativeSkillHosts', skill.id]);
+      return ['codex', 'claude'];
+    },
+    async syncCodexSkills(options) {
+      deps.calls.push(['syncCodexSkills', options]);
+      return {
+        codexRoot: '/tmp/codex-skills',
+        results: [{ id: 'skill:video-editor', action: 'updated' }],
+        restartRequired: true,
+      };
+    },
+    async syncClaudeSkills(options) {
+      deps.calls.push(['syncClaudeSkills', options]);
+      return { claudeRoot: '/tmp/claude-skills', results: [{ id: 'skill:video-editor', action: 'current' }] };
+    },
+  });
+
+  const result = await runUpdate(['skill:video-editor'], {}, deps);
+
+  assert.deepEqual(result.skillProjection.targets, ['codex', 'claude']);
+  assert.deepEqual(result.skillProjection.skillIds, ['skill:video-editor']);
+  assert.equal(deps.calls.find(call => call[0] === 'syncCodexSkills')[1].force, false);
+  assert.equal(deps.calls.find(call => call[0] === 'syncClaudeSkills')[1].force, false);
+  assert.equal(result.skillProjection.restartRequired, true);
+  assert.match(
+    deps.calls.filter(call => call[0] === 'log').map(call => call[1]).join('\n'),
+    /Restart affected native agent sessions.*hot reload was not performed/,
+  );
+});
+
+test('stack force never broadens into a related skill projection force', async () => {
+  const deps = createDeps({
+    async listInstalled() {
+      return [
+        { id: 'stack:video-editor', kind: 'stack', name: 'video-editor', path: '/tmp/stack-video-editor' },
+        { id: 'skill:video-editor', kind: 'skill', name: 'video-editor', source: 'rudi' },
+      ];
+    },
+    async resolvePackage(id) {
+      return {
+        id,
+        kind: 'stack',
+        relatedSkills: [{ id: 'skill:video-editor', kind: 'skill' }],
+      };
+    },
+    async getManagedNativeSkillHosts() {
+      return ['codex'];
+    },
+    async syncCodexSkills(options) {
+      deps.calls.push(['syncCodexSkills', options]);
+      return { results: [{ id: 'skill:video-editor', action: 'drifted' }] };
+    },
+  });
+
+  await runUpdate(
+    ['stack:video-editor'],
+    { force: true, 'with-related-skills': true },
+    deps,
+  );
+
+  assert.equal(deps.calls.find(call => call[0] === 'syncCodexSkills')[1].force, false);
 });
 
 test('runUpdate requires explicit --all before touching the whole installed inventory', async () => {
@@ -639,6 +706,21 @@ test('runUpdate dry-run logs requested native projection failures for human user
 
 test('runUpdate dry-run returns the exact suite plan without package or index mutations', async () => {
   const deps = createDeps({
+    async fetchIndex(options) {
+      deps.calls.push(['fetchIndex', options]);
+      return {
+        schemaVersion: '2',
+        packages: {
+          'stack:swe-engineering': {
+            id: 'stack:swe-engineering',
+            kind: 'stack',
+            name: 'SWE Engineering',
+            version: '1.0.0',
+            related: { skills: ['skill:swe-compliance-checklist'] },
+          },
+        },
+      };
+    },
     async listInstalled() {
       return [
         { id: 'stack:swe-engineering', kind: 'stack', name: 'swe-engineering', path: '/tmp/stack-swe-engineering' },
@@ -673,10 +755,30 @@ test('runUpdate dry-run returns the exact suite plan without package or index mu
     deps.calls.filter((call) => ['updatePackage', 'rebuildToolIndex'].includes(call[0])),
     [],
   );
+  assert.deepEqual(
+    deps.calls.find((call) => call[0] === 'fetchIndex'),
+    ['fetchIndex', { force: true, persist: false }],
+  );
+  assert.equal(deps.calls.some((call) => call[0] === 'resolvePackage'), false);
 });
 
 test('runUpdate suite dry-run projects only planned skills to explicitly selected native hosts', async () => {
   const deps = createDeps({
+    async fetchIndex(options) {
+      deps.calls.push(['fetchIndex', options]);
+      return {
+        schemaVersion: '2',
+        packages: {
+          'stack:swe-engineering': {
+            id: 'stack:swe-engineering',
+            kind: 'stack',
+            name: 'SWE Engineering',
+            version: '1.0.0',
+            related: { skills: ['skill:swe-compliance-checklist'] },
+          },
+        },
+      };
+    },
     async listInstalled() {
       return [
         { id: 'stack:swe-engineering', kind: 'stack', name: 'swe-engineering', path: '/tmp/stack-swe-engineering' },
@@ -713,7 +815,7 @@ test('runUpdate suite dry-run projects only planned skills to explicitly selecte
   assert.deepEqual(syncCall[1].skills.map((skill) => skill.id), [
     'skill:swe-compliance-checklist',
   ]);
-  assert.equal(syncCall[1].force, true);
+  assert.equal(syncCall[1].force, false);
   assert.equal(syncCall[1].dryRun, true);
   assert.deepEqual(result.skillProjection.targets, ['codex']);
   assert.deepEqual(result.skillProjection.skillIds, ['skill:swe-compliance-checklist']);

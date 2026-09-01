@@ -251,12 +251,14 @@ function installCanonicalStackManifest(destPath, manifest = null) {
  * @param {Object} options
  * @param {string} [options.url] - Registry URL
  * @param {boolean} [options.force] - Force refresh, ignore cache
+ * @param {boolean} [options.persist] - Persist a fetched/local index to the cache
  * @returns {Promise<Object>} Registry index
  */
 export async function fetchIndex(options = {}) {
   const configuredUrl = process.env.RUDI_REGISTRY_URL;
   const url = options.url || configuredUrl || DEFAULT_REGISTRY_URL;
   const force = options.force ?? false;
+  const persist = options.persist !== false;
 
   // In development, prefer local registry if it's newer than cache
   const localResult = getLocalIndex();
@@ -266,7 +268,7 @@ export async function fetchIndex(options = {}) {
 
     // Use local if: forcing, no cache, or local is newer
     if (force || !cacheMtime || localMtime > cacheMtime) {
-      cacheIndex(localIndex);
+      if (persist) cacheIndex(localIndex);
       return localIndex;
     }
   }
@@ -290,7 +292,7 @@ export async function fetchIndex(options = {}) {
     const index = await fetchRemoteRegistryIndex(url);
 
     // Cache the result
-    cacheIndex(index);
+    if (persist) cacheIndex(index);
 
     return index;
   } catch (error) {

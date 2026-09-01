@@ -155,6 +155,9 @@ OPTIONS
   --allow-scripts          Allow reviewed dependency/build code for npm/GitHub sources
   --with-related-skills    Include optional companion skills declared by a stack
   --no-related-skills      Install the required operator skill only
+  --sync-skills=<hosts>    For a direct skill install, reconcile to codex, claude,
+                           gemini, antigravity, or all
+  --no-sync-skills         For a direct skill install, install only the canonical package
 
 OUTPUT
   Install currently emits human progress output. Machine-readable JSON is
@@ -166,6 +169,8 @@ EXAMPLES
   rudi install runtime:python
   rudi install binary:ffmpeg
   rudi install workflow:daily-brief
+  rudi install skill:rudi-diagnose --sync-skills=codex,claude
+  rudi install skill:rudi-diagnose --no-sync-skills
   rudi install https://github.com/acme/rudi-packages/tree/main/catalog/stacks/demo
 
 GITHUB SOURCES
@@ -192,15 +197,19 @@ OPTIONS
   --with-related-skills         For a stack, also update installed Registry related.skills
   --sync-skills=<host[,host]>   Project only updated skills to codex, claude, gemini,
                                 antigravity, or all
+  --no-sync-skills              Do not reconcile native projections
   --preserve-state              Preserve install-local state during package replacement
-  --dry-run                     Resolve and report the plan without package, index, or
-                                native-wrapper writes; Registry metadata may refresh
+  --dry-run                     Resolve and report the plan without package, index, cache,
+                                receipt, or native-projection writes; Registry metadata is
+                                refreshed in memory
   --json                        Emit exactly one structured result document
 
 SAFETY
   A package id or --all is required. Related skills that are not installed are
   reported and skipped; update never installs them. Pinned GitHub packages are
   skipped by --all and require an explicit GitHub tree URL plus --force to change.
+  An exact skill update reconciles its already-managed host projections by default.
+  Drifted and unmanaged wrappers are preserved unless exact scoped --force is used.
 
 EXAMPLES
   rudi update stack:swe-engineering
@@ -414,17 +423,23 @@ USAGE
   rudi skills sync <codex|claude|gemini|antigravity> [--all] [options]
 
 COMMANDS
-  sync codex       Create native ~/.codex/skills wrappers for installed RUDI skills
-  sync claude      Create native ~/.claude/skills wrappers for installed RUDI skills
-  sync gemini      Create native ~/.gemini/skills wrappers for installed RUDI skills
-  sync antigravity Create native ~/.gemini/antigravity-cli/skills wrappers for installed RUDI skills
+  sync codex       Reconcile managed ~/.codex/skills projections
+  sync claude      Reconcile managed ~/.claude/skills projections
+  sync gemini      Reconcile managed ~/.gemini/skills projections
+  sync antigravity Reconcile managed ~/.gemini/antigravity-cli/skills projections
 
 OPTIONS
   --all            Explicitly select the whole installed RUDI skill inventory
-  --force          Overwrite existing native skill wrappers; whole-inventory force
-                   requires --all
+  --force          Replace drifted or unmanaged wrappers only in the exact selected
+                   scope; whole-inventory force requires --all
   --dry-run        Preview sync results without writing files
   --json           Output JSON
+
+OWNERSHIP
+  ~/.rudi/skills is canonical. Host directories are derived complete-tree
+  projections with receipts under ~/.rudi/state/native-skills/<host>/.
+  Managed unchanged projections update automatically. Drifted or unmanaged
+  trees are preserved. An identical legacy projection is adopted safely.
 
 EXAMPLES
   rudi skills

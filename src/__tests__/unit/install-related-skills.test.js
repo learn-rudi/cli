@@ -13,6 +13,7 @@ import {
   getExternalAgentInstallGuidance,
   getInstallActivationPolicy,
   getRelatedSkillInstallMode,
+  resolveInstallNativeSkillHosts,
   selectRelatedSkillsForInstall,
   syncRelatedSkillWrappers,
   validateExternalStackCommand,
@@ -47,6 +48,61 @@ test('install rejects unsupported --json before registry reads or package mutati
 
   assert.match(calls[0][1], /does not support --json/);
   assert.deepEqual(calls.at(-1), ['exit', 1]);
+});
+
+test('direct skill install reconciles only that skill to configured native hosts by default', async () => {
+  const root = fs.mkdtempSync(path.join(os.tmpdir(), 'rudi-direct-skill-install-'));
+  const sourcePath = path.join(root, 'demo.md');
+  const calls = [];
+  fs.writeFileSync(sourcePath, '---\nname: Demo\ndescription: Demo skill\n---\n\nRun it.\n');
+
+  try {
+    await cmdInstall(['skill:demo'], {}, {
+      async fetchIndex() {},
+      async resolvePackage() {
+        return {
+          id: 'skill:demo',
+          kind: 'skill',
+          name: 'Demo',
+          version: '1.2.3',
+          description: 'Demo skill',
+          installed: false,
+          dependencies: [],
+          requires: {},
+        };
+      },
+      async installPackage() {
+        return { success: true, id: 'skill:demo', path: sourcePath, installed: ['skill:demo'] };
+      },
+      installedAgents: [{ id: 'codex' }, { id: 'claude-code' }, { id: 'cursor' }],
+      async reconcileNativeSkills(options) {
+        calls.push(options);
+        return {
+          hosts: options.hosts,
+          skillIds: options.skills.map(skill => skill.id),
+          results: Object.fromEntries(options.hosts.map(host => [host, [{
+            host,
+            id: 'skill:demo',
+            action: 'created',
+            restartRequired: true,
+          }]])),
+          failed: 0,
+          failures: [],
+          restartRequired: true,
+        };
+      },
+      exit(code) {
+        assert.fail(`install should not exit ${code}`);
+      },
+    });
+
+    assert.equal(calls.length, 1);
+    assert.deepEqual(calls[0].hosts, ['codex', 'claude']);
+    assert.deepEqual(calls[0].skills.map(skill => skill.id), ['skill:demo']);
+    assert.equal(calls[0].force, false);
+  } finally {
+    fs.rmSync(root, { recursive: true, force: true });
+  }
 });
 
 test('GitHub tree install resolves without refreshing the public registry', async () => {
@@ -212,6 +268,17 @@ test('getRelatedSkillInstallMode maps explicit related-skill flags', () => {
   assert.equal(getRelatedSkillInstallMode({ 'no-related-skills': true }), 'skip');
   assert.equal(getRelatedSkillInstallMode({ noRelatedSkills: true }), 'skip');
   assert.equal(getRelatedSkillInstallMode({}), 'offer');
+});
+
+test('install native skill host selection supports explicit targets and a clear opt-out', () => {
+  const agents = [{ id: 'codex' }, { id: 'claude-code' }, { id: 'gemini' }];
+  assert.deepEqual(resolveInstallNativeSkillHosts({}, agents), ['codex', 'claude', 'gemini']);
+  assert.deepEqual(resolveInstallNativeSkillHosts({ 'sync-skills': 'claude,codex' }, agents), ['claude', 'codex']);
+  assert.deepEqual(resolveInstallNativeSkillHosts({ 'no-sync-skills': true }, agents), []);
+  assert.throws(
+    () => resolveInstallNativeSkillHosts({ 'no-sync-skills': true, 'sync-skills': 'codex' }, agents),
+    /Choose --no-sync-skills or --sync-skills/,
+  );
 });
 
 test('buildRelatedSkillInstallPlan always installs the operator and gates companion skills by mode', () => {
@@ -415,7 +482,7 @@ test('activateInstalledStack indexes immediately when configured and defers when
   });
 });
 
-test('syncRelatedSkillWrappers creates non-destructive Codex and Claude wrappers for newly installed skills', async () => {
+test('syncRelatedSkillWrappers uses one coordinator for every configured frontier host', async () => {
   const calls = [];
   const result = await syncRelatedSkillWrappers(
     resolvedStack.relatedSkills,
@@ -424,23 +491,25 @@ test('syncRelatedSkillWrappers creates non-destructive Codex and Claude wrappers
       success: true,
       path: '/tmp/shortform-your-words-script.md',
     }],
-    [{ id: 'codex' }, { id: 'claude-code' }, { id: 'cursor' }],
+    [{ id: 'codex' }, { id: 'claude-code' }, { id: 'gemini' }, { id: 'antigravity' }, { id: 'cursor' }],
     {
-      async syncCodexSkills(options) {
-        calls.push(['codex', options]);
-        return { results: [{ action: 'created' }] };
-      },
-      async syncClaudeSkills(options) {
-        calls.push(['claude', options]);
-        return { results: [{ action: 'created' }] };
+      async reconcileNativeSkills(options) {
+        calls.push(options);
+        return {
+          results: Object.fromEntries(options.hosts.map(host => [host, [{ action: 'created' }]])),
+          failed: 0,
+          failures: [],
+          restartRequired: true,
+        };
       },
     }
   );
 
-  assert.deepEqual(calls.map((call) => call[0]), ['codex', 'claude']);
-  assert.equal(calls[0][1].force, false);
-  assert.equal(calls[0][1].skills[0].entryPath, '/tmp/shortform-your-words-script.md');
-  assert.deepEqual(result.targets, ['codex', 'claude']);
+  assert.equal(calls.length, 1);
+  assert.deepEqual(calls[0].hosts, ['codex', 'claude', 'gemini', 'antigravity']);
+  assert.equal(calls[0].force, false);
+  assert.equal(calls[0].skills[0].entryPath, '/tmp/shortform-your-words-script.md');
+  assert.deepEqual(result.targets, ['codex', 'claude', 'gemini', 'antigravity']);
 });
 
 test('syncRelatedSkillWrappers reports skipped existing wrappers without claiming they changed', async () => {
@@ -453,22 +522,27 @@ test('syncRelatedSkillWrappers reports skipped existing wrappers without claimin
     }],
     [{ id: 'codex' }],
     {
-      async syncCodexSkills() {
+      async reconcileNativeSkills(options) {
         return {
-          results: [{
-            id: 'skill:shortform-your-words-script',
-            action: 'skipped',
-            reason: 'Codex skill already exists; use --force to update',
-          }],
+          results: {
+            codex: [{
+              id: 'skill:shortform-your-words-script',
+              action: 'current',
+            }],
+          },
+          failed: 0,
+          failures: [],
+          restartRequired: false,
         };
       },
     },
   );
 
   assert.deepEqual(result.outcomes.codex, {
-    status: 'preserved',
+    status: 'current',
     changed: 0,
     skipped: 1,
+    conflicts: 0,
     failed: 0,
   });
 });
@@ -485,17 +559,23 @@ test('syncRelatedSkillWrappers projects bundled installs from their SKILL.md ent
       [{ id: 'skill:rudi-worktree-closeout', success: true, path: packageDir }],
       [{ id: 'codex' }],
       {
-        async syncCodexSkills(options) {
+        async reconcileNativeSkills(options) {
           assert.equal(
             options.skills[0].entryPath,
             path.join(packageDir, 'SKILL.md'),
           );
-          return { results: [{ action: 'created' }] };
+          return {
+            results: { codex: [{ action: 'created' }] },
+            failed: 0,
+            failures: [],
+            restartRequired: true,
+          };
         },
       },
     );
 
     assert.equal(result.outcomes.codex.status, 'changed');
+    assert.equal(result.restartRequired, true);
   } finally {
     fs.rmSync(root, { recursive: true, force: true });
   }

@@ -36,6 +36,7 @@ test('fetchIndex uses the canonical root index without a fallback', async () => 
     const diagnostics = [];
     const index = await fetchIndex({
       force: true,
+      persist: false,
       onDiagnostic: (event) => diagnostics.push(event),
     });
 
@@ -43,6 +44,7 @@ test('fetchIndex uses the canonical root index without a fallback', async () => 
     assert.deepEqual(requests, [DEFAULT_REGISTRY_URL]);
     assert.equal(index.schemaVersion, '2');
     assert.deepEqual(diagnostics, []);
+    assert.equal(fs.existsSync(path.join(process.env.RUDI_HOME, 'cache', 'registry.json')), false);
   } finally {
     globalThis.fetch = previous.fetch;
     for (const key of ['RUDI_HOME', 'USE_LOCAL_REGISTRY', 'RUDI_REGISTRY_ROOT', 'RUDI_REGISTRY_URL']) {

@@ -155,9 +155,9 @@ This modifies the agent's MCP configuration to include one managed RUDI router;
 stack discovery and secret injection stay inside RUDI.
 
 Every registry stack declares a primary operator skill. A normal stack install
-installs that skill automatically and creates a native wrapper for detected
-Codex and Claude hosts without overwriting an existing wrapper. Additional
-companion workflows remain optional:
+installs that skill automatically and reconciles it through the same native
+projection coordinator used for Codex, Claude, Gemini, and Antigravity.
+Additional companion workflows remain optional:
 
 ```bash
 rudi install stack:video-editor                 # operator skill included
@@ -170,21 +170,41 @@ to select it or mention it as `$skill-name`. The operator guides the host
 through the stack's MCP tools; users do not need to know the individual tool
 names.
 
-Each native host has its own skill directory. After installing RUDI skills,
-sync editable native wrappers when you want them to appear in the host's
-skill/slash UI. A sync without `--force` remains a non-destructive way to create
-missing wrappers. To overwrite existing wrappers, name the exact installed
-RUDI skill IDs or explicitly select the whole inventory with `--all`:
+`~/.rudi/skills` is the canonical installed package layer. Each native host has
+a derived complete-tree projection, with per-host/per-skill ownership receipts
+under `~/.rudi/state/native-skills/<host>/`. Each receipt binds the source-file,
+complete canonical-package, and rendered-tree digests to the exact target. A direct skill install reconciles
+only that skill to configured native hosts by default; select hosts explicitly
+or opt out when needed:
 
 ```bash
-rudi skills sync codex
+rudi install skill:rudi-diagnose
+rudi install skill:rudi-diagnose --sync-skills=codex,claude
+rudi install skill:rudi-diagnose --no-sync-skills
+```
+
+Reconciliation creates missing trees, adopts an identical legacy tree, updates
+an unchanged managed tree, and replaces the whole directory so stale files are
+pruned. A tree that differs from its receipt is `drifted`; a collision without
+a receipt is `unmanaged`. Both are preserved until the user reviews the exact
+skill and supplies scoped `--force`. Whole-inventory force additionally
+requires `--all`:
+
+```bash
+rudi skills sync codex                 # reconcile/adopt without replacing conflicts
 rudi skills sync claude
 rudi skills sync gemini
 rudi skills sync antigravity
 rudi skills sync codex skill:rudi-change-map skill:rudi-engineering-gate --force
 rudi skills sync claude skill:rudi-change-map --force
-rudi skills sync codex --all --force  # explicit whole-inventory overwrite
+rudi skills sync codex --all --force  # explicit, reviewed whole-inventory replacement
 ```
+
+Every result reports `restartRequired` when host state changed. Restart active
+native sessions to load the new projection; RUDI does not claim hot reload.
+`rudi check skill:<id> --json` reports the canonical package and all four host
+states. `rudi agent hosts --json` counts only receipt-backed, digest-matching
+trees as synchronized; unrelated skill directories do not qualify.
 
 ### Running Headless Agent Hosts
 
@@ -276,25 +296,33 @@ rudi shims check         # Validate shim targets exist
 ```bash
 rudi update stack:slack             # Update one stack and rebuild its tool index
 rudi update stack:slack --preserve-state  # Opt in to preserving install-local state paths
+rudi update skill:rudi-diagnose     # Reconcile already-managed host projections
 rudi update --all                    # Explicitly update the whole installed inventory
-rudi remove slack        # Uninstall a package
+rudi remove skill:rudi-diagnose     # Remove only unchanged RUDI-owned projections
+rudi remove slack                    # Uninstall a package
 rudi doctor              # Check system health
 ```
 
 For a stack that declares a suite through Registry `related.skills`, use
 `--with-related-skills` to update the stack plus only those related skill
 packages that are already installed. Missing related skills are reported and
-skipped; `update` never turns them into implicit installs. `--sync-skills`
-then projects only the skill IDs updated by this command:
+skipped; `update` never turns them into implicit installs. Exact skill updates
+reconcile already-managed host projections without blanket force.
+`--sync-skills` explicitly selects hosts and still projects only skill IDs
+updated by this command:
 
 ```bash
 # Resolve the exact package, index, and Codex projection plan without those writes.
-# Registry metadata may still refresh so the plan uses current relationships.
+# Registry metadata is refreshed in memory without persisting the cache.
 rudi update stack:swe-engineering --with-related-skills --sync-skills=codex --dry-run --json
 
-# Apply the same bounded suite update and overwrite only its affected Codex wrappers.
+# Apply the same bounded suite update and reconcile only its affected Codex projections.
 rudi update stack:swe-engineering --with-related-skills --sync-skills=codex
 ```
+
+Use `--no-sync-skills` to suppress projection reconciliation. Drifted and
+unmanaged update targets remain intact unless one exact selected skill is
+updated with scoped `--force`.
 
 `rudi update` without a package now fails closed; use `--all` when broad scope
 is intentional. Update JSON mode emits one structured document. Install keeps

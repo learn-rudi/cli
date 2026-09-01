@@ -18,6 +18,10 @@ import {
 } from '@learnrudi/core';
 import { unregisterMcpAll } from '@learnrudi/mcp';
 import { removeSecret } from '@learnrudi/secrets';
+import {
+  NATIVE_SKILL_HOSTS,
+  removeNativeSkillProjections,
+} from '../native-skills/lifecycle.js';
 
 const defaultStackCleanupDeps = {
   readRudiConfig,
@@ -49,7 +53,7 @@ function normalizeStackPackageId(stackId) {
 export function filterRemovablePackages(packages) {
   return packages.filter(pkg => {
     if (pkg.kind !== 'skill') return true;
-    return !pkg.source || pkg.source === 'rudi';
+    return !pkg.source || pkg.source === 'rudi' || typeof pkg.source === 'object';
   });
 }
 
@@ -97,6 +101,30 @@ export async function cleanupRemovedStack(stackId, deps = defaultStackCleanupDep
 
   const prunedToolIndex = deps.removeStackFromToolIndex(normalizedStackId);
   return { removedSecrets, prunedToolIndex };
+}
+
+export async function cleanupRemovedSkill(skill, dependencies = {}) {
+  const removeProjections = dependencies.removeNativeSkillProjections
+    || removeNativeSkillProjections;
+  return removeProjections({
+    hosts: [...NATIVE_SKILL_HOSTS],
+    skill,
+  });
+}
+
+function reportRemovedSkillProjections(projection) {
+  for (const [host, item] of Object.entries(projection.results || {})) {
+    if (item.action === 'failed') {
+      console.error(`  ✗ ${host} native wrapper cleanup failed: ${item.error}`);
+    } else if (['drifted', 'unmanaged'].includes(item.action)) {
+      console.warn(`  ! ${host} ${item.action} native wrapper preserved as an orphan/conflict`);
+    } else if (item.action === 'removed') {
+      console.log(`  ✓ ${host} unchanged managed native wrapper removed`);
+    }
+  }
+  if (projection.restartRequired) {
+    console.log('  Restart affected native agent sessions to unload removed skills (hot reload was not performed).');
+  }
 }
 
 async function finalizeRemovedStack(stackId, targetAgents) {
@@ -155,6 +183,11 @@ export async function cmdRemove(args, flags) {
     console.error(`Package not installed: ${pkgId}`);
     process.exit(1);
   }
+  const installedSkill = fullId.startsWith('skill:')
+    ? (await listInstalled('skill')).find(pkg => pkg.id === fullId && (
+        !pkg.source || pkg.source === 'rudi' || pkg.source?.type
+      ))
+    : null;
 
   // Confirm unless --force
   if (!flags.force && !flags.y) {
@@ -171,6 +204,14 @@ export async function cmdRemove(args, flags) {
     if (result.success) {
       if (isStackPackage(fullId)) {
         await finalizeRemovedStack(fullId, targetAgents);
+      } else if (fullId.startsWith('skill:') && installedSkill) {
+        const projection = await cleanupRemovedSkill(installedSkill);
+        reportRemovedSkillProjections(projection);
+        if (projection.failed > 0) {
+          throw new Error(
+            `Removed ${fullId}, but ${projection.failed} owned native projection cleanup(s) failed`,
+          );
+        }
       }
 
       console.log(`✓ Removed ${fullId}`);
@@ -258,6 +299,14 @@ async function removeBulk(kind, flags) {
         if (result.success) {
           if (isStackPackage(pkg.id, pkg.kind)) {
             await finalizeRemovedStack(pkg.id, targetAgents);
+          } else if (pkg.kind === 'skill') {
+            const projection = await cleanupRemovedSkill(pkg);
+            reportRemovedSkillProjections(projection);
+            if (projection.failed > 0) {
+              throw new Error(
+                `Removed ${pkg.id}, but ${projection.failed} owned native projection cleanup(s) failed`,
+              );
+            }
           }
 
           console.log(`  ✓ Removed ${pkg.id}`);

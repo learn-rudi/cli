@@ -2,10 +2,35 @@ import { test } from 'node:test';
 import assert from 'node:assert/strict';
 
 import {
+  cleanupRemovedSkill,
   cleanupRemovedStack,
   filterRemovablePackages,
   isPackageInstalledForRemoval,
 } from '../../commands/remove.js';
+
+test('cleanupRemovedSkill delegates exact ownership-safe removal across all native hosts', async () => {
+  const calls = [];
+  const skill = { id: 'skill:demo', kind: 'skill', source: 'rudi' };
+  const result = await cleanupRemovedSkill(skill, {
+    async removeNativeSkillProjections(options) {
+      calls.push(options);
+      return {
+        results: {
+          codex: { action: 'removed', restartRequired: true },
+          claude: { action: 'drifted', restartRequired: false },
+        },
+        failed: 0,
+        failures: [],
+        restartRequired: true,
+      };
+    },
+  });
+
+  assert.equal(calls.length, 1);
+  assert.equal(calls[0].skill, skill);
+  assert.deepEqual(calls[0].hosts, ['codex', 'claude', 'gemini', 'antigravity']);
+  assert.equal(result.results.claude.action, 'drifted');
+});
 
 test('cleanupRemovedStack removes stack config, orphaned secrets, and cached tools', async () => {
   const calls = [];
@@ -65,6 +90,7 @@ test('filterRemovablePackages excludes external discovered skills', () => {
   const packages = filterRemovablePackages([
     { id: 'skill:local-flat', kind: 'skill', source: 'rudi' },
     { id: 'skill:legacy-local', kind: 'skill' },
+    { id: 'skill:pinned-rudi', kind: 'skill', source: { type: 'github' } },
     { id: 'skill:external-docx', kind: 'skill', source: 'claude' },
     { id: 'stack:slack', kind: 'stack' },
   ]);
@@ -72,6 +98,7 @@ test('filterRemovablePackages excludes external discovered skills', () => {
   assert.deepEqual(packages.map(pkg => pkg.id), [
     'skill:local-flat',
     'skill:legacy-local',
+    'skill:pinned-rudi',
     'stack:slack',
   ]);
 });
