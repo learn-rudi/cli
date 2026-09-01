@@ -2,7 +2,7 @@
  * Argument parsing utilities
  */
 
-const BOOLEAN_LONG_FLAGS = new Set(['all', 'force', 'dry-run', 'json']);
+const BOOLEAN_LONG_FLAGS = new Set(['all', 'force', 'dry-run', 'json', 'no-sync-skills']);
 
 /**
  * Parse command line arguments

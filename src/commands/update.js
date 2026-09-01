@@ -17,6 +17,10 @@ import {
 import { PATHS } from '@learnrudi/env';
 import { fetchIndex } from '@learnrudi/registry-client';
 import {
+  getManagedNativeSkillHosts as findManagedNativeSkillHosts,
+  NATIVE_SKILL_HOSTS,
+} from '../native-skills/lifecycle.js';
+import {
   buildStackIfNeeded,
   getManifestSecrets,
   getStackCommand,
@@ -24,7 +28,10 @@ import {
   loadManifest,
   validateStackEntryPoint,
 } from './install.js';
-import { buildRelatedSkillUpdatePlan } from './related-skills.js';
+import {
+  buildRelatedSkillUpdatePlan,
+  getRelatedSkillIds,
+} from './related-skills.js';
 import {
   parseNativeSkillSyncTargets,
   syncSelectedSkillsToNativeHosts,
@@ -511,6 +518,7 @@ const defaultDependencies = {
   validateStack: validateStackEntryPoint,
   registerStack: addStack,
   rebuildToolIndex,
+  getManagedNativeSkillHosts: findManagedNativeSkillHosts,
   log: console.log,
   error: console.error,
 };
@@ -617,19 +625,31 @@ function getUpdatedSkillIds(updatedPackages) {
     .sort();
 }
 
+function resolveDryRunRelatedSkills(registryIndex, packageId) {
+  const pkg = registryIndex?.packages?.[packageId];
+  if (!pkg || typeof pkg !== 'object' || Array.isArray(pkg)) {
+    throw new Error(`Package not found in refreshed Registry index: ${packageId}`);
+  }
+  return {
+    id: packageId,
+    kind: 'stack',
+    relatedSkills: getRelatedSkillIds(pkg).map(id => ({ id, kind: 'skill' })),
+  };
+}
+
 function logNativeSkillSyncHint(skillIds, deps) {
   if (skillIds.length === 0) return;
 
   const exactSkillIds = skillIds.join(' ');
 
   deps.log('');
-  deps.log(`Updated ${skillIds.length} skill package(s). Native frontier-host skill wrappers are not overwritten automatically.`);
-  deps.log('To sync native wrappers for updated RUDI skills, run:');
-  deps.log(`  rudi skills sync codex ${exactSkillIds} --force`);
-  deps.log(`  rudi skills sync claude ${exactSkillIds} --force`);
-  deps.log(`  rudi skills sync gemini ${exactSkillIds} --force`);
-  deps.log(`  rudi skills sync antigravity ${exactSkillIds} --force`);
-  deps.log('These commands overwrite only the named native wrappers; omit --force to create only missing wrappers.');
+  deps.log(`Updated ${skillIds.length} skill package(s). No already-managed native projections were selected.`);
+  deps.log('To reconcile exact host projections without replacing conflicts, run:');
+  deps.log(`  rudi skills sync codex ${exactSkillIds}`);
+  deps.log(`  rudi skills sync claude ${exactSkillIds}`);
+  deps.log(`  rudi skills sync gemini ${exactSkillIds}`);
+  deps.log(`  rudi skills sync antigravity ${exactSkillIds}`);
+  deps.log('Review drifted/unmanaged results before adding scoped --force to one of these exact commands.');
 }
 
 function logSkillProjectionFailures(skillProjection, deps) {
@@ -722,7 +742,14 @@ export async function runUpdate(args = [], flags = {}, deps = defaultDependencie
   const pkgId = args[0];
   const all = flags.all === true;
   const dryRun = isTruthyFlag(flags['dry-run']) || isTruthyFlag(flags.dryRun);
-  const skillSyncTargets = parseNativeSkillSyncTargets(flags['sync-skills'] ?? flags.syncSkills);
+  const explicitSkillSync = flags['sync-skills'] ?? flags.syncSkills;
+  const noSkillSync = flags['no-sync-skills'] === true || flags.noSyncSkills === true;
+  if (noSkillSync && explicitSkillSync !== undefined) {
+    throw new Error('Choose --no-sync-skills or --sync-skills=<host[,host]>, not both');
+  }
+  let skillSyncTargets = noSkillSync
+    ? []
+    : parseNativeSkillSyncTargets(explicitSkillSync);
   if (!pkgId && !all) {
     throw new Error('Package id is required. Use --all to update the whole installed inventory');
   }
@@ -736,6 +763,7 @@ export async function runUpdate(args = [], flags = {}, deps = defaultDependencie
   let installed = null;
   let updateTargets = [];
   let relatedSkills = { selected: [], notInstalled: [] };
+  let refreshedRegistryIndex = null;
 
   if (pkgId) {
     target = await resolveUpdateTarget(pkgId, deps);
@@ -768,7 +796,9 @@ export async function runUpdate(args = [], flags = {}, deps = defaultDependencie
 
   if (updateTargets.length > 0) {
     deps.log('Refreshing registry...');
-    await deps.fetchIndex({ force: true });
+    refreshedRegistryIndex = await deps.fetchIndex(
+      dryRun ? { force: true, persist: false } : { force: true },
+    );
   }
 
   if (pkgId && (flags['with-related-skills'] === true || flags.withRelatedSkills === true)) {
@@ -776,7 +806,9 @@ export async function runUpdate(args = [], flags = {}, deps = defaultDependencie
       throw new Error('--with-related-skills requires an installed stack target');
     }
     installed = await getInstalledPackages(deps);
-    const resolved = await deps.resolvePackage(target.id);
+    const resolved = dryRun
+      ? resolveDryRunRelatedSkills(refreshedRegistryIndex, target.id)
+      : await deps.resolvePackage(target.id);
     relatedSkills = buildRelatedSkillUpdatePlan(resolved, installed);
     updateTargets.push(...relatedSkills.selected);
     for (const id of relatedSkills.notInstalled) {
@@ -793,6 +825,27 @@ export async function runUpdate(args = [], flags = {}, deps = defaultDependencie
     .filter((pkg) => (pkg.kind || packageKindFromId(pkg.id)) === 'skill')
     .map((pkg) => pkg.id)
     .sort();
+  if (
+    pkgId &&
+    !noSkillSync &&
+    explicitSkillSync === undefined &&
+    plannedSkillIds.length > 0
+  ) {
+    const managedHosts = new Set();
+    const getManagedHosts = deps.getManagedNativeSkillHosts || findManagedNativeSkillHosts;
+    for (const skill of updateTargets.filter(pkg => (
+      (pkg.kind || packageKindFromId(pkg.id)) === 'skill'
+    ))) {
+      for (const host of await getManagedHosts(skill)) managedHosts.add(host);
+    }
+    skillSyncTargets = NATIVE_SKILL_HOSTS.filter(host => managedHosts.has(host));
+  }
+  const projectionForce = Boolean(
+    flags.force === true
+      && pkgId
+      && target?.kind === 'skill'
+      && plannedSkillIds.length === 1,
+  );
 
   if (dryRun) {
     deps.log(`Dry run: would update ${plannedPackages.length} package(s)`);
@@ -805,7 +858,7 @@ export async function runUpdate(args = [], flags = {}, deps = defaultDependencie
     const skillProjection = await syncSelectedSkillsToNativeHosts({
       targets: skillSyncTargets,
       skillIds: plannedSkillIds,
-      force: true,
+      force: projectionForce,
       dryRun: true,
     }, deps);
     logSkillProjectionFailures(skillProjection, deps);
@@ -874,10 +927,13 @@ export async function runUpdate(args = [], flags = {}, deps = defaultDependencie
   const skillProjection = await syncSelectedSkillsToNativeHosts({
     targets: skillSyncTargets,
     skillIds: updatedSkillIds,
-    force: true,
+    force: projectionForce,
     dryRun: false,
   }, deps);
   logSkillProjectionFailures(skillProjection, deps);
+  if (skillProjection.restartRequired) {
+    deps.log('Restart affected native agent sessions to load skill changes; hot reload was not performed.');
+  }
 
   if (pkgId && updateTargets.length === 1 && failedPackages.length === 0) {
     deps.log(`Updated ${updatedPackages[0].id}`);

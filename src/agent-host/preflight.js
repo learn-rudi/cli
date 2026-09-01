@@ -1,5 +1,3 @@
-import fs from 'node:fs';
-import os from 'node:os';
 import path from 'node:path';
 import { spawnSync } from 'node:child_process';
 import {
@@ -13,6 +11,7 @@ import {
   resolveAgentProviderId,
 } from './providers/index.js';
 import { buildAgentExecutableEnvironment } from './providers/common.js';
+import { summarizeNativeSkillHost } from '../native-skills/lifecycle.js';
 
 const MCP_AGENT_IDS = Object.freeze({ claude: 'claude-code' });
 
@@ -32,22 +31,6 @@ function runCheck(binaryPath, args, spawnSyncImpl, timeout = 5000) {
   };
 }
 
-function skillsRoot(provider) {
-  if (provider === 'claude') return path.join(process.env.CLAUDE_HOME || path.join(os.homedir(), '.claude'), 'skills');
-  if (provider === 'codex') return path.join(process.env.CODEX_HOME || path.join(os.homedir(), '.codex'), 'skills');
-  if (provider === 'gemini') return path.join(process.env.GEMINI_HOME || path.join(os.homedir(), '.gemini'), 'skills');
-  return path.join(process.env.ANTIGRAVITY_HOME || path.join(os.homedir(), '.gemini', 'antigravity-cli'), 'skills');
-}
-
-function hasSyncedSkills(provider) {
-  const root = skillsRoot(provider);
-  try {
-    return fs.readdirSync(root, { withFileTypes: true }).some(entry => entry.isDirectory());
-  } catch {
-    return false;
-  }
-}
-
 function hasRudiRouter(provider) {
   const agentId = MCP_AGENT_IDS[provider] || provider;
   const config = AGENT_CONFIGS.find(item => item.id === agentId);
@@ -60,6 +43,21 @@ function hasRudiRouter(provider) {
 export async function inspectAgentHost(provider, dependencies = {}) {
   const { spawnSyncImpl = spawnSync } = dependencies;
   const canonicalProvider = resolveAgentProviderId(provider);
+  const summarizeSkills = dependencies.summarizeNativeSkillHostImpl || summarizeNativeSkillHost;
+  let skillProjection;
+  try {
+    skillProjection = await summarizeSkills(canonicalProvider);
+  } catch (error) {
+    skillProjection = {
+      current: 0,
+      drifted: 0,
+      missing: 0,
+      failed: 1,
+      totalManaged: 0,
+      skillsSynchronized: false,
+      error: error instanceof Error ? error.message : String(error),
+    };
+  }
   const config = getAgentProviderConfig(canonicalProvider);
   const binaryPath = dependencies.binaryPath || resolveAgentProviderBinary(canonicalProvider);
   if (!binaryPath) {
@@ -69,7 +67,8 @@ export async function inspectAgentHost(provider, dependencies = {}) {
       installed: false,
       provider: canonicalProvider,
       routerConfigured: hasRudiRouter(canonicalProvider),
-      skillsSynchronized: hasSyncedSkills(canonicalProvider),
+      skillProjection,
+      skillsSynchronized: skillProjection.skillsSynchronized,
       version: null,
     };
   }
@@ -89,7 +88,8 @@ export async function inspectAgentHost(provider, dependencies = {}) {
     installed: version.ok,
     provider: canonicalProvider,
     routerConfigured: hasRudiRouter(canonicalProvider),
-    skillsSynchronized: hasSyncedSkills(canonicalProvider),
+    skillProjection,
+    skillsSynchronized: skillProjection.skillsSynchronized,
     version: version.output.split('\n')[0] || null,
   };
 }

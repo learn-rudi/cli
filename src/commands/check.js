@@ -6,6 +6,7 @@
  *   rudi check runtime:python   Check if Python is installed
  *   rudi check binary:ffmpeg    Check if ffmpeg is installed
  *   rudi check stack:slack      Check if Slack stack is installed
+ *   rudi check skill:diagnose   Check canonical + native projection state
  *
  * Exit codes:
  *   0 = ready (installed and authenticated if applicable)
@@ -13,12 +14,23 @@
  *   2 = installed but not authenticated (agents only)
  */
 
-import { PATHS, isPackageInstalled, getPackagePath, checkStackLifecycle, readRudiConfig } from '@learnrudi/core';
+import {
+  PATHS,
+  isPackageInstalled,
+  getPackagePath,
+  checkStackLifecycle,
+  listInstalled,
+  readRudiConfig,
+} from '@learnrudi/core';
 import fs from 'fs';
 import path from 'path';
 import { inspectAgentHost } from '../agent-host/preflight.js';
 import { inspectRuntimeInstall } from '../runtime-inspection.js';
 import { createWhichCommand, runCommand, runCommandPlan } from '../utils/subprocess.js';
+import {
+  inspectNativeSkillProjection,
+  NATIVE_SKILL_HOSTS,
+} from '../native-skills/lifecycle.js';
 
 const KNOWN_AGENT_HOSTS = new Set(['antigravity', 'claude', 'codex', 'gemini', 'google']);
 
@@ -106,6 +118,43 @@ export async function getAgentCheck(name, options = {}) {
   };
 }
 
+export async function getSkillCheck(name, options = {}) {
+  const packageId = `skill:${name}`;
+  const inventory = await (options.listInstalled || listInstalled)('skill');
+  const skill = inventory.find(item => item.id === packageId && (
+    !item.source || item.source === 'rudi' || item.source?.type
+  ));
+  const result = {
+    id: packageId,
+    kind: 'skill',
+    name,
+    installed: Boolean(skill),
+    source: skill ? 'rudi' : null,
+    authenticated: null,
+    ready: Boolean(skill),
+    path: skill?.path || null,
+    version: skill?.version || null,
+    projections: {},
+  };
+  if (!skill) return result;
+
+  const inspectProjection = options.inspectNativeSkillProjection || inspectNativeSkillProjection;
+  for (const host of NATIVE_SKILL_HOSTS) {
+    try {
+      result.projections[host] = await inspectProjection({ host, skill });
+    } catch (error) {
+      result.projections[host] = {
+        host,
+        state: 'failed',
+        managed: false,
+        restartRequired: false,
+        error: error instanceof Error ? error.message : String(error),
+      };
+    }
+  }
+  return result;
+}
+
 export async function cmdCheck(args, flags) {
   const packageId = args[0];
 
@@ -116,6 +165,7 @@ export async function cmdCheck(args, flags) {
     console.error('  rudi check runtime:python');
     console.error('  rudi check binary:ffmpeg');
     console.error('  rudi check stack:slack');
+    console.error('  rudi check skill:rudi-diagnose');
     process.exit(1);
   }
 
@@ -229,6 +279,11 @@ export async function cmdCheck(args, flags) {
       break;
     }
 
+    case 'skill': {
+      Object.assign(result, await getSkillCheck(name));
+      break;
+    }
+
     default:
       console.error(`Unknown package kind: ${kind}`);
       process.exit(1);
@@ -245,6 +300,12 @@ export async function cmdCheck(args, flags) {
     if (result.source) console.log(`  Source: ${result.source}`);
     if (result.path) console.log(`  Path: ${result.path}`);
     if (result.version) console.log(`  Version: ${result.version}`);
+    if (result.projections) {
+      for (const [host, projection] of Object.entries(result.projections)) {
+        const detail = projection.error ? ` (${projection.error})` : '';
+        console.log(`  ${host} projection: ${projection.state}${detail}`);
+      }
+    }
     if (result.authenticated !== null) {
       console.log(`  Authenticated: ${result.authenticated}`);
     }
