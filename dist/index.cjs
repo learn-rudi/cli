@@ -22092,19 +22092,26 @@ async function buildProjection(host, skill) {
       content: Buffer.from(generated.openaiYaml)
     });
   }
+  let packageDigest;
   if (import_node_path3.default.basename(sourcePath) === "SKILL.md") {
     const sourceRoot = import_node_path3.default.dirname(sourcePath);
+    const completePackage = await inspectTree(sourceRoot);
+    if (!completePackage) {
+      throw new Error(`Source skill package not found: ${sourceRoot}`);
+    }
+    packageDigest = completePackage.digest;
     for (const resourceName of RESOURCE_DIRECTORIES) {
       await collectResourceEntries(sourceRoot, resourceName, entries, sourceEntries);
     }
+  } else {
+    packageDigest = digestEntries(sourceEntries).digest;
   }
   const rendered = digestEntries(entries);
-  const source = digestEntries(sourceEntries);
   const sourceIdentity = resolveSourceIdentity(skill.source);
   return {
     entries,
     packageVersion: String(skill.version || "unknown"),
-    packageDigest: source.digest,
+    packageDigest,
     renderedTreeDigest: rendered.digest,
     renderedTreeManifest: rendered.manifest,
     skillId: skill.id,
@@ -22226,6 +22233,9 @@ function validateReceipt(receipt, expected = {}) {
   return receipt;
 }
 async function readReceipt(receiptPath, expected = {}) {
+  await assertNoSymlinkPathComponents(receiptPath, "Native skill receipt path", {
+    allowMissingTail: true
+  });
   let stat;
   try {
     stat = await fsp.lstat(receiptPath);
@@ -22609,9 +22619,57 @@ async function reconcileNativeSkills(options = {}) {
   };
 }
 async function unlinkReceipt(receiptPath) {
+  await assertNoSymlinkPathComponents(receiptPath, "Native skill receipt path");
   const stat = await fsp.lstat(receiptPath);
   assertRealEntry(stat, receiptPath, "file");
   await fsp.unlink(receiptPath);
+}
+async function removeOrphanReceipt({
+  receiptPath,
+  receipt,
+  receiptExpectation,
+  targetDir,
+  operations = {}
+}) {
+  const receiptDirectory = import_node_path3.default.dirname(receiptPath);
+  await assertSafeRoot(receiptDirectory, "Native skill receipt directory");
+  await assertReceiptUnchanged(receiptPath, receipt, receiptExpectation);
+  const isolatedReceiptPath = import_node_path3.default.join(
+    receiptDirectory,
+    `.${import_node_path3.default.basename(receiptPath)}.rudi-orphan-${import_node_crypto2.default.randomUUID()}`
+  );
+  await fsp.rename(receiptPath, isolatedReceiptPath);
+  try {
+    await operations.afterOrphanReceiptIsolation?.(isolatedReceiptPath);
+    const isolatedReceipt = await readReceipt(isolatedReceiptPath, receiptExpectation);
+    if (receiptIdentityDigest(isolatedReceipt) !== receiptIdentityDigest(receipt)) {
+      throw new Error(`Native skill receipt changed during orphan receipt removal: ${receiptPath}`);
+    }
+    const [currentTarget, currentReceipt] = await Promise.all([
+      inspectTree(targetDir),
+      readReceipt(receiptPath, receiptExpectation)
+    ]);
+    if (currentTarget || currentReceipt) {
+      throw new Error(`Native skill state changed during orphan receipt removal: ${receiptPath}`);
+    }
+    await unlinkReceipt(isolatedReceiptPath);
+  } catch (error) {
+    let preservation = `prior receipt preserved at ${isolatedReceiptPath}`;
+    try {
+      const [currentTarget, currentReceipt] = await Promise.all([
+        inspectTree(targetDir),
+        readReceipt(receiptPath, receiptExpectation)
+      ]);
+      if (!currentReceipt && (!currentTarget || currentTarget.digest === receipt.renderedTreeDigest)) {
+        await fsp.link(isolatedReceiptPath, receiptPath);
+        await fsp.unlink(isolatedReceiptPath);
+        preservation = "prior receipt restored";
+      }
+    } catch (restoreError) {
+      preservation = `${preservation}; restoration check failed: ${restoreError.message}`;
+    }
+    throw new Error(`${error.message}; ${preservation}`, { cause: error });
+  }
 }
 async function removeNativeSkillProjection(options = {}) {
   const host = options.host;
@@ -22634,7 +22692,13 @@ async function removeNativeSkillProjection(options = {}) {
     }
     if (!actual) {
       if (options.dryRun === true) return { ...base, action: "would_remove_receipt" };
-      await unlinkReceipt(receiptPath);
+      await removeOrphanReceipt({
+        receiptPath,
+        receipt,
+        receiptExpectation,
+        targetDir,
+        operations: options.operations
+      });
       return { ...base, action: "removed_receipt" };
     }
     if (actual.digest !== receipt.renderedTreeDigest) {
@@ -29709,6 +29773,7 @@ function assertBooleanSkillSyncFlags(flags) {
 }
 async function cmdSkills(args = [], flags = {}, dependencies = {}) {
   const log = dependencies.log || console.log;
+  const exit = dependencies.exit || ((code) => process.exit(code));
   const subcommand = args[0];
   if (subcommand === "help" || flags.help || flags.h) {
     printSkillsHelp();
@@ -29749,6 +29814,7 @@ async function cmdSkills(args = [], flags = {}, dependencies = {}) {
   });
   if (flags.json) {
     log(JSON.stringify(result, null, 2));
+    if (result.failed > 0) return exit(1);
     return;
   }
   const targetName = targetConfig.name;
@@ -29770,6 +29836,7 @@ ${prefix} ${syncedCount} skill(s).`);
   if (result.restartRequired) {
     log(`Restart ${targetName} to load native skill changes; hot reload was not performed.`);
   }
+  if (result.failed > 0) return exit(1);
 }
 
 // src/commands/install.js
