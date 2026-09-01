@@ -93,13 +93,22 @@ authenticated 404. Do not add compatibility adapters.
 
 ## Agent Integration
 
-MCP config, managed instructions, and native skill wrappers are separate:
+MCP config, managed instructions, and native skill projections are separate:
 
 - `rudi integrate <agent>` writes one MCP server entry for
   `~/.rudi/bins/rudi-router`.
 - `rudi instructions <agent> --install` updates the managed instruction block.
-- `rudi skills sync <agent>` creates editable wrappers in the host's native
-  skill directory.
+- `~/.rudi/skills` is the canonical installed package layer. `rudi install
+  skill:<id>` reconciles that exact skill to configured native hosts by default;
+  use `--no-sync-skills` to opt out or `--sync-skills=<host[,host]|all>` to
+  select hosts explicitly.
+- `rudi skills sync <agent>` reconciles complete derived trees in the host's
+  native skill directory and records ownership receipts under
+  `~/.rudi/state/native-skills/<host>/`. Receipts bind the canonical source,
+  complete package, and rendered tree digests to the exact host target. Managed unchanged trees update
+  automatically; drifted and unmanaged trees are preserved unless exact scoped
+  `--force` is supplied. Whole-inventory force also requires `--all`.
+- Native skill changes set `restartRequired`; RUDI does not claim host hot reload.
 
 Discover installed stacks with `rudi list stacks --json` or inspect
 `~/.rudi/cache/tool-index.json`. Rebuild with `rudi index --json`. Do not use or
