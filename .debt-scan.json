@@ -112,6 +112,7 @@
         "scripts/agent-debt-runner.mjs",
         "scripts/generate-manifest.js",
         "scripts/generate-daemon-openapi.js",
+        "scripts/validate-publish-runtime.mjs",
         "scripts/run-tests.js"
       ],
       "checks": [
