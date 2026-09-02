@@ -1,0 +1,118 @@
+name: Publish npm
+
+on:
+  workflow_dispatch:
+    inputs:
+      version:
+        description: Exact package version to publish from main
+        required: true
+        type: string
+
+permissions:
+  contents: read
+  id-token: write
+
+concurrency:
+  group: publish-npm
+  cancel-in-progress: false
+
+jobs:
+  publish:
+    name: publish
+    if: github.ref == 'refs/heads/main'
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+
+    steps:
+      - name: Check out accepted source
+        uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5.1.0
+        with:
+          fetch-depth: 0
+
+      - name: Set up Node.js
+        uses: actions/setup-node@249970729cb0ef3589644e2896645e5dc5ba9c38 # v6.5.0
+        with:
+          node-version: '24'
+          registry-url: 'https://registry.npmjs.org'
+          package-manager-cache: false
+
+      - name: Enable Corepack
+        run: corepack enable
+
+      - name: Verify trusted-publishing runtime
+        run: |
+          NPM_VERSION="$(npm --version)"
+          node scripts/validate-publish-runtime.mjs "$NPM_VERSION"
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Verify requested version is releasable
+        env:
+          EXPECTED_VERSION: ${{ inputs.version }}
+        run: |
+          ACTUAL_VERSION="$(node -p "require('./package.json').version")"
+          if [ "$ACTUAL_VERSION" != "$EXPECTED_VERSION" ]; then
+            echo "Requested version $EXPECTED_VERSION does not match package version $ACTUAL_VERSION" >&2
+            exit 1
+          fi
+          npm view @learnrudi/cli versions --json > "$RUNNER_TEMP/npm-versions.json"
+          node --input-type=module -e '
+            import fs from "node:fs";
+            const expected = process.env.EXPECTED_VERSION;
+            const versions = JSON.parse(fs.readFileSync(process.env.RUNNER_TEMP + "/npm-versions.json", "utf8"));
+            if (!/^\d+\.\d+\.\d+(?:-[0-9A-Za-z.-]+)?$/.test(expected)) {
+              throw new Error(`Invalid release version: ${expected}`);
+            }
+            if (versions.includes(expected)) {
+              throw new Error(`@learnrudi/cli@${expected} already exists`);
+            }
+          '
+
+      - name: Test
+        run: pnpm test
+
+      - name: Build
+        run: pnpm build
+
+      - name: Verify generated distribution
+        run: git diff --exit-code -- dist src/packages-manifest.json
+
+      - name: Scan changed JavaScript and TypeScript debt
+        run: node scripts/agent-debt-runner.mjs --changed-since HEAD^ --no-log
+
+      - name: Audit production dependencies
+        run: pnpm audit --prod --audit-level=moderate
+
+      - name: Pack verified artifact
+        id: pack
+        env:
+          EXPECTED_VERSION: ${{ inputs.version }}
+        run: |
+          npm pack --json --pack-destination "$RUNNER_TEMP" > "$RUNNER_TEMP/npm-pack.json"
+          PACKAGE_TARBALL="$(node --input-type=module -e '
+            import fs from "node:fs";
+            const expectedFiles = [
+              "LICENSE",
+              "README.md",
+              "dist/index.cjs",
+              "dist/packages-manifest.json",
+              "dist/router-mcp.js",
+              "package.json",
+            ];
+            const [packed] = JSON.parse(fs.readFileSync(process.env.RUNNER_TEMP + "/npm-pack.json", "utf8"));
+            const actualFiles = packed.files.map(({ path }) => path).sort();
+            if (packed.version !== process.env.EXPECTED_VERSION) {
+              throw new Error(`Packed version ${packed.version} does not match ${process.env.EXPECTED_VERSION}`);
+            }
+            if (JSON.stringify(actualFiles) !== JSON.stringify(expectedFiles)) {
+              throw new Error(`Unexpected package files: ${actualFiles.join(", ")}`);
+            }
+            process.stdout.write(packed.filename);
+          ')"
+          echo "filename=$PACKAGE_TARBALL" >> "$GITHUB_OUTPUT"
+
+      - name: Publish through npm trusted publishing
+        env:
+          PACKAGE_TARBALL: ${{ steps.pack.outputs.filename }}
+        run: npm publish "$RUNNER_TEMP/$PACKAGE_TARBALL" --access public --ignore-scripts

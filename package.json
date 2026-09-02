@@ -1,6 +1,6 @@
 {
   "name": "@learnrudi/cli",
-  "version": "1.10.25",
+  "version": "1.10.26",
   "packageManager": "pnpm@10.22.0",
   "description": "RUDI CLI - Install and manage local MCP stacks, runtimes, daemon lifecycle, and agent router integrations",
   "type": "module",
@@ -23,7 +23,7 @@
     "test": "node scripts/run-tests.js"
   },
   "dependencies": {
-    "ajv": "^8.17.1",
+    "ajv": "^8.18.0",
     "better-sqlite3": "^12.5.0"
   },
   "devDependencies": {
@@ -37,6 +37,11 @@
     "@learnrudi/utils": "workspace:*",
     "esbuild": "^0.27.2",
     "typescript": "^5.9.3"
+  },
+  "pnpm": {
+    "overrides": {
+      "fast-uri": "3.1.6"
+    }
   },
   "engines": {
     "node": ">=18.0.0"
