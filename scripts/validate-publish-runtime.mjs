@@ -6,7 +6,7 @@ import { fileURLToPath } from 'node:url';
 const MINIMUM_TRUSTED_PUBLISHING_NPM = [11, 5, 1];
 
 export function supportsTrustedPublishingNpm(version) {
-  const match = /^(\d+)\.(\d+)\.(\d+)(?:[-+][0-9A-Za-z.-]+)?$/.exec(version);
+  const match = /^(\d+)\.(\d+)\.(\d+)(?:\+[0-9A-Za-z.-]+)?$/.exec(version);
   if (!match) return false;
 
   const actual = match.slice(1, 4).map(Number);

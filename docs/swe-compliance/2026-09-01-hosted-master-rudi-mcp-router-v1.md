@@ -44,6 +44,13 @@ authority and deployment gates are recorded in the System compliance ledger.
   passed and one failed because `.github/workflows/publish-mcp-npm.yml` did not
   exist. The failure established the missing package publication path before
   implementation.
+- Independent release-path review then found two P1 defects: job-wide OIDC
+  permission exposed token-request capability while dependency and repository
+  code executed, and the package's directory-form test target failed under
+  Node 24. A separate boundary test also reproduced that the runtime helper
+  accepted `11.5.1` prereleases as meeting the stable floor. Contract cases for
+  split permissions, a code-free publish job, the explicit test glob, and
+  prerelease rejection failed before remediation.
 
 ## Phase 3: Implementation
 
@@ -54,12 +61,25 @@ authority and deployment gates are recorded in the System compliance ledger.
   pins, the npm trusted-publishing runtime floor, registry immutability checks,
   package-focused tests, dependency audit, and an exact packed-file allowlist.
   It contains no npm token fallback.
+- Verification and publication are separate jobs. The verification job has no
+  OIDC permission and runs install, tests, audit, and a pack allowlist check.
+  Only its dependent publish job receives `id-token: write`; that job uses a
+  fresh same-SHA credential-free checkout, installs no dependencies, executes
+  no repository helper or tests, repacks with lifecycle scripts disabled, and
+  rechecks registry immutability plus the allowlist before publishing. The MCP
+  package test script names its portable unit-test glob explicitly. The publish
+  command pins `https://registry.npmjs.org` at command-line precedence.
 
 ## Phase 4: Green Tests And Refactor
 
 - Release-workflow contract green, Node `v20.20.2`: the exact red command now
-  passes 7/7 after adding the package metadata and workflow. The workflow YAML
-  parses successfully and all eight embedded run scripts pass `bash -n`.
+  passes 7/7 after adding the package metadata and workflow, then remained
+  green after split-job and prerelease remediation. The workflow YAML parses
+  successfully and all 12 embedded run scripts pass `bash -n`.
+- Clean temporary Node `v24.20.0` / npm `11.6.2` verification passed the exact
+  `pnpm --filter @learnrudi/mcp test` gate 29/29, production audit with no known
+  vulnerabilities, and the exact nine-file package dry-run. The temporary
+  verification checkout was moved to Trash after proof.
 - Exact Node 20.20.2 focused core/parity command passed 11/11.
 - Exact Node 20.20.2 stdio characterization passed 2/2 and now proves canonical
   and portable calls, cache over competing inline declarations, inline over
@@ -116,6 +136,10 @@ Reproduction record (working directory
   references are immutable 40-character pins; the workflow YAML parsed and
   all embedded shell scripts passed syntax validation. `actionlint` was not
   installed locally, so that optional linter was not run.
+- The final permission contract proves the verification job lacks
+  `id-token: write`, the publish job depends on verification, and the publish
+  job contains no install, test, audit, or repository runtime-helper command.
+  Stable npm `11.5.1` is accepted; its `alpha` and `rc` prereleases fail closed.
 - Edited-file SWE debt scan: zero findings. `git diff --check`: pass.
 - Built `dist/router-mcp.js` completed an isolated Node 20 stdio
   initialize/ping smoke with an empty temporary RUDI home.
