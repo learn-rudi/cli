@@ -34,6 +34,9 @@ export interface McpRegistrationSummary {
   };
 }
 
+export * from './router-core.js';
+export * from './tool-names.js';
+
 // From agents.js
 export const AGENT_CONFIGS: AgentConfig[];
 export function findAgentConfig(agent: AgentConfig): string | null;

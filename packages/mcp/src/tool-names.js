@@ -20,12 +20,6 @@ function hashedAlias(base, canonicalName) {
   return `${base.slice(0, PORTABLE_TOOL_NAME_MAX_LENGTH - suffix.length)}${suffix}`;
 }
 
-/**
- * Google agent clients prefix MCP tools with `mcp_<server>_` and reject the
- * namespace punctuation RUDI historically exposes. Keep the provider-owned
- * canonical identity behind a stable, reversible, 55-character alias so the
- * complete client-visible name remains within Google's 64-character limit.
- */
 export function buildPortableToolNameMap(canonicalNames) {
   const uniqueNames = [...new Set(canonicalNames)];
   const groupedByBase = new Map();
@@ -39,7 +33,6 @@ export function buildPortableToolNameMap(canonicalNames) {
 
   const canonicalToPortable = new Map();
   const portableToCanonical = new Map();
-
   for (const canonicalName of uniqueNames) {
     const base = portableBase(canonicalName);
     const collides = groupedByBase.get(base).length > 1;
@@ -49,6 +42,5 @@ export function buildPortableToolNameMap(canonicalNames) {
     canonicalToPortable.set(canonicalName, alias);
     portableToCanonical.set(alias, canonicalName);
   }
-
   return { canonicalToPortable, portableToCanonical };
 }

@@ -4,7 +4,7 @@ import { describe, it } from 'node:test';
 import {
   buildPortableToolNameMap,
   isPortableToolName,
-} from '../../router-tool-names.js';
+} from '@learnrudi/mcp/tool-names';
 
 describe('router portable MCP tool names', () => {
   it('replaces client-incompatible namespace punctuation without losing dispatch identity', () => {

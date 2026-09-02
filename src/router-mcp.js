@@ -21,7 +21,7 @@ import * as path from 'path';
 import * as readline from 'readline';
 import * as os from 'os';
 
-import { buildPortableToolNameMap } from './router-tool-names.js';
+import { createRouterDispatcher } from '@learnrudi/mcp/router-core';
 
 // =============================================================================
 // CONSTANTS
@@ -61,7 +61,6 @@ let rudiConfig = null;
 /** @type {Object | null} */
 let toolIndex = null;
 let cleanupTimer = null;
-let portableToolNames = new Map();
 
 // =============================================================================
 // TYPES (JSDoc)
@@ -521,8 +520,8 @@ async function initializeStack(server, stackId) {
  * Priority: 1. tool-index.json cache, 2. rudi.json inline tools, 3. live query
  * @returns {Promise<Array<{name: string, description: string, inputSchema: Object}>>}
  */
-async function listTools() {
-  const tools = [];
+async function discoverStackTools() {
+  const stacks = [];
   const skippedStacks = [];
 
   for (const [stackId, stackConfig] of Object.entries(rudiConfig?.stacks || {})) {
@@ -531,21 +530,13 @@ async function listTools() {
     // 1. Check tool-index.json cache (from `rudi index` command)
     const indexEntry = toolIndex?.byStack?.[stackId];
     if (indexEntry?.tools && indexEntry.tools.length > 0 && !indexEntry.error) {
-      tools.push(...indexEntry.tools.map(t => ({
-        name: `${stackId}.${t.name}`,
-        description: `[${stackId}] ${t.description || t.name}`,
-        inputSchema: t.inputSchema || { type: 'object', properties: {} }
-      })));
+      stacks.push({ stackId, tools: indexEntry.tools });
       continue;
     }
 
     // 2. Check inline tools in rudi.json (legacy/fallback)
     if (stackConfig.tools && stackConfig.tools.length > 0) {
-      tools.push(...stackConfig.tools.map(t => ({
-        name: `${stackId}.${t.name}`,
-        description: `[${stackId}] ${t.description || t.name}`,
-        inputSchema: t.inputSchema || { type: 'object', properties: {} }
-      })));
+      stacks.push({ stackId, tools: stackConfig.tools });
       continue;
     }
 
@@ -564,13 +555,10 @@ async function listTools() {
         method: 'tools/list'
       });
 
-      if (response.result?.tools) {
-        tools.push(...response.result.tools.map(t => ({
-          name: `${stackId}.${t.name}`,
-          description: `[${stackId}] ${t.description || t.name}`,
-          inputSchema: t.inputSchema || { type: 'object', properties: {} }
-        })));
+      if (!Array.isArray(response.result?.tools)) {
+        throw new Error('tools/list result.tools must be an array');
       }
+      stacks.push({ stackId, tools: response.result.tools });
     } catch (err) {
       log(`Failed to list tools from ${stackId}: ${err.message}`);
       // Continue with other stacks
@@ -581,14 +569,7 @@ async function listTools() {
     log(`Skipped live tools/list for ${skippedStacks.length} stacks (enable RUDI_ROUTER_LIVE_TOOL_LIST=1 or run "rudi index")`);
   }
 
-  if (TOOL_NAME_STYLE !== 'portable') return tools;
-
-  const mapping = buildPortableToolNameMap(tools.map(tool => tool.name));
-  portableToolNames = mapping.portableToCanonical;
-  return tools.map(tool => ({
-    ...tool,
-    name: mapping.canonicalToPortable.get(tool.name),
-  }));
+  return stacks;
 }
 
 /**
@@ -597,25 +578,7 @@ async function listTools() {
  * @param {Object} arguments_
  * @returns {Promise<*>}
  */
-async function callTool(toolName, arguments_) {
-  let canonicalToolName = toolName;
-  if (TOOL_NAME_STYLE === 'portable') {
-    if (portableToolNames.size === 0) await listTools();
-    canonicalToolName = portableToolNames.get(toolName);
-    if (!canonicalToolName) {
-      throw new Error(`Unknown portable tool name: ${toolName}`);
-    }
-  }
-
-  // Parse namespace: "slack.send_message" → stackId="slack", actualTool="send_message"
-  const dotIndex = canonicalToolName.indexOf('.');
-  if (dotIndex === -1) {
-    throw new Error(`Invalid tool name format: ${canonicalToolName} (expected: stack.tool_name)`);
-  }
-
-  const stackId = canonicalToolName.slice(0, dotIndex);
-  const actualToolName = canonicalToolName.slice(dotIndex + 1);
-
+async function executeStackTool({ stackId, toolName, arguments: arguments_ }) {
   if (!rudiConfig?.stacks?.[stackId]) {
     throw new Error(`Stack not found: ${stackId}`);
   }
@@ -628,7 +591,7 @@ async function callTool(toolName, arguments_) {
     id: `call-${Date.now()}-${Math.random().toString(36).slice(2)}`,
     method: 'tools/call',
     params: {
-      name: actualToolName,
+      name: toolName,
       arguments: arguments_
     }
   });
@@ -649,70 +612,18 @@ async function callTool(toolName, arguments_) {
  * @param {JsonRpcRequest} request
  * @returns {Promise<JsonRpcResponse>}
  */
-async function handleRequest(request) {
-  /** @type {JsonRpcResponse} */
-  const response = {
-    jsonrpc: '2.0',
-    id: request.id ?? null
-  };
-
-  try {
-    switch (request.method) {
-      case 'initialize':
-        response.result = {
-          protocolVersion: PROTOCOL_VERSION,
-          capabilities: {
-            tools: {}
-          },
-          serverInfo: {
-            name: 'rudi-router',
-            version: '1.0.0'
-          }
-        };
-        break;
-
-      case 'notifications/initialized':
-        // Client acknowledges initialization - no response needed for notifications
-        return null;
-
-      case 'tools/list': {
-        const tools = await listTools();
-        response.result = { tools };
-        break;
-      }
-
-      case 'tools/call': {
-        const params = request.params;
-        const result = await callTool(params.name, params.arguments || {});
-        response.result = result;
-        break;
-      }
-
-      case 'ping':
-        response.result = {};
-        break;
-
-      default:
-        // Unknown method
-        if (request.id !== null && request.id !== undefined) {
-          response.error = {
-            code: -32601,
-            message: `Method not found: ${request.method}`
-          };
-        } else {
-          // It's a notification, don't respond
-          return null;
-        }
-    }
-  } catch (err) {
-    response.error = {
-      code: -32603,
-      message: err.message || 'Internal error'
-    };
-  }
-
-  return response;
-}
+const dispatcher = createRouterDispatcher({
+  protocolVersion: PROTOCOL_VERSION,
+  serverInfo: { name: 'rudi-router', version: '1.0.0' },
+  toolNameStyle: TOOL_NAME_STYLE,
+  // Local stdio historically permits direct calls to installed stack tools
+  // even when discovery is unavailable. Hosted consumers keep the shared
+  // core's fail-closed discovered-only default.
+  callPolicy: 'adapter-authoritative',
+  discoverStackTools,
+  executeStackTool,
+});
+const { handleRequest } = dispatcher;
 
 /**
  * Main entry point
