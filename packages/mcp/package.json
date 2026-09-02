@@ -1,17 +1,29 @@
 {
   "name": "@learnrudi/mcp",
-  "version": "1.0.0",
-  "description": "MCP registry utilities for RUDI",
+  "version": "1.1.0",
+  "description": "MCP registry and transport-independent router utilities for RUDI",
   "type": "module",
   "main": "src/index.js",
   "types": "src/index.d.ts",
+  "files": [
+    "src/*.js",
+    "src/*.d.ts"
+  ],
   "exports": {
     ".": {
       "types": "./src/index.d.ts",
       "default": "./src/index.js"
     },
     "./agents": "./src/agents.js",
-    "./registry": "./src/registry.js"
+    "./registry": "./src/registry.js",
+    "./router-core": {
+      "types": "./src/router-core.d.ts",
+      "default": "./src/router-core.js"
+    },
+    "./tool-names": {
+      "types": "./src/tool-names.d.ts",
+      "default": "./src/tool-names.js"
+    }
   },
   "scripts": {
     "test": "node ../../scripts/run-tests.js src/__tests__/"
