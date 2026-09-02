@@ -154,8 +154,8 @@
   basic read-only health commands.
 - Independent review: fresh-context `rudi-code-review` verdicts for Standards,
   Spec, and Proof, with all blocking findings resolved before promotion.
-- Risk-tier approval: user authorization is recorded; protected-branch review
-  and CI plus npm trusted-publisher configuration are still required.
+- Risk-tier approval: user authorization is recorded; protected-branch review,
+  CI, and npm trusted-publisher configuration all passed before publication.
 - Results: `pnpm build` passed twice and the before/after SHA-256 manifests for
   all three generated files were identical; `git diff --check` passed; both
   `node scripts/agent-debt-runner.mjs --changed-since origin/main --no-log` and
@@ -190,12 +190,14 @@
   verified tarball with lifecycle scripts disabled, and the guard is covered;
   focused confirmation returned Standards `pass`, Spec `pass`, Proof `pass`,
   Overall `pass`, with no remaining P0-P3 findings.
-- Exit criteria: met locally. Post-PR CI remains the promotion gate.
+- Exit criteria: met. PR quality run `33575519929` passed against release commit
+  `0888fc1d06efa5d0525c7b2227c37ba9ff8d00b1` before merge.
 
 ## Phase 6: Docs, Contracts, And Closure
 
-- Status: pending accepted commit, PR/CI, trusted-publisher configuration,
-  publication, peer reconciliation, and closeout.
+- Status: complete for source acceptance, publication, provenance, and paired
+  workstation reconciliation. Repo Steward records the final non-mutating
+  worktree disposition after this evidence-only update is accepted.
 - Docs or API contracts to update: this compliance/evidence record only; user
   docs do not change because the install command and CLI behavior are unchanged.
 - Final files touched before the release commit: `.debt-scan.json`,
@@ -207,24 +209,39 @@
 - Commands run and results: local version/build, focused tests, full tests,
   reproducibility, diff checks, two debt scans, package dry-run/pack, isolated
   package smoke, registry availability/auth preflight, and dependency audit are
-  recorded above. Commit, PR, CI, registry, and peer-update commands remain
-  pending.
-- Evidence artifacts: pre-commit tarball inventory/checksum recorded above;
-  accepted commit, PR, CI, npm metadata/provenance, workstation/admin-Mac
-  versions, and worktree closeout receipt remain pending.
+  recorded above. PR quality and publication workflows passed; registry
+  metadata, signatures, provenance, exact-byte installation, and both-machine
+  health checks also passed.
+- Evidence artifacts: release commit
+  `0888fc1d06efa5d0525c7b2227c37ba9ff8d00b1`; merged PR
+  `https://github.com/learnrudi/cli/pull/39`; accepted merge commit
+  `a7c5b4d4953bd9db654b646bd1c7d1d594aeb2fd`; quality run `33575519929`;
+  OIDC publication run `33576564594`; and the package checksum recorded above.
 - Independent-review result: the two `revise` review rounds are recorded above;
   focused confirmation closed every finding and returned Overall `pass`.
-- Commit ledger and publication status: pending.
+- Commit ledger and publication status: PR 39 merged through the repository's
+  normal merge-commit policy. The `Publish npm` workflow ran only from accepted
+  `main` at `a7c5b4d4953bd9db654b646bd1c7d1d594aeb2fd` and completed successfully.
+  npm `latest` is `1.10.26`; registry integrity is
+  `sha512-3yRAicntaJEX1G/NlqZToeyBLF8vPY8E1JT6bk8Jj8P2u8bCLCVsK8AoMsvsUmNPAlbW3egDSEWDqixEUl+j8Q==`;
+  registry shasum is `21cb679805b32f9cdcad8e8cf203d8a6df80fbfc`;
+  and npm exposes SLSA provenance through its attestation endpoint.
 - Horizontal obligations opened, closed, or accepted: provenance-preserving
   npm release automation is resolved in this change by one owned workflow;
   closing proof is successful OIDC publication from accepted `main` with npm
   provenance visible and no token configured in the repository.
-- Final verdict: pending.
+- Workstation reconciliation: the primary Mac's active npm install and the
+  admin Mac's `/usr/local` install both report `rudi v1.10.26`. Both installed
+  `dist/index.cjs` files match the accepted source SHA-256
+  `59195aa6a225afcef98f72b4960f131880a59ec84fe20bf46dbba67e93e63d86`.
+  Both daemons remained healthy and reachable. The admin Mac's pre-existing 13
+  tool-index failures were unchanged by the release.
+- Final verdict: pass. The accepted source, immutable npm artifact, provenance,
+  registry tags, and paired installations agree.
 - Accepted debt: none approved. The existing transitive `prebuild-install`
   deprecation warning is non-blocking but must remain visible.
-- Proof gaps: accepted commit, PR/CI, npm trusted-publisher configuration,
-  registry attestation/signature,
-  post-publish smoke, admin-Mac reconciliation, and worktree closeout.
+- Proof gaps: none for the release. Worktree disposition is stored separately
+  in the non-mutating Repo Steward closeout ledger after this evidence update.
 - Definition of Done: exact accepted Git commit is published as
   `@learnrudi/cli@1.10.26`, npm `latest` resolves to it, local and paired-peer
   smoke checks pass or a peer-specific blocker is recorded, and the release
