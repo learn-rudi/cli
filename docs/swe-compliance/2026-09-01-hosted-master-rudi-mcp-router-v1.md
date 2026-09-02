@@ -23,6 +23,9 @@ authority and deployment gates are recorded in the System compliance ledger.
 - Non-goals: local OAuth, HTTP listener, relay, stack behavior changes, secrets
   migration, or unrelated router hardening.
 - Commits/push/PR are authorized; package publication is a later release gate.
+- Add a package-specific, manual, main-only trusted-publishing workflow for
+  `@learnrudi/mcp`; configuring npm trust and invoking publication remain later
+  release gates.
 
 ## Phase 2: Red Tests
 
@@ -36,15 +39,27 @@ authority and deployment gates are recorded in the System compliance ledger.
   and one malformed live `tools/list` result hid healthy stacks. Those findings
   are preserved as review evidence, not rewritten as an invented original red
   command.
+- Release-workflow contract red, Node `v20.20.2`:
+  `node --test src/__tests__/unit/quality-workflow-contract.test.js` -> six
+  passed and one failed because `.github/workflows/publish-mcp-npm.yml` did not
+  exist. The failure established the missing package publication path before
+  implementation.
 
 ## Phase 3: Implementation
 
 - Core accepts explicit adapters and policy predicates; it never reads local
   files, environment, secrets, stdio, HTTP, or process-global tenant state.
 - Public errors remain stable; inputs are validated before adapter invocation.
+- The package release path uses exact manual version input, immutable action
+  pins, the npm trusted-publishing runtime floor, registry immutability checks,
+  package-focused tests, dependency audit, and an exact packed-file allowlist.
+  It contains no npm token fallback.
 
 ## Phase 4: Green Tests And Refactor
 
+- Release-workflow contract green, Node `v20.20.2`: the exact red command now
+  passes 7/7 after adding the package metadata and workflow. The workflow YAML
+  parses successfully and all eight embedded run scripts pass `bash -n`.
 - Exact Node 20.20.2 focused core/parity command passed 11/11.
 - Exact Node 20.20.2 stdio characterization passed 2/2 and now proves canonical
   and portable calls, cache over competing inline declarations, inline over
@@ -75,8 +90,9 @@ Reproduction record (working directory
 - Root package, Node `v20.20.2`: `PATH=/Users/hoff/.nvm/versions/node/v20.20.2/bin:$PATH npm pack --dry-run --json` -> six files.
 - MCP package, working directory `packages/mcp`, Node `v20.20.2`:
   `PATH=/Users/hoff/.nvm/versions/node/v20.20.2/bin:$PATH npm pack --dry-run --json` -> nine files.
-- Production audit: `pnpm audit --prod` -> eight pre-existing findings
-  (five high, three moderate).
+- Historical pre-remediation production audit: `pnpm audit --prod` reported
+  five high and three moderate findings. The current release-path audit below
+  supersedes that historical result.
 - Node 20 environment gap: `PATH=/Users/hoff/.nvm/versions/node/v20.20.2/bin:$PATH pnpm test` -> blocked when unchanged `better-sqlite3` ABI 141 was loaded by ABI 115.
 - Debt tool: `swe_debt_scan` with repo equal to the workdir, config
   `.debt-scan.json`, profile `pr-review`, and the seven edited implementation/
@@ -89,15 +105,23 @@ Reproduction record (working directory
 
 - Exact Node 20.20.2 `pnpm build`: pass; temporary outputs matched tracked
   generated artifacts byte-for-byte.
+- Current release-path verification: `pnpm install --frozen-lockfile` passed;
+  `pnpm test` passed 787/787; `pnpm build` passed and left `dist` plus
+  `src/packages-manifest.json` unchanged; changed-file debt scan reported zero
+  findings; `pnpm audit --prod --audit-level=moderate` reported no known
+  vulnerabilities; root pack remained six files.
 - Root `npm pack --dry-run`: six intended files. `@learnrudi/mcp@1.1.0`
   package dry-run: nine intended source/declaration files; tests excluded.
+- The nine-file dry-run exactly matches the workflow allowlist. Both action
+  references are immutable 40-character pins; the workflow YAML parsed and
+  all embedded shell scripts passed syntax validation. `actionlint` was not
+  installed locally, so that optional linter was not run.
 - Edited-file SWE debt scan: zero findings. `git diff --check`: pass.
 - Built `dist/router-mcp.js` completed an isolated Node 20 stdio
   initialize/ping smoke with an empty temporary RUDI home.
-- Production dependency audit: five high and three moderate advisories in
-  unchanged `ajv` / `fast-uri` / `yaml` / `uuid` paths. Root dependency
-  metadata and lockfile are unchanged, and `@learnrudi/mcp` adds no runtime
-  dependency; this is accepted pre-existing release debt, not a regression.
+- Current production dependency audit reports no known vulnerabilities. Root
+  dependency metadata and lockfile are unchanged by this release-workflow
+  slice, and `@learnrudi/mcp` has no runtime dependencies.
 - Exact Node 20 full-suite proof is locally blocked by the unchanged
   `better-sqlite3` native binary compiled for ABI 141 instead of Node 20 ABI
   115. The full suite passes on the matching native runtime; a fresh-install
@@ -108,5 +132,8 @@ Reproduction record (working directory
 ## Phase 6: Docs, Contracts, And Closure
 
 - Package publication, merge, and hosted activation remain separately gated.
+- `@learnrudi/mcp@1.0.0` exists on npm; `1.1.0` is not published. After merge,
+  npm must trust the exact `publish-mcp-npm.yml` workflow before an authorized
+  manual run can publish it.
 - Record final commit/PR, CI result, admin-Mac verification, review verdict,
   and worktree closeout receipt before closure.

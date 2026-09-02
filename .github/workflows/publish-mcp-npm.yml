@@ -1,0 +1,127 @@
+name: Publish @learnrudi/mcp
+
+on:
+  workflow_dispatch:
+    inputs:
+      version:
+        description: Exact @learnrudi/mcp version to publish from main
+        required: true
+        type: string
+
+permissions:
+  contents: read
+  id-token: write
+
+concurrency:
+  group: publish-mcp-npm
+  cancel-in-progress: false
+
+jobs:
+  publish:
+    name: publish
+    if: github.ref == 'refs/heads/main'
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+
+    steps:
+      - name: Check out accepted source
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+      - name: Set up Node.js
+        uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        with:
+          node-version: '24'
+          registry-url: 'https://registry.npmjs.org'
+          package-manager-cache: false
+
+      - name: Enable Corepack
+        run: corepack enable
+
+      - name: Verify trusted-publishing runtime
+        run: |
+          NPM_VERSION="$(npm --version)"
+          node scripts/validate-publish-runtime.mjs "$NPM_VERSION"
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Verify requested package version is releasable
+        env:
+          EXPECTED_VERSION: ${{ inputs.version }}
+        run: |
+          node --input-type=module <<'NODE'
+          import fs from 'node:fs';
+
+          const expectedName = '@learnrudi/mcp';
+          const expectedVersion = process.env.EXPECTED_VERSION;
+          const packageJson = JSON.parse(fs.readFileSync('packages/mcp/package.json', 'utf8'));
+          if (packageJson.name !== expectedName) {
+            throw new Error(`Expected ${expectedName}, found ${packageJson.name}`);
+          }
+          if (!/^\d+\.\d+\.\d+(?:-[0-9A-Za-z.-]+)?$/.test(expectedVersion)) {
+            throw new Error(`Invalid release version: ${expectedVersion}`);
+          }
+          if (packageJson.version !== expectedVersion) {
+            throw new Error(`Requested version ${expectedVersion} does not match package version ${packageJson.version}`);
+          }
+
+          const encodedName = encodeURIComponent(expectedName);
+          const response = await fetch(`https://registry.npmjs.org/${encodedName}`, {
+            headers: { accept: 'application/json' },
+          });
+          if (response.status !== 404 && !response.ok) {
+            throw new Error(`npm registry metadata request failed with HTTP ${response.status}`);
+          }
+          const versions = response.status === 404
+            ? {}
+            : (await response.json()).versions ?? {};
+          if (Object.hasOwn(versions, expectedVersion)) {
+            throw new Error(`${expectedName}@${expectedVersion} already exists`);
+          }
+          NODE
+
+      - name: Test workspace package
+        run: pnpm --filter @learnrudi/mcp test
+
+      - name: Audit production dependencies
+        run: pnpm audit --prod --audit-level=moderate
+
+      - name: Pack verified workspace package
+        id: pack
+        working-directory: packages/mcp
+        env:
+          EXPECTED_VERSION: ${{ inputs.version }}
+        run: |
+          npm pack --json --pack-destination "$RUNNER_TEMP" --ignore-scripts > "$RUNNER_TEMP/npm-pack-mcp.json"
+          PACKAGE_TARBALL="$(node --input-type=module -e '
+            import fs from "node:fs";
+            const expectedFiles = [
+              "package.json",
+              "src/agents.js",
+              "src/index.d.ts",
+              "src/index.js",
+              "src/registry.js",
+              "src/router-core.d.ts",
+              "src/router-core.js",
+              "src/tool-names.d.ts",
+              "src/tool-names.js",
+            ];
+            const [packed] = JSON.parse(fs.readFileSync(process.env.RUNNER_TEMP + "/npm-pack-mcp.json", "utf8"));
+            const actualFiles = packed.files.map(({ path }) => path).sort();
+            if (packed.name !== "@learnrudi/mcp") {
+              throw new Error(`Packed unexpected package ${packed.name}`);
+            }
+            if (packed.version !== process.env.EXPECTED_VERSION) {
+              throw new Error(`Packed version ${packed.version} does not match ${process.env.EXPECTED_VERSION}`);
+            }
+            if (JSON.stringify(actualFiles) !== JSON.stringify(expectedFiles)) {
+              throw new Error(`Unexpected package files: ${actualFiles.join(", ")}`);
+            }
+            process.stdout.write(packed.filename);
+          ')"
+          echo "filename=$PACKAGE_TARBALL" >> "$GITHUB_OUTPUT"
+
+      - name: Publish through npm trusted publishing
+        env:
+          PACKAGE_TARBALL: ${{ steps.pack.outputs.filename }}
+        run: npm publish "$RUNNER_TEMP/$PACKAGE_TARBALL" --access public --ignore-scripts

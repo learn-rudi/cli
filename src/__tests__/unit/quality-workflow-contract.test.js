@@ -59,6 +59,36 @@ test('npm release workflow verifies the exact version and publishes through OIDC
   assert.doesNotMatch(workflow, /NODE_AUTH_TOKEN|NPM_TOKEN/);
 });
 
+test('@learnrudi/mcp release workflow verifies the workspace package and publishes through OIDC', () => {
+  const workflow = read('.github/workflows/publish-mcp-npm.yml');
+  const packageJson = JSON.parse(read('packages/mcp/package.json'));
+
+  assert.equal(packageJson.name, '@learnrudi/mcp');
+  assert.equal(packageJson.version, '1.1.0');
+  assert.equal(packageJson.repository.url, 'git+https://github.com/learnrudi/cli.git');
+  assert.equal(packageJson.repository.directory, 'packages/mcp');
+  assert.match(workflow, /^name: Publish @learnrudi\/mcp$/m);
+  assert.match(workflow, /^\s{2}workflow_dispatch:$/m);
+  assert.match(workflow, /^\s{2}contents: read$/m);
+  assert.match(workflow, /^\s{2}id-token: write$/m);
+  assert.match(workflow, /if: github\.ref == 'refs\/heads\/main'/);
+  assert.match(workflow, /actions\/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1/);
+  assert.match(workflow, /actions\/setup-node@820762786026740c76f36085b0efc47a31fe5020/);
+  assert.match(workflow, /node-version: ['"]24['"]/);
+  assert.match(workflow, /registry-url: ['"]https:\/\/registry\.npmjs\.org['"]/);
+  assert.match(workflow, /package-manager-cache: false/);
+  assert.match(workflow, /node scripts\/validate-publish-runtime\.mjs/);
+  assert.match(workflow, /pnpm install --frozen-lockfile/);
+  assert.match(workflow, /pnpm --filter @learnrudi\/mcp test/);
+  assert.match(workflow, /pnpm audit --prod --audit-level=moderate/);
+  assert.match(workflow, /packages\/mcp\/package\.json/);
+  assert.match(workflow, /registry\.npmjs\.org\/\$\{encodedName\}/);
+  assert.match(workflow, /npm pack --json --pack-destination/);
+  assert.match(workflow, /expectedFiles/);
+  assert.match(workflow, /npm publish "\$RUNNER_TEMP\/\$PACKAGE_TARBALL" --access public --ignore-scripts/);
+  assert.doesNotMatch(workflow, /NODE_AUTH_TOKEN|NPM_TOKEN/);
+});
+
 test('trusted-publishing npm gate enforces the complete minimum version', () => {
   assert.equal(supportsTrustedPublishingNpm('11.4.99'), false);
   assert.equal(supportsTrustedPublishingNpm('11.5.0'), false);
