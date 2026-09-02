@@ -57,10 +57,14 @@
 
 ## Phase 6: Docs, Contracts, And Closure
 
-- Public ledger: issue body and comment must point to this checklist and current lifecycle ownership.
-- Pull request: pending; body must include `Fixes #42`, risk, invariants, proof, checklist path, and independent-review result.
-- CI/review: pending; wait for required checks and stop before merge.
-- Commit ledger: behavior source/test commit `07e7aa1`; dedicated generated-dist commit `add3f73`; evidence commit pending.
+- Public ledger: issue `learnrudi/cli#42` and its implementation comment point to this checklist and the current lifecycle ownership boundary.
+- Pull request: `learnrudi/cli#43` includes `Fixes #42`, medium risk, invariants, proof, this checklist path, the independent-review verdict, and the stop-before-merge boundary.
+- CI/review: required `quality` CI passed in 37 seconds on the implementation/evidence head. This final ledger-only commit must receive the same remote gate; its result is recorded on the PR and issue rather than creating another self-referential checklist commit.
+- Commit ledger: behavior source/test commit `07e7aa1`; dedicated generated-dist commit `add3f73`; initial evidence commit `e8d6240`; final ledger commit is the commit containing this paragraph.
 - Saved-work preservation: the unrelated Registry worktree remains untouched. The earlier duplicate CLI patch in `/Users/hoff/RUDI/apps/platform/cli` may be removed only after this branch safely contains and publishes the accepted fix.
-- Administrative closeout: pending non-mutating worktree receipt or an explicit owner/trigger/proof gap.
-- Final verdict: pending.
+- Administrative closeout: Repo Steward records the non-mutating retained-worktree receipt only after the final commit is pushed, so the receipt can bind the exact published HEAD. Its identifier and version are posted to the issue ledger; no cleanup or archive action is authorized.
+- Publication state: branch and PR are published; merge, release, installation, activation, live host reconciliation, admin-Mac synchronization, and branch/worktree cleanup were not performed.
+- Human gate: human review of the metadata-precedence boundary remains required before merge.
+- Accepted debt: none.
+- Proof gaps: none for the implementation or pre-merge delivery. Human merge review is an intentionally outstanding approval gate, not missing implementation proof.
+- Final verdict: PASS for the authorized issue-loop boundary; stop before merge.
