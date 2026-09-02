@@ -3,6 +3,7 @@ import fs from 'node:fs';
 import path from 'node:path';
 import test from 'node:test';
 import { fileURLToPath } from 'node:url';
+import { supportsTrustedPublishingNpm } from '../../../scripts/validate-publish-runtime.mjs';
 
 const TEST_DIR = path.dirname(fileURLToPath(import.meta.url));
 const REPO_ROOT = path.resolve(TEST_DIR, '../../..');
@@ -27,6 +28,58 @@ test('GitHub quality workflow blocks unverified changes', () => {
   assert.match(workflow, /pnpm build/);
   assert.match(workflow, /node scripts\/agent-debt-runner\.mjs --changed-since/);
   assert.match(workflow, /npm pack --dry-run/);
+});
+
+test('npm release workflow verifies the exact version and publishes through OIDC', () => {
+  const workflow = read('.github/workflows/publish-npm.yml');
+
+  assert.match(workflow, /^name: Publish npm$/m);
+  assert.match(workflow, /^\s{2}workflow_dispatch:$/m);
+  assert.match(workflow, /^\s{2}contents: read$/m);
+  assert.match(workflow, /^\s{2}id-token: write$/m);
+  assert.match(workflow, /^\s{4}name: publish$/m);
+  assert.match(workflow, /if: github\.ref == 'refs\/heads\/main'/);
+  assert.match(workflow, /actions\/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09/);
+  assert.match(workflow, /actions\/setup-node@249970729cb0ef3589644e2896645e5dc5ba9c38/);
+  assert.match(workflow, /node-version: ['"]24['"]/);
+  assert.match(workflow, /registry-url: ['"]https:\/\/registry\.npmjs\.org['"]/);
+  assert.match(workflow, /package-manager-cache: false/);
+  assert.match(workflow, /node scripts\/validate-publish-runtime\.mjs/);
+  assert.match(workflow, /pnpm install --frozen-lockfile/);
+  assert.match(workflow, /EXPECTED_VERSION/);
+  assert.match(workflow, /npm view @learnrudi\/cli versions --json/);
+  assert.match(workflow, /pnpm test/);
+  assert.match(workflow, /pnpm build/);
+  assert.match(workflow, /git diff --exit-code -- dist src\/packages-manifest\.json/);
+  assert.match(workflow, /node scripts\/agent-debt-runner\.mjs --changed-since/);
+  assert.match(workflow, /pnpm audit --prod --audit-level=moderate/);
+  assert.match(workflow, /npm pack --json --pack-destination/);
+  assert.match(workflow, /expectedFiles/);
+  assert.match(workflow, /npm publish "\$RUNNER_TEMP\/\$PACKAGE_TARBALL" --access public --ignore-scripts/);
+  assert.doesNotMatch(workflow, /NODE_AUTH_TOKEN|NPM_TOKEN/);
+});
+
+test('trusted-publishing npm gate enforces the complete minimum version', () => {
+  assert.equal(supportsTrustedPublishingNpm('11.4.99'), false);
+  assert.equal(supportsTrustedPublishingNpm('11.5.0'), false);
+  assert.equal(supportsTrustedPublishingNpm('11.5.1'), true);
+  assert.equal(supportsTrustedPublishingNpm('11.6.0'), true);
+  assert.equal(supportsTrustedPublishingNpm('12.0.0'), true);
+  assert.equal(supportsTrustedPublishingNpm('invalid'), false);
+});
+
+test('publishable workspace packages declare remediated dependency floors', () => {
+  const cliPackage = JSON.parse(read('package.json'));
+  const corePackage = JSON.parse(read('packages/core/package.json'));
+  const dbPackage = JSON.parse(read('packages/db/package.json'));
+  const manifestPackage = JSON.parse(read('packages/manifest/package.json'));
+
+  assert.equal(cliPackage.dependencies.ajv, '^8.18.0');
+  assert.equal(cliPackage.pnpm.overrides['fast-uri'], '3.1.6');
+  assert.equal(corePackage.dependencies.yaml, '^2.8.3');
+  assert.equal(dbPackage.dependencies.uuid, '^11.1.1');
+  assert.equal(manifestPackage.dependencies.ajv, '^8.18.0');
+  assert.equal(manifestPackage.dependencies.yaml, '^2.8.3');
 });
 
 test('debt scan is portable outside the developer workstation', () => {

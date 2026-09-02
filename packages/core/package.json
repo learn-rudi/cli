@@ -26,7 +26,7 @@
     "@learnrudi/env": "workspace:*",
     "@learnrudi/manifest": "workspace:*",
     "@learnrudi/registry-client": "workspace:*",
-    "yaml": "^2.3.4"
+    "yaml": "^2.8.3"
   },
   "engines": {
     "node": ">=18.0.0"

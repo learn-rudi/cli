@@ -52,7 +52,9 @@ authority and deployment gates are recorded in the System compliance ledger.
   downstream JSON-RPC call failure propagation, notifications, ping, and
   method-not-found behavior.
 - Matching-native-runtime full suite passed 783/783 after extraction and
-  tracked `dist` regeneration.
+  tracked `dist` regeneration. After merging current `origin/main` at
+  `a7c5b4d`, the same suite passed 786/786; the three additional tests are from
+  the upstream CLI 1.10.26 release slice.
 
 ## Phase 5: Full Verification
 
@@ -60,8 +62,13 @@ Reproduction record (working directory
 `/Users/hoff/RUDI/worktrees/hosted-router-v1/cli` unless noted):
 
 - Focused, Node `v20.20.2`: `PATH=/Users/hoff/.nvm/versions/node/v20.20.2/bin:$PATH node --test packages/mcp/src/__tests__/unit/router-core.test.js src/__tests__/unit/router-tool-names.test.js src/__tests__/unit/router-mcp-characterization.test.js` -> 11/11.
-- Full, Node `v25.2.1`: `pnpm test` -> 783/783.
+- Full, Node `v25.2.1`: `pnpm test` -> 783/783 before the current-main merge;
+  rerunning the same command after merging `a7c5b4d` -> 786/786.
 - Build, Node `v20.20.2`: `PATH=/Users/hoff/.nvm/versions/node/v20.20.2/bin:$PATH pnpm build` -> pass.
+- Current-main lock/build reconciliation, Node `v20.20.2`:
+  `PATH=/Users/hoff/.nvm/versions/node/v20.20.2/bin:$PATH pnpm install --frozen-lockfile`
+  followed by the recorded build command -> pass; the regenerated tracked
+  bundles matched the merged index byte-for-byte.
 - Root package, Node `v20.20.2`: `PATH=/Users/hoff/.nvm/versions/node/v20.20.2/bin:$PATH npm pack --dry-run --json` -> six files.
 - MCP package, working directory `packages/mcp`, Node `v20.20.2`:
   `PATH=/Users/hoff/.nvm/versions/node/v20.20.2/bin:$PATH npm pack --dry-run --json` -> nine files.
