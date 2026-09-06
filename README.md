@@ -506,14 +506,20 @@ chmod 600 ~/.rudi/secrets.json
 
 MIT
 
-## Skill categories and upgrade behavior
+## Stack and skill categories; skill upgrades
 
-Skills use seven primitive categories: web, code, data, documents, media,
+Stacks and skills use seven primitive categories: web, code, data, documents, media,
 communication and agents. Capability, domain and provider values are read from
 `capability:`, `domain:` and `provider:` tags. Search and list accept
 `--category`, `--capability`, `--domain`, `--provider` and `--role` filters.
 `--role=workflow` refers to a skill's role; `--workflows` still selects the
 separate workflow package kind.
+
+Stacks expose the same `facets` in search, installed listings and
+`rudi info stack:<id> --json`, without `skillRole` or `operatorFor` fields.
+For example, `rudi search --all --stacks --provider=vercel --capability=deploy`
+finds the deployment stack, and `rudi list stacks --category=web` filters the
+installed inventory. The role filter applies only to skills.
 
 The primary operator role is derived from a stack's `related.operatorSkill`.
 Requiring a stack does not make a workflow its operator. Skill JSON includes

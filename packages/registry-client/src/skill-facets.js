@@ -2,8 +2,8 @@
 const FACET_KEYS = { capability: 'capabilities', domain: 'domains', provider: 'providers' };
 const SLUG = /^[a-z0-9]+(?:-[a-z0-9]+)*$/;
 
-export function describeSkill(pkg, index, { catalogIdentity = true } = {}) {
-  if (pkg.kind !== 'skill') return pkg;
+export function describePackage(pkg, index, { catalogIdentity = true } = {}) {
+  if (!['skill', 'stack'].includes(pkg.kind)) return pkg;
   const tags = Array.isArray(pkg.tags) ? pkg.tags : Array.isArray(pkg.meta?.tags) ? pkg.meta.tags : [];
   const facets = { capabilities: [], domains: [], providers: [] };
   for (const tag of tags) {
@@ -14,6 +14,8 @@ export function describeSkill(pkg, index, { catalogIdentity = true } = {}) {
     }
   }
   for (const key of Object.values(FACET_KEYS)) facets[key] = [...new Set(facets[key])].sort();
+  const described = { ...pkg, category: pkg.category || pkg.meta?.category, tags, facets };
+  if (pkg.kind === 'stack') return described;
   const registered = catalogIdentity && index?.packages?.[pkg.id]?.kind === 'skill'
     && index.packages[pkg.id].id === pkg.id;
   const operatorFor = registered ? Object.entries(index.packages)
@@ -21,14 +23,14 @@ export function describeSkill(pkg, index, { catalogIdentity = true } = {}) {
       && value.related?.operatorSkill === pkg.id)
     .map(([id]) => id).sort() : [];
   return {
-    ...pkg,
-    category: pkg.category || pkg.meta?.category,
-    tags,
-    facets,
+    ...described,
     skillRole: registered ? (operatorFor.length > 0 ? 'operator' : 'workflow') : 'unknown',
     operatorFor,
   };
 }
+
+// Retain the public name used by earlier registry-client consumers.
+export const describeSkill = describePackage;
 
 export function normalizeSkillFilters(options = {}) {
   const filters = {};

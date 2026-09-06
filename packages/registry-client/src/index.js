@@ -17,9 +17,9 @@ import {
   normalizeRegistryPackage,
 } from './registry-contract.js';
 import { downloadGitHubDirectory } from './github-source.js';
-import { describeSkill, matchesSkillFilters, normalizeSkillFilters } from './skill-facets.js';
+import { describePackage, matchesSkillFilters, normalizeSkillFilters } from './skill-facets.js';
 
-export { describeSkill, matchesSkillFilters, normalizeSkillFilters } from './skill-facets.js';
+export { describePackage, describeSkill, matchesSkillFilters, normalizeSkillFilters } from './skill-facets.js';
 
 export { normalizeRegistryPackage, resolveRegistryPackageForPlatform } from './registry-contract.js';
 export {
@@ -476,7 +476,7 @@ export async function searchPackages(query, options = {}) {
     const packages = listRegistryPackages(index, k);
 
     for (const raw of packages) {
-      const pkg = describeSkill(raw, index);
+      const pkg = describePackage(raw, index);
       if (matchesQuery(pkg, queryLower) && matchesSkillFilters(pkg, filters)) {
         results.push({ ...pkg, kind: k });
       }
@@ -590,7 +590,7 @@ export async function getManifest(pkg) {
 export async function listPackages(kind, options = {}) {
   const filters = normalizeSkillFilters(options);
   const index = await fetchIndex();
-  return listRegistryPackages(index, kind).map(pkg => describeSkill(pkg, index))
+  return listRegistryPackages(index, kind).map(pkg => describePackage(pkg, index))
     .filter(pkg => matchesSkillFilters(pkg, filters));
 }
 

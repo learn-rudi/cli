@@ -13,7 +13,7 @@
 import fs from 'fs';
 import path from 'path';
 import { getPackagePath, parsePackageId, PATHS } from '@learnrudi/env';
-import { getShimOwner, validateShim, listInstalled } from '@learnrudi/core';
+import { getShimOwner, validateShim, listInstalled, describePackage } from '@learnrudi/core';
 import { inspectRuntimeInstall } from '../runtime-inspection.js';
 import { printPackageLifecycle } from './package-lifecycle.js';
 import { printSkillDetails } from './skill-display.js';
@@ -83,6 +83,14 @@ export async function cmdInfo(args, flags) {
       manifest = runtimeInspection.manifest;
     }
 
+    const stack = kind === 'stack' ? describePackage({
+      ...manifest, id: pkgId, kind, path: installPath,
+    }) : null;
+    if (stack && flags.json) {
+      console.log(JSON.stringify(stack, null, 2));
+      return;
+    }
+
     console.log(`\nPackage: ${pkgId}`);
     console.log('─'.repeat(50));
 
@@ -97,6 +105,7 @@ export async function cmdInfo(args, flags) {
       (manifest?.npmPackage ? 'npm' : manifest?.pipPackage ? 'pip' : kind);
     console.log(`  Install Type: ${installType}`);
     printPackageLifecycle(manifest, '  ');
+    if (stack) printSkillDetails(stack, '  ');
 
     // Source
     if (manifest?.source) {

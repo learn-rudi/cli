@@ -26,7 +26,7 @@ import {
   downloadResolvedPackage,
   downloadTool,
   verifyHash,
-  describeSkill,
+  describePackage,
   getAvailableRegistryIndex,
 } from '@learnrudi/registry-client';
 import { resolvePackage, getInstallOrder } from './resolver.js';
@@ -1836,11 +1836,12 @@ export async function listInstalled(kind) {
 
   const index = packages.some(pkg => pkg.kind === 'skill') ? getAvailableRegistryIndex() : null;
   return packages.map(pkg => {
+    if (pkg.kind === 'stack') return describePackage(pkg, index);
     if (pkg.kind !== 'skill') return pkg;
     const lock = readLockfile(pkg.id);
     const catalogIdentity = pkg.source === 'rudi' && lock?.id === pkg.id
       && /^[a-f0-9]{64}$/i.test(lock.checksum || '');
-    return describeSkill(pkg, index, { catalogIdentity });
+    return describePackage(pkg, index, { catalogIdentity });
   });
 }
 

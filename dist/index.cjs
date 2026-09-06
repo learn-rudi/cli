@@ -1195,8 +1195,8 @@ var init_github_source = __esm({
 });
 
 // packages/registry-client/src/skill-facets.js
-function describeSkill(pkg, index, { catalogIdentity = true } = {}) {
-  if (pkg.kind !== "skill") return pkg;
+function describePackage(pkg, index, { catalogIdentity = true } = {}) {
+  if (!["skill", "stack"].includes(pkg.kind)) return pkg;
   const tags = Array.isArray(pkg.tags) ? pkg.tags : Array.isArray(pkg.meta?.tags) ? pkg.meta.tags : [];
   const facets = { capabilities: [], domains: [], providers: [] };
   for (const tag of tags) {
@@ -1207,13 +1207,12 @@ function describeSkill(pkg, index, { catalogIdentity = true } = {}) {
     }
   }
   for (const key of Object.values(FACET_KEYS)) facets[key] = [...new Set(facets[key])].sort();
+  const described = { ...pkg, category: pkg.category || pkg.meta?.category, tags, facets };
+  if (pkg.kind === "stack") return described;
   const registered = catalogIdentity && index?.packages?.[pkg.id]?.kind === "skill" && index.packages[pkg.id].id === pkg.id;
   const operatorFor = registered ? Object.entries(index.packages).filter(([id, value]) => id.startsWith("stack:") && value?.id === id && value.kind === "stack" && value.related?.operatorSkill === pkg.id).map(([id]) => id).sort() : [];
   return {
-    ...pkg,
-    category: pkg.category || pkg.meta?.category,
-    tags,
-    facets,
+    ...described,
     skillRole: registered ? operatorFor.length > 0 ? "operator" : "workflow" : "unknown",
     operatorFor
   };
@@ -1240,11 +1239,12 @@ function matchesSkillFilters(pkg, filters) {
   }
   return true;
 }
-var FACET_KEYS, SLUG;
+var FACET_KEYS, SLUG, describeSkill;
 var init_skill_facets = __esm({
   "packages/registry-client/src/skill-facets.js"() {
     FACET_KEYS = { capability: "capabilities", domain: "domains", provider: "providers" };
     SLUG = /^[a-z0-9]+(?:-[a-z0-9]+)*$/;
+    describeSkill = describePackage;
   }
 });
 
@@ -1538,7 +1538,7 @@ async function searchPackages(query, options = {}) {
   for (const k of kinds) {
     const packages = listRegistryPackages(index, k);
     for (const raw of packages) {
-      const pkg = describeSkill(raw, index);
+      const pkg = describePackage(raw, index);
       if (matchesQuery(pkg, queryLower) && matchesSkillFilters(pkg, filters)) {
         results.push({ ...pkg, kind: k });
       }
@@ -1614,7 +1614,7 @@ async function getManifest(pkg) {
 async function listPackages(kind, options = {}) {
   const filters = normalizeSkillFilters(options);
   const index = await fetchIndex();
-  return listRegistryPackages(index, kind).map((pkg) => describeSkill(pkg, index)).filter((pkg) => matchesSkillFilters(pkg, filters));
+  return listRegistryPackages(index, kind).map((pkg) => describePackage(pkg, index)).filter((pkg) => matchesSkillFilters(pkg, filters));
 }
 function resolvedBinEntries(bins, packageId) {
   const entries = Array.isArray(bins) ? bins.map((name) => ({ name, path: name })) : Object.entries(bins || {}).map(([name, config]) => ({
@@ -12147,10 +12147,11 @@ async function listInstalled(kind) {
   }
   const index = packages.some((pkg) => pkg.kind === "skill") ? getAvailableRegistryIndex() : null;
   return packages.map((pkg) => {
+    if (pkg.kind === "stack") return describePackage(pkg, index);
     if (pkg.kind !== "skill") return pkg;
     const lock = readLockfile(pkg.id);
     const catalogIdentity = pkg.source === "rudi" && lock?.id === pkg.id && /^[a-f0-9]{64}$/i.test(lock.checksum || "");
-    return describeSkill(pkg, index, { catalogIdentity });
+    return describePackage(pkg, index, { catalogIdentity });
   });
 }
 async function updatePackage(id, options = {}) {
@@ -13950,6 +13951,7 @@ __export(src_exports, {
   createStackDependencyInstallCommand: () => createStackDependencyInstallCommand,
   createToolIndex: () => createToolIndex,
   deleteLockfile: () => deleteLockfile,
+  describePackage: () => describePackage,
   describeSkill: () => describeSkill,
   discoverSkillPackages: () => discoverSkillPackages,
   discoverStackTools: () => discoverStackTools,
@@ -21891,10 +21893,12 @@ function printPackageLifecycle(pkg, indent = "") {
 
 // src/commands/skill-display.js
 function printSkillDetails(pkg, indent = "    ") {
-  if (pkg.kind !== "skill") return;
+  if (!["skill", "stack"].includes(pkg.kind)) return;
   if (pkg.category) console.log(`${indent}Category: ${pkg.category}`);
-  console.log(`${indent}Role: ${pkg.skillRole || "unknown"}`);
-  if (pkg.operatorFor?.length) console.log(`${indent}Operator for: ${pkg.operatorFor.join(", ")}`);
+  if (pkg.kind === "skill") {
+    console.log(`${indent}Role: ${pkg.skillRole || "unknown"}`);
+    if (pkg.operatorFor?.length) console.log(`${indent}Operator for: ${pkg.operatorFor.join(", ")}`);
+  }
   for (const [field, label] of [["capabilities", "Capabilities"], ["domains", "Domains"], ["providers", "Providers"]]) {
     if (pkg.facets?.[field]?.length) console.log(`${indent}${label}: ${pkg.facets[field].join(", ")}`);
   }
@@ -30293,7 +30297,7 @@ ${headingForKind2(pkgKind)} (${pkgs.length}):`);
         }
         printPackageLifecycle(pkg, "    ");
         printSkillDetails(pkg);
-        if (pkg.kind !== "skill" && pkg.category) {
+        if (!["skill", "stack"].includes(pkg.kind) && pkg.category) {
           console.log(`    Category: ${pkg.category}`);
         }
         if (pkg.tags && pkg.tags.length > 0) {
@@ -38150,6 +38154,16 @@ async function cmdInfo(args, flags) {
       }
       manifest = runtimeInspection.manifest;
     }
+    const stack = kind === "stack" ? describePackage({
+      ...manifest,
+      id: pkgId,
+      kind,
+      path: installPath
+    }) : null;
+    if (stack && flags.json) {
+      console.log(JSON.stringify(stack, null, 2));
+      return;
+    }
     console.log(`
 Package: ${pkgId}`);
     console.log("\u2500".repeat(50));
@@ -38160,6 +38174,7 @@ Package: ${pkgId}`);
     const installType = manifest?.installType || (manifest?.npmPackage ? "npm" : manifest?.pipPackage ? "pip" : kind);
     console.log(`  Install Type: ${installType}`);
     printPackageLifecycle(manifest, "  ");
+    if (stack) printSkillDetails(stack, "  ");
     if (manifest?.source) {
       if (typeof manifest.source === "string") {
         console.log(`  Source:      ${manifest.source}`);
