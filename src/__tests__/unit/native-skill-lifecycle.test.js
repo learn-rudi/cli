@@ -75,6 +75,108 @@ test('reconcileNativeSkill creates a complete Codex tree and ownership receipt',
   }
 });
 
+test('forced reconciliation preserves bundled Codex metadata verbatim', async () => {
+  const state = fixture();
+  try {
+    const canonicalMetadata = [
+      'interface:',
+      '  display_name: Demo Skill',
+      '  short_description: Canonical metadata fixture',
+      '  default_prompt: Run the canonical metadata fixture.',
+      '',
+      'policy:',
+      '  allow_implicit_invocation: false',
+      '',
+    ].join('\n');
+    const agentsDir = path.join(path.dirname(state.skill.entryPath), 'agents');
+    fs.mkdirSync(agentsDir, { recursive: true });
+    fs.writeFileSync(path.join(agentsDir, 'openai.yaml'), canonicalMetadata);
+
+    const created = await reconcileNativeSkill({
+      host: 'codex',
+      skill: state.skill,
+      targetRoot: state.nativeRoot,
+      receiptRoot: state.receiptRoot,
+    });
+    fs.writeFileSync(path.join(created.targetDir, 'agents', 'openai.yaml'), 'stale metadata\n');
+
+    const forced = await reconcileNativeSkill({
+      host: 'codex',
+      skill: state.skill,
+      targetRoot: state.nativeRoot,
+      receiptRoot: state.receiptRoot,
+      force: true,
+    });
+
+    assert.equal(forced.action, 'updated');
+    assert.equal(forced.forced, true);
+    assert.equal(
+      fs.readFileSync(path.join(forced.targetDir, 'agents', 'openai.yaml'), 'utf8'),
+      canonicalMetadata,
+    );
+  } finally {
+    fs.rmSync(state.root, { recursive: true, force: true });
+  }
+});
+
+test('native projections preserve the complete trigger description independently of UI summaries', async () => {
+  const state = fixture();
+  try {
+    const description = 'Review the requested project and preserve its task scope. '.repeat(8)
+      + 'Use only when the user explicitly invokes this skill.';
+    state.skill.description = description;
+    for (const host of ['codex', 'claude', 'gemini', 'antigravity']) {
+      const result = await reconcileNativeSkill({
+        host, skill: state.skill,
+        targetRoot: path.join(state.root, host, 'skills'),
+        receiptRoot: state.receiptRoot,
+      });
+      const content = fs.readFileSync(path.join(result.targetDir, 'SKILL.md'), 'utf8');
+      assert.ok(content.includes(description), `${host} dropped part of the trigger description`);
+    }
+  } finally {
+    fs.rmSync(state.root, { recursive: true, force: true });
+  }
+});
+
+test('native sync refuses a canonical skill with conflicting source formats', async () => {
+  const state = fixture();
+  state.skill.conflictingPaths = [state.skill.path, `${state.skill.path}.md`];
+  try {
+    const result = await reconcileNativeSkill({
+      host: 'codex', skill: state.skill,
+      targetRoot: state.nativeRoot, receiptRoot: state.receiptRoot,
+    });
+    assert.equal(result.action, 'failed');
+    assert.match(result.error, /Conflicting skill formats/);
+    assert.equal(fs.existsSync(path.join(state.nativeRoot, 'demo-skill')), false);
+  } finally {
+    fs.rmSync(state.root, { recursive: true, force: true });
+  }
+});
+
+test('native rendering reads YAML descriptions and strips CRLF source frontmatter once', async () => {
+  const state = fixture();
+  try {
+    delete state.skill.description;
+    fs.writeFileSync(state.skill.entryPath, [
+      '---', 'name: Demo Skill', 'description: >-',
+      '  Review the website', '  only when explicitly requested.',
+      'category: web', 'tags: ["capability:review"]', '---', '', 'Canonical body.', '',
+    ].join('\r\n'));
+    const result = await reconcileNativeSkill({
+      host: 'codex', skill: state.skill, targetRoot: state.nativeRoot, receiptRoot: state.receiptRoot,
+    });
+    assert.equal(result.action, 'created');
+    const content = fs.readFileSync(path.join(result.targetDir, 'SKILL.md'), 'utf8');
+    assert.ok(content.includes('Review the website only when explicitly requested.'));
+    assert.equal(content.includes('category: web'), false);
+    assert.equal(content.split('Canonical body.').length, 2);
+  } finally {
+    fs.rmSync(state.root, { recursive: true, force: true });
+  }
+});
+
 test('managed updates replace the complete tree, prune stale resources, and become idempotent', async () => {
   const state = fixture();
   try {

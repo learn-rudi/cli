@@ -1,4 +1,5 @@
 import crypto from 'node:crypto';
+import { parseSkillDocument } from '@learnrudi/core';
 import fs from 'node:fs';
 import * as fsp from 'node:fs/promises';
 import os from 'node:os';
@@ -47,37 +48,6 @@ function yamlString(value) {
   return JSON.stringify(String(value || ''));
 }
 
-function parseSimpleFrontmatter(frontmatter = '') {
-  const metadata = {};
-  for (const line of frontmatter.split('\n')) {
-    const match = line.match(/^([A-Za-z0-9_-]+):\s*(.*)$/);
-    if (!match) continue;
-    let value = match[2].trim();
-    if (
-      (value.startsWith('"') && value.endsWith('"')) ||
-      (value.startsWith("'") && value.endsWith("'"))
-    ) {
-      value = value.slice(1, -1);
-    }
-    metadata[match[1]] = value;
-  }
-  return metadata;
-}
-
-function stripFrontmatter(content = '') {
-  if (!content.startsWith('---\n')) {
-    return { metadata: {}, body: content.trimStart() };
-  }
-  const end = content.indexOf('\n---\n', 4);
-  if (end === -1) {
-    return { metadata: {}, body: content.trimStart() };
-  }
-  return {
-    metadata: parseSimpleFrontmatter(content.slice(4, end)),
-    body: content.slice(end + 5).trimStart(),
-  };
-}
-
 export function normalizeNativeSkillName(skill) {
   const raw = String(skill?.id || '').replace(/^skill:/, '');
   if (!SKILL_NAME_PATTERN.test(raw)) {
@@ -97,12 +67,12 @@ function defaultPrompt(skillName, description, displayName) {
 
 export function buildPortableSkillFiles(skill, sourceContent) {
   const skillName = normalizeNativeSkillName(skill);
-  const parsed = stripFrontmatter(sourceContent);
+  const parsed = parseSkillDocument(sourceContent);
   const displayName = compactText(parsed.metadata.name || skill.name || skillName, 80);
-  const description = compactText(
+  // Trigger conditions can occur at the end; UI summaries have separate limits.
+  const description = String(
     skill.description || parsed.metadata.description || `${displayName} RUDI skill`,
-    320,
-  );
+  ).replace(/\s+/g, ' ').trim();
   const body = parsed.body
     || `Use the installed RUDI skill \`skill:${skillName}\` as the source of truth.`;
   const skillMd = [
@@ -120,7 +90,7 @@ export function buildPortableSkillFiles(skill, sourceContent) {
 export function buildCodexSkillFiles(skill, sourceContent) {
   const baseFiles = buildPortableSkillFiles(skill, sourceContent);
   const { skillName } = baseFiles;
-  const parsed = stripFrontmatter(sourceContent);
+  const parsed = parseSkillDocument(sourceContent);
   const displayName = humanizeSkillDisplayName(parsed.metadata.name || skill.name || skillName);
   const description = compactText(
     skill.description || parsed.metadata.description || `${displayName} RUDI skill`,
@@ -288,6 +258,19 @@ async function collectResourceEntries(sourceRoot, resourceName, entries, sourceE
   await walk(resourceRoot, resourceName);
 }
 
+async function readBundledCodexMetadata(sourceRoot) {
+  const metadataPath = path.join(sourceRoot, 'agents', 'openai.yaml');
+  let metadataStat;
+  try {
+    metadataStat = await fsp.lstat(metadataPath);
+  } catch (error) {
+    if (error.code === 'ENOENT') return null;
+    throw error;
+  }
+  assertRealEntry(metadataStat, metadataPath, 'file');
+  return fsp.readFile(metadataPath);
+}
+
 function manifestEntry(entry) {
   if (entry.type === 'directory') {
     return { path: entry.relativePath, type: entry.type, mode: entry.mode };
@@ -321,6 +304,9 @@ function resolveSourceIdentity(source) {
 async function buildProjection(host, skill) {
   assertSupportedHost(host);
   const skillName = normalizeNativeSkillName(skill);
+  if (skill.conflictingPaths?.length) {
+    throw new Error(`Conflicting skill formats for ${skill.id}; reconcile canonical sources before native sync`);
+  }
   const sourcePath = path.resolve(skill.entryPath || skill.path || '');
   await assertNoSymlinkPathComponents(sourcePath, 'Native skill source path');
   let sourceStat;
@@ -350,15 +336,7 @@ async function buildProjection(host, skill) {
     mode: sourceStat.mode & 0o777,
     content: sourceContent,
   }];
-  if (host === 'codex') {
-    entries.push({ type: 'directory', relativePath: 'agents', mode: 0o755 });
-    entries.push({
-      type: 'file',
-      relativePath: path.join('agents', 'openai.yaml'),
-      mode: 0o644,
-      content: Buffer.from(generated.openaiYaml),
-    });
-  }
+  let codexMetadata = host === 'codex' ? Buffer.from(generated.openaiYaml) : null;
   let packageDigest;
   if (path.basename(sourcePath) === 'SKILL.md') {
     const sourceRoot = path.dirname(sourcePath);
@@ -367,11 +345,23 @@ async function buildProjection(host, skill) {
       throw new Error(`Source skill package not found: ${sourceRoot}`);
     }
     packageDigest = completePackage.digest;
+    if (host === 'codex') {
+      codexMetadata = await readBundledCodexMetadata(sourceRoot) ?? codexMetadata;
+    }
     for (const resourceName of RESOURCE_DIRECTORIES) {
       await collectResourceEntries(sourceRoot, resourceName, entries, sourceEntries);
     }
   } else {
     packageDigest = digestEntries(sourceEntries).digest;
+  }
+  if (host === 'codex') {
+    entries.push({ type: 'directory', relativePath: 'agents', mode: 0o755 });
+    entries.push({
+      type: 'file',
+      relativePath: path.join('agents', 'openai.yaml'),
+      mode: 0o644,
+      content: codexMetadata,
+    });
   }
   const rendered = digestEntries(entries);
   const sourceIdentity = resolveSourceIdentity(skill.source);

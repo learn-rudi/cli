@@ -13,9 +13,27 @@
 import fs from 'fs';
 import path from 'path';
 import { getPackagePath, parsePackageId, PATHS } from '@learnrudi/env';
-import { getShimOwner, validateShim } from '@learnrudi/core';
+import { getShimOwner, validateShim, listInstalled } from '@learnrudi/core';
 import { inspectRuntimeInstall } from '../runtime-inspection.js';
 import { printPackageLifecycle } from './package-lifecycle.js';
+import { printSkillDetails } from './skill-display.js';
+
+async function showSkillInfo(id, flags) {
+  const skill = (await listInstalled('skill')).find(pkg => pkg.id === id);
+  if (!skill) throw new Error(`Package not installed: ${id}`);
+  if (flags.json) {
+    console.log(JSON.stringify(skill, null, 2));
+    return;
+  }
+  console.log(`\nPackage: ${id}`);
+  console.log(`  Name:        ${skill.name}`);
+  console.log(`  Kind:        skill`);
+  console.log(`  Version:     ${skill.version}`);
+  console.log(`  Entrypoint:  ${skill.entryPath}`);
+  console.log(`  Description: ${skill.description}`);
+  printSkillDetails(skill, '  ');
+  if (skill.requires?.stacks?.length) console.log(`  Requires: ${skill.requires.stacks.join(', ')}`);
+}
 
 function resolvesToSameFile(leftPath, rightPath) {
   try {
@@ -37,6 +55,7 @@ export async function cmdInfo(args, flags) {
 
   try {
     const [kind, name] = parsePackageId(pkgId);
+    if (kind === 'skill') return await showSkillInfo(pkgId, flags);
     const installPath = getPackagePath(pkgId);
 
     if (!fs.existsSync(installPath)) {

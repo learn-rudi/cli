@@ -2,8 +2,9 @@
  * Search command - search registry for packages
  */
 
-import { fetchIndex, searchPackages, listPackages } from '@learnrudi/core';
+import { fetchIndex, searchPackages, listPackages, normalizeSkillFilters } from '@learnrudi/core';
 import { printPackageLifecycle } from './package-lifecycle.js';
+import { printSkillDetails } from './skill-display.js';
 
 function pluralizeKind(kind) {
   if (!kind) return 'packages';
@@ -39,6 +40,7 @@ function printSearchGuidance(packageKinds) {
 
 export async function cmdSearch(args, flags) {
   const query = args[0];
+  const filters = normalizeSkillFilters(flags);
   const refreshRegistry = flags.fresh || flags['no-cache'] || false;
 
   if (refreshRegistry) {
@@ -79,21 +81,21 @@ export async function cmdSearch(args, flags) {
 
   // Show deprecation note for --prompts flag
   if (flags.prompts && !flags.skills) {
-    console.log('Note: --prompts has been renamed to --skills. Use --skills instead.\n');
+    console.error('Note: --prompts has been renamed to --skills. Use --skills instead.\n');
   }
 
-  console.log(`Searching for "${query}"...`);
+  if (!flags.json) console.log(`Searching for "${query}"...`);
 
   try {
-    const results = await searchPackages(query, { kind });
-
-    if (results.length === 0) {
-      console.log('No packages found matching your query.');
-      return;
-    }
+    const results = await searchPackages(query, { kind, ...filters });
 
     if (flags.json) {
       console.log(JSON.stringify(results, null, 2));
+      return;
+    }
+
+    if (results.length === 0) {
+      console.log('No packages found matching your query.');
       return;
     }
 
@@ -122,6 +124,7 @@ export async function cmdSearch(args, flags) {
           console.log(`    v${pkg.version}`);
         }
         printPackageLifecycle(pkg, '    ');
+        printSkillDetails(pkg);
         console.log();
       }
     }
@@ -155,7 +158,7 @@ async function listAllPackages(flags) {
 
   // Show deprecation note for --prompts flag
   if (flags.prompts && !flags.skills) {
-    console.log('Note: --prompts has been renamed to --skills. Use --skills instead.\n');
+    console.error('Note: --prompts has been renamed to --skills. Use --skills instead.\n');
   }
 
   try {
@@ -164,7 +167,7 @@ async function listAllPackages(flags) {
     let totalCount = 0;
 
     for (const k of kinds) {
-      const packages = await listPackages(k);
+      const packages = await listPackages(k, normalizeSkillFilters(flags));
       allPackages[k] = packages;
       totalCount += packages.length;
     }
@@ -190,6 +193,7 @@ async function listAllPackages(flags) {
         console.log(`  ${id}${runtime}`);
         console.log(`    ${pkg.description || 'No description'}`);
         printPackageLifecycle(pkg, '    ');
+        printSkillDetails(pkg);
       }
     }
 

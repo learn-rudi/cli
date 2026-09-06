@@ -29,6 +29,10 @@ export {
   searchPackages,
   getPackage,
   listPackages,
+  describeSkill,
+  getAvailableRegistryIndex,
+  matchesSkillFilters,
+  normalizeSkillFilters,
   clearCache
 } from '@learnrudi/registry-client';
 
@@ -42,3 +46,6 @@ export * from './tool-index.js';
 export * from './shims.js';
 export * from './system-registry.js';
 export * from './stack-lifecycle.js';
+
+export { parseSkillDocument } from './package-metadata.js';
+export { inspectRegistrySkillUpdate } from './skill-install.js';

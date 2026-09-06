@@ -91,3 +91,24 @@ test('external Claude skill discovery preserves RUDI precedence', () => {
     fs.rmSync(root, { recursive: true, force: true });
   }
 });
+
+test('same-root duplicate skill formats are reported and exact path resolution refuses ambiguity', () => {
+  const root = fs.mkdtempSync(path.join(os.tmpdir(), 'rudi-skill-collision-'));
+  const skillDir = path.join(root, 'skills', 'demo');
+  fs.mkdirSync(skillDir, { recursive: true });
+  fs.writeFileSync(path.join(skillDir, 'SKILL.md'), '# Bundle');
+  fs.writeFileSync(path.join(root, 'skills', 'demo.md'), '# Legacy');
+  try {
+    const result = runEnvScript(root, `
+      const { discoverSkillPackages, getPackagePath } = await import(process.argv[1]);
+      let error;
+      try { getPackagePath('skill:demo'); } catch (cause) { error = cause.message; }
+      console.log(JSON.stringify({ skills: discoverSkillPackages(), error }));
+    `);
+    assert.equal(result.skills.length, 1);
+    assert.deepEqual(result.skills[0].conflictingPaths.sort(), [skillDir, path.join(root, 'skills', 'demo.md')].sort());
+    assert.match(result.error, /Conflicting skill formats/);
+  } finally {
+    fs.rmSync(root, { recursive: true, force: true });
+  }
+});

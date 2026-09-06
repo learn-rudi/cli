@@ -99,3 +99,39 @@ test('listInstalled includes local and Claude directory skills with metadata', (
     fs.rmSync(root, { recursive: true, force: true });
   }
 });
+
+test('installed skill metadata preserves YAML facet lists and multiline descriptions', () => {
+  const root = fs.mkdtempSync(path.join(os.tmpdir(), 'rudi-skill-metadata-'));
+  const skillRoot = path.join(root, 'skills', 'web-publisher');
+  fs.mkdirSync(skillRoot, { recursive: true });
+  fs.writeFileSync(path.join(skillRoot, 'SKILL.md'), [
+    '---',
+    'name: Web Publisher',
+    'description: >-',
+    '  Publish a website',
+    '  and verify its deployment.',
+    'category: web',
+    'tags: ["capability:deploy", "provider:vercel"]',
+    'requires:',
+    '  stacks: ["stack:vercel"]',
+    '---',
+    '',
+  ].join('\r\n'));
+  try {
+    const output = execFileSync(process.execPath, ['--input-type=module', '-e', `
+      const { listInstalled } = await import(process.argv[1]);
+      console.log(JSON.stringify((await listInstalled('skill')).find(s => s.id === 'skill:web-publisher')));
+    `, installerUrl], {
+      cwd: repoRoot,
+      env: { ...process.env, RUDI_HOME: root, CLAUDE_HOME: path.join(root, 'claude') },
+      encoding: 'utf8',
+    });
+    const skill = JSON.parse(output);
+    assert.deepEqual(skill.tags, ['capability:deploy', 'provider:vercel']);
+    assert.equal(skill.description, 'Publish a website and verify its deployment.');
+    assert.deepEqual(skill.requires, { stacks: ['stack:vercel'] });
+    assert.equal(skill.category, 'web');
+  } finally {
+    fs.rmSync(root, { recursive: true, force: true });
+  }
+});
