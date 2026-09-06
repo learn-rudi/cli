@@ -29,6 +29,7 @@ export {
   searchPackages,
   getPackage,
   listPackages,
+  describePackage,
   describeSkill,
   getAvailableRegistryIndex,
   matchesSkillFilters,

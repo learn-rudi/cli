@@ -250,7 +250,7 @@ export async function cmdList(args, flags) {
         }
         printPackageLifecycle(pkg, '    ');
         printSkillDetails(pkg);
-        if (pkg.kind !== 'skill' && pkg.category) {
+        if (!['skill', 'stack'].includes(pkg.kind) && pkg.category) {
           console.log(`    Category: ${pkg.category}`);
         }
         if (pkg.tags && pkg.tags.length > 0) {
