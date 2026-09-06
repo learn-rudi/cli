@@ -10,6 +10,7 @@ import { execFileSync as defaultExecFileSync } from 'child_process';
 import { pipeline } from 'stream/promises';
 import { createWriteStream } from 'fs';
 import { createGunzip } from 'zlib';
+import { parsePackageMetadata, parseSkillDocument } from './package-metadata.js';
 import {
   PATHS,
   discoverSkillPackages,
@@ -25,10 +26,13 @@ import {
   downloadResolvedPackage,
   downloadTool,
   verifyHash,
+  describeSkill,
+  getAvailableRegistryIndex,
 } from '@learnrudi/registry-client';
 import { resolvePackage, getInstallOrder } from './resolver.js';
 import { readLockfile, restoreLockfile, writeLockfile } from './lockfile.js';
 import { createShimsForTool, removeShims } from './shims.js';
+import { installRegistrySkill } from './skill-install.js';
 
 const SINGLE_FILE_KINDS = new Set(['skill', 'prompt', 'workflow']);
 const WORKFLOW_EXTENSIONS = ['.yaml', '.yml', '.json'];
@@ -46,9 +50,9 @@ export function getInstallPathForPackage(pkg) {
   if (
     kind === 'skill' &&
     typeof pkg.path === 'string' &&
-    !pkg.path.replaceAll('\\', '/').endsWith('.md')
+    pkg.path.length > 0
   ) {
-    return path.join(PATHS.skills, name);
+    return path.join(PATHS.skills, pkg.path.replaceAll('\\', '/').endsWith('.md') ? `${name}.md` : name);
   }
 
   return getPackagePath(pkg.id);
@@ -783,6 +787,12 @@ export async function installPackage(id, options = {}) {
   // Get install order (dependencies first)
   let toInstall = getInstallOrder(resolved);
 
+  // An installed ID may still need a source-format migration at its new path.
+  if (resolved.kind === 'skill' && !fs.existsSync(getInstallPathForPackage(resolved))
+    && !toInstall.some(pkg => pkg.id === resolved.id)) {
+    toInstall.push(resolved);
+  }
+
   // If already installed and not forcing, skip
   if (toInstall.length === 0 && !force) {
     return {
@@ -851,7 +861,7 @@ export async function installPackage(id, options = {}) {
       }
       return { success: false, id: resolved.id, error: error.message };
     }
-  } else if (!transaction) {
+  } else if (!transaction && !mainResult?.lockfileWritten && !mainResult?.skipped) {
     onProgress?.({ phase: 'lockfile', package: resolved.id });
     await writeLockfile(resolved, {
       installPath: getInstallPathForPackage(resolved),
@@ -862,6 +872,7 @@ export async function installPackage(id, options = {}) {
     success: true,
     id: resolved.id,
     path: getInstallPathForPackage(resolved),
+    ...(mainResult?.backupPath ? { backupPath: mainResult.backupPath } : {}),
     installed: results.map(r => r.id),
     ...(transaction && deferFinalize ? { transaction } : {}),
   };
@@ -1035,6 +1046,10 @@ async function installSinglePackage(pkg, options = {}) {
   // Check if already installed
   if (fs.existsSync(installPath) && !force) {
     return { success: true, id: pkg.id, path: installPath, skipped: true };
+  }
+
+  if (pkg.kind === 'skill' && pkg.source?.type !== 'github' && pkg.path) {
+    return installRegistrySkill(pkg, installPath, { onProgress });
   }
 
   // Handle RUDI-managed runtimes and binaries.
@@ -1650,58 +1665,6 @@ async function copyDirectory(src, dest) {
   }
 }
 
-function stripQuotes(value) {
-  return String(value || '').trim().replace(/^["']|["']$/g, '');
-}
-
-function parseListValue(lines, startIndex) {
-  const values = [];
-  for (let i = startIndex + 1; i < lines.length; i++) {
-    const line = lines[i];
-    if (!/^\s+/.test(line)) break;
-    const itemMatch = line.match(/^\s*-\s+(.+?)\s*$/);
-    if (itemMatch) {
-      values.push(stripQuotes(itemMatch[1]));
-    }
-  }
-  return values;
-}
-
-function parseSimpleYamlMetadata(yaml) {
-  const metadata = {};
-  const lines = yaml.split(/\r?\n/);
-
-  for (let i = 0; i < lines.length; i++) {
-    const line = lines[i];
-    const scalarMatch = line.match(/^(name|description|version|category|icon):\s*(.+?)\s*$/);
-    if (scalarMatch) {
-      metadata[scalarMatch[1]] = stripQuotes(scalarMatch[2]);
-      continue;
-    }
-
-    if (/^tags:\s*$/.test(line)) {
-      metadata.tags = parseListValue(lines, i);
-      continue;
-    }
-
-    if (/^requires:\s*$/.test(line)) {
-      const requires = {};
-      for (let j = i + 1; j < lines.length; j++) {
-        const nested = lines[j];
-        if (!/^\s+/.test(nested)) break;
-        const sectionMatch = nested.match(/^\s+(stacks|skills):\s*$/);
-        if (sectionMatch) {
-          requires[sectionMatch[1]] = parseListValue(lines, j);
-        }
-      }
-      if (Object.keys(requires).length > 0) {
-        metadata.requires = requires;
-      }
-    }
-  }
-
-  return metadata;
-}
 
 function extractSingleFileMetadata(filePath, kind) {
   const content = fs.readFileSync(filePath, 'utf-8');
@@ -1710,13 +1673,10 @@ function extractSingleFileMetadata(filePath, kind) {
     return JSON.parse(content);
   }
 
-  const frontmatterMatch = content.match(/^---\n([\s\S]*?)\n---/);
-  if (frontmatterMatch) {
-    return parseSimpleYamlMetadata(frontmatterMatch[1]);
-  }
+  if (/^---\r?\n/.test(content)) return parseSkillDocument(content).metadata;
 
   if (kind === 'workflow') {
-    return parseSimpleYamlMetadata(content);
+    return parsePackageMetadata(content);
   }
 
   return {};
@@ -1770,6 +1730,7 @@ export async function listInstalled(kind) {
             format: skill.format,
             source: getInstalledPackageSource(`${k}:${skill.name}`, skill.source),
             entryPath: skill.entryPath,
+            ...(skill.conflictingPaths ? { conflictingPaths: skill.conflictingPaths } : {}),
             path: skill.packagePath
           });
         } catch {
@@ -1785,6 +1746,7 @@ export async function listInstalled(kind) {
             format: skill.format,
             source: getInstalledPackageSource(`${k}:${skill.name}`, skill.source),
             entryPath: skill.entryPath,
+            ...(skill.conflictingPaths ? { conflictingPaths: skill.conflictingPaths } : {}),
             path: skill.packagePath
           });
         }
@@ -1872,7 +1834,14 @@ export async function listInstalled(kind) {
     }
   }
 
-  return packages;
+  const index = packages.some(pkg => pkg.kind === 'skill') ? getAvailableRegistryIndex() : null;
+  return packages.map(pkg => {
+    if (pkg.kind !== 'skill') return pkg;
+    const lock = readLockfile(pkg.id);
+    const catalogIdentity = pkg.source === 'rudi' && lock?.id === pkg.id
+      && /^[a-f0-9]{64}$/i.test(lock.checksum || '');
+    return describeSkill(pkg, index, { catalogIdentity });
+  });
 }
 
 /**

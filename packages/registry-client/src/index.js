@@ -17,6 +17,9 @@ import {
   normalizeRegistryPackage,
 } from './registry-contract.js';
 import { downloadGitHubDirectory } from './github-source.js';
+import { describeSkill, matchesSkillFilters, normalizeSkillFilters } from './skill-facets.js';
+
+export { describeSkill, matchesSkillFilters, normalizeSkillFilters } from './skill-facets.js';
 
 export { normalizeRegistryPackage, resolveRegistryPackageForPlatform } from './registry-contract.js';
 export {
@@ -336,7 +339,7 @@ async function fetchRemoteRegistryIndex(url) {
  * Get cached index if valid
  * @returns {Object|null}
  */
-function getCachedIndex() {
+function getCachedIndex({ allowExpired = false } = {}) {
   const cachePath = PATHS.registryCache;
 
   if (!fs.existsSync(cachePath)) {
@@ -347,7 +350,7 @@ function getCachedIndex() {
     const stat = fs.statSync(cachePath);
     const age = Date.now() - stat.mtimeMs;
 
-    if (age > CACHE_TTL) {
+    if (!allowExpired && age > CACHE_TTL) {
       return null; // Cache expired
     }
 
@@ -355,6 +358,13 @@ function getCachedIndex() {
   } catch {
     return null;
   }
+}
+
+/** Read-only catalog context for installed inventory; never fetch or refresh cache. */
+export function getAvailableRegistryIndex() {
+  const index = getLocalIndex()?.index || getCachedIndex({ allowExpired: true });
+  if (!index) return null;
+  try { detectRegistrySchema(index); return index; } catch { return null; }
 }
 
 /**
@@ -454,6 +464,7 @@ export const PACKAGE_KINDS = ['stack', 'skill', 'prompt', 'workflow', 'runtime',
  */
 export async function searchPackages(query, options = {}) {
   const { kind } = options;
+  const filters = normalizeSkillFilters(options);
   const index = await fetchIndex();
 
   const results = [];
@@ -464,8 +475,9 @@ export async function searchPackages(query, options = {}) {
   for (const k of kinds) {
     const packages = listRegistryPackages(index, k);
 
-    for (const pkg of packages) {
-      if (matchesQuery(pkg, queryLower)) {
+    for (const raw of packages) {
+      const pkg = describeSkill(raw, index);
+      if (matchesQuery(pkg, queryLower) && matchesSkillFilters(pkg, filters)) {
         results.push({ ...pkg, kind: k });
       }
     }
@@ -482,6 +494,7 @@ function matchesQuery(pkg, query) {
     pkg.id || '',
     pkg.name || '',
     pkg.description || '',
+    pkg.category || '',
     ...(pkg.tags || [])
   ].join(' ').toLowerCase();
 
@@ -574,9 +587,11 @@ export async function getManifest(pkg) {
  * @param {'stack' | 'skill' | 'prompt' | 'workflow' | 'runtime' | 'binary' | 'agent'} kind
  * @returns {Promise<Array>}
  */
-export async function listPackages(kind) {
+export async function listPackages(kind, options = {}) {
+  const filters = normalizeSkillFilters(options);
   const index = await fetchIndex();
-  return listRegistryPackages(index, kind);
+  return listRegistryPackages(index, kind).map(pkg => describeSkill(pkg, index))
+    .filter(pkg => matchesSkillFilters(pkg, filters));
 }
 
 /**

@@ -124,6 +124,10 @@ rudi search pdf          # Search for packages
 rudi search --all        # List all available packages
 rudi search --stacks     # Filter to MCP stacks
 rudi search --binaries   # Filter to CLI tools
+rudi search --all --skills --category=web --role=operator
+rudi search --all --skills --domain=real-estate
+rudi list skills --capability=review
+rudi info skill:vercel
 ```
 
 ### Managing Secrets
@@ -501,3 +505,46 @@ chmod 600 ~/.rudi/secrets.json
 ## License
 
 MIT
+
+## Skill categories and upgrade behavior
+
+Skills use seven primitive categories: web, code, data, documents, media,
+communication and agents. Capability, domain and provider values are read from
+`capability:`, `domain:` and `provider:` tags. Search and list accept
+`--category`, `--capability`, `--domain`, `--provider` and `--role` filters.
+`--role=workflow` refers to a skill's role; `--workflows` still selects the
+separate workflow package kind.
+
+The primary operator role is derived from a stack's `related.operatorSkill`.
+Requiring a stack does not make a workflow its operator. Skill JSON includes
+`skillRole`, `operatorFor` and `facets`; installed inventory uses local/cached
+catalog context without a network request and reports unknown role for external
+or unidentified installs. `rudi info skill:<id>` reads the actual skill entrypoint
+and supports `--json`.
+
+Canonical skill packages install as `~/.rudi/skills/<id>/SKILL.md`; legacy flat
+installs remain readable. Updating an owned skill stages the complete package,
+verifies existing content against the installation checksum, replaces the
+source and writes the new lock. Failed updates restore the prior source and
+lock when recovery is safe. Edited files and missing ownership evidence are
+preserved, even when update internally requests reinstall. `rudi update skill:<id>
+--dry-run --no-sync-skills` checks ownership and reports the proposed migration
+without replacing content. Files excluded from historical checksums also block
+replacement until their ownership is reconciled.
+
+Successful replacements retain the previous file/tree under a hidden transaction
+folder, return `backupPath` in the install result and print it during updates.
+This preserves late writes through already-open files. Reconcile these backups
+before any separately authorized cleanup; the updater never deletes them automatically.
+
+Same-ID loose-file/folder collisions are explicit errors for path resolution
+and native sync; `rudi list skills` exposes their paths for reconciliation.
+If a concurrent edit prevents rollback, preserve the reported transaction
+folder and resolve its contents and `.install-lock` before retrying. Do not
+remove a recovery guard until its prior package and edited replacement have
+been accounted for.
+
+Native projections retain complete trigger descriptions and bundled Codex
+metadata. Ownership receipts, exact force scope, conflict preservation and
+restartRequired reporting continue to govern native updates. Deploy the
+compatible CLI before publishing a registry that migrates existing flat skills.

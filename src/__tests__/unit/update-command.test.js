@@ -13,7 +13,12 @@ function createDeps(overrides = {}) {
     calls,
     async fetchIndex(options) {
       calls.push(['fetchIndex', options]);
-      return {};
+      return { packages: { 'skill:rudi-engineering-gate': {
+        id: 'skill:rudi-engineering-gate', name: 'Engineering Gate', version: '1.0.0', kind: 'skill', path: 'catalog/skills/rudi-engineering-gate',
+      } } };
+    },
+    async inspectRegistrySkillUpdate(pkg, destination) {
+      return { id: pkg.id, from: `/tmp/${pkg.id}`, to: destination, action: 'update' };
     },
     async listInstalled() {
       calls.push(['listInstalled']);
@@ -711,6 +716,7 @@ test('runUpdate dry-run returns the exact suite plan without package or index mu
       return {
         schemaVersion: '2',
         packages: {
+          'skill:swe-compliance-checklist': { id: 'skill:swe-compliance-checklist', name: 'SWE Checklist', version: '1.0.0', kind: 'skill', path: 'catalog/skills/swe-compliance-checklist' },
           'stack:swe-engineering': {
             id: 'stack:swe-engineering',
             kind: 'stack',
@@ -745,6 +751,7 @@ test('runUpdate dry-run returns the exact suite plan without package or index mu
   );
 
   assert.equal(result.dryRun, true);
+  assert.equal(result.packageFailed, 0);
   assert.equal(result.updated, 0);
   assert.deepEqual(result.plannedPackages, [
     'stack:swe-engineering',
@@ -769,6 +776,7 @@ test('runUpdate suite dry-run projects only planned skills to explicitly selecte
       return {
         schemaVersion: '2',
         packages: {
+          'skill:swe-compliance-checklist': { id: 'skill:swe-compliance-checklist', name: 'SWE Checklist', version: '1.0.0', kind: 'skill', path: 'catalog/skills/swe-compliance-checklist' },
           'stack:swe-engineering': {
             id: 'stack:swe-engineering',
             kind: 'stack',

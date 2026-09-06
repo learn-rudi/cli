@@ -191,7 +191,7 @@ const CHECKSUM_IGNORED_NAMES = new Set([
 ]);
 const CHECKSUM_IGNORED_ROOT_NAMES = new Set(['outputs', 'runs']);
 
-function updateContentHash(hash, rootPath, currentPath) {
+function updateContentHash(hash, rootPath, currentPath, includeIgnored) {
   const relativePath = path.relative(rootPath, currentPath).split(path.sep).join('/');
   const stat = fs.lstatSync(currentPath);
   if (stat.isSymbolicLink()) {
@@ -209,14 +209,14 @@ function updateContentHash(hash, rootPath, currentPath) {
   hash.update(`dir\0${relativePath}\0`);
   for (const entry of fs.readdirSync(currentPath).sort()) {
     if (
-      CHECKSUM_IGNORED_NAMES.has(entry) ||
-      (currentPath === rootPath && CHECKSUM_IGNORED_ROOT_NAMES.has(entry))
+      !includeIgnored && (CHECKSUM_IGNORED_NAMES.has(entry) ||
+      (currentPath === rootPath && CHECKSUM_IGNORED_ROOT_NAMES.has(entry)))
     ) continue;
-    updateContentHash(hash, rootPath, path.join(currentPath, entry));
+    updateContentHash(hash, rootPath, path.join(currentPath, entry), includeIgnored);
   }
 }
 
-export async function computeInstalledContentChecksum(installPath) {
+export async function computeInstalledContentChecksum(installPath, { includeIgnored = false } = {}) {
   if (!fs.existsSync(installPath)) {
     throw new Error(`Cannot checksum missing installed package: ${installPath}`);
   }
@@ -227,7 +227,7 @@ export async function computeInstalledContentChecksum(installPath) {
     hash.update(`file\0.\0${executable}\0`);
     hash.update(fs.readFileSync(installPath));
   } else {
-    updateContentHash(hash, installPath, installPath);
+    updateContentHash(hash, installPath, installPath, includeIgnored);
   }
   return hash.digest('hex');
 }

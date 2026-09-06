@@ -491,7 +491,7 @@ function readSkillCandidates(root) {
 
 /**
  * Discover skills in precedence order. RUDI skills win over external skills.
- * Within the same root, flat files keep backward-compatible precedence.
+ * Same-root duplicate formats are visible conflicts, not silent overrides.
  * @param {{ includeExternal?: boolean }} options
  * @returns {Array<{name: string, source: string, format: string, packagePath: string, entryPath: string}>}
  */
@@ -499,9 +499,19 @@ export function discoverSkillPackages(options = {}) {
   const byName = new Map();
 
   for (const root of getSkillDiscoveryRoots(options)) {
-    for (const candidate of readSkillCandidates(root)) {
+    const candidates = readSkillCandidates(root).sort((left, right) => (
+      left.packagePath.localeCompare(right.packagePath)
+    ));
+    for (const candidate of candidates) {
       if (!byName.has(candidate.name)) {
         byName.set(candidate.name, candidate);
+      } else {
+        const existing = byName.get(candidate.name);
+        if (existing.source === candidate.source) {
+          existing.conflictingPaths = [...new Set([
+            ...(existing.conflictingPaths || [existing.packagePath]), candidate.packagePath,
+          ])].sort();
+        }
       }
     }
   }
@@ -510,7 +520,11 @@ export function discoverSkillPackages(options = {}) {
 }
 
 function findLocalSkillPackage(name) {
-  return discoverSkillPackages().find(skill => skill.name === name) || null;
+  const skill = discoverSkillPackages().find(candidate => candidate.name === name) || null;
+  if (skill?.conflictingPaths) {
+    throw new Error(`Conflicting skill formats for skill:${name}: ${skill.conflictingPaths.join(', ')}`);
+  }
+  return skill;
 }
 
 /**

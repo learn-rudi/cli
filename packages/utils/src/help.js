@@ -412,7 +412,9 @@ EXAMPLES
   rudi list binaries
   rudi list workflows
   rudi skills
-  rudi list skills --category=coding
+  rudi list skills --category=code
+  rudi search --all --skills --category=web --role=operator
+  rudi list skills --provider=vercel
 `,
     skills: `
 rudi skills - List or sync installed RUDI skills

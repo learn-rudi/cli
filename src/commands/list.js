@@ -5,16 +5,17 @@
  *   rudi list [kind]              List all or filter by kind
  *   rudi list skills              List skills
  *   rudi list workflows           List workflows
- *   rudi list skills --category=coding   Filter by category
+ *   rudi list skills --category=code   Filter by category
  *   rudi list stacks --detected   Show MCP servers from agent configs
  *   rudi list --json              Output as JSON
  */
 
-import { listInstalled } from '@learnrudi/core';
+import { listInstalled, matchesSkillFilters, normalizeSkillFilters } from '@learnrudi/core';
 import { detectAllMcpServers, getInstalledAgents, getMcpServerSummary, AGENT_CONFIGS } from '@learnrudi/mcp';
 import { cmdAgent } from './agent-host.js';
 import { formatOperatorSkillLine, formatRelatedSkillsLine } from './related-skills.js';
 import { printPackageLifecycle } from './package-lifecycle.js';
+import { printSkillDetails } from './skill-display.js';
 
 function pluralizeKind(kind) {
   if (!kind) return 'packages';
@@ -162,12 +163,11 @@ export async function cmdList(args, flags) {
 
   try {
     let packages = await listInstalled(kind);
+    const filters = normalizeSkillFilters(flags);
 
     // Filter by category (mainly for skills/workflows)
     const categoryFilter = flags.category;
-    if (categoryFilter) {
-      packages = packages.filter(p => p.category === categoryFilter);
-    }
+    packages = packages.filter(pkg => matchesSkillFilters(pkg, filters));
 
     if (flags.json) {
       console.log(JSON.stringify(packages, null, 2));
@@ -207,6 +207,7 @@ export async function cmdList(args, flags) {
             console.log(`      ${pkg.description}`);
           }
           printPackageLifecycle(pkg, '      ');
+          printSkillDetails(pkg, '      ');
           if (pkg.requires && pkg.requires.stacks && pkg.requires.stacks.length > 0) {
             console.log(`      Requires: ${pkg.requires.stacks.join(', ')}`);
           }
@@ -217,7 +218,7 @@ export async function cmdList(args, flags) {
       }
 
       console.log(`\nTotal: ${packages.length} skill(s)`);
-      console.log(`\nFilter by category: rudi list skills --category=coding`);
+      console.log(`\nFilter by category: rudi list skills --category=code`);
       return;
     }
 
@@ -248,7 +249,8 @@ export async function cmdList(args, flags) {
           console.log(`    ${pkg.description}`);
         }
         printPackageLifecycle(pkg, '    ');
-        if (pkg.category) {
+        printSkillDetails(pkg);
+        if (pkg.kind !== 'skill' && pkg.category) {
           console.log(`    Category: ${pkg.category}`);
         }
         if (pkg.tags && pkg.tags.length > 0) {

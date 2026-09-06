@@ -9,13 +9,15 @@ import * as path from 'path';
 import {
   addStack,
   getLockfilePath,
+  getInstallPathForPackage,
+  inspectRegistrySkillUpdate,
   indexAllStacks,
   listInstalled,
   resolvePackage as coreResolvePackage,
   updatePackage as coreUpdatePackage,
 } from '@learnrudi/core';
 import { PATHS } from '@learnrudi/env';
-import { fetchIndex } from '@learnrudi/registry-client';
+import { fetchIndex, normalizeRegistryPackage } from '@learnrudi/registry-client';
 import {
   getManagedNativeSkillHosts as findManagedNativeSkillHosts,
   NATIVE_SKILL_HOSTS,
@@ -676,6 +678,7 @@ async function updateOnePackage(pkg, flags, deps) {
       throw new Error(result?.error || `Failed to update ${pkg.id}`);
     }
 
+    if (result.backupPath) deps.log(`  Previous skill retained at ${result.backupPath}`);
     if (kind === 'stack') {
       if (path.resolve(result.path) !== path.resolve(snapshot.targetPath)) {
         throw new Error(`Updated stack path changed unexpectedly for ${pkg.id}`);
@@ -848,6 +851,21 @@ export async function runUpdate(args = [], flags = {}, deps = defaultDependencie
   );
 
   if (dryRun) {
+    const skillMigrations = [];
+    for (const id of plannedSkillIds) {
+      try {
+        const source = refreshedRegistryIndex?.packages?.[id];
+        if (!source) throw new Error(`Skill is absent from the refreshed registry: ${id}`);
+        const candidate = normalizeRegistryPackage(source, 'skill');
+        const inspect = deps.inspectRegistrySkillUpdate || inspectRegistrySkillUpdate;
+        const migration = await inspect(candidate, getInstallPathForPackage(candidate));
+        skillMigrations.push(migration);
+        deps.log(`  - ${id}: would ${migration.action} ${migration.from || '(new)'} → ${migration.to}`);
+      } catch (error) {
+        failedPackages.push({ id, error: error.message });
+        deps.error(`  ! ${id}: ${error.message}`);
+      }
+    }
     deps.log(`Dry run: would update ${plannedPackages.length} package(s)`);
     for (const id of plannedPackages) {
       deps.log(`  - ${id}`);
@@ -865,12 +883,13 @@ export async function runUpdate(args = [], flags = {}, deps = defaultDependencie
     return {
       dryRun: true,
       updated: 0,
-      failed: skillProjection.failed,
-      packageFailed: 0,
+      failed: failedPackages.length + skillProjection.failed,
+      packageFailed: failedPackages.length,
       projectionFailed: skillProjection.failed,
       skipped: skippedPackages.length,
       packages: [],
-      failures: [],
+      failures: failedPackages,
+      skillMigrations,
       projectionFailures: skillProjection.failures,
       skippedPackages,
       indexedStacks: [],

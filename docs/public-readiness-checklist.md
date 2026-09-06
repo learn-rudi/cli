@@ -15,7 +15,7 @@ RUDI should expose three first-class package kinds:
 | Kind | Definition | Local install path | Registry path |
 | --- | --- | --- | --- |
 | `stack` | Executable MCP/tool package with code, dependencies, tool schemas, and optional secrets | `~/.rudi/stacks/<id>/` | `catalog/stacks/<id>/` |
-| `skill` | Reusable agent instruction/playbook; markdown only, no runtime state | `~/.rudi/skills/<id>.md` | `catalog/skills/<id>.md` |
+| `skill` | Reusable agent instruction/playbook; markdown only, no runtime state | `~/.rudi/skills/<id>/SKILL.md` (legacy flat files remain readable) | `catalog/skills/<id>/SKILL.md` |
 | `workflow` | Structured repeatable execution with inputs, steps, dependencies, outputs, validation, and permissions | `~/.rudi/workflows/<id>.yaml` | `catalog/workflows/<id>.yaml` |
 
 `prompt` is a deprecated compatibility alias for `skill`. It should not remain a first-class public product term.
@@ -157,7 +157,7 @@ requires:
   is legacy migration state available only for explicit removal.
 - [x] `rudi search` supports `stack`, `skill`, and `workflow`.
 - [ ] `rudi install stack:<id>` installs to `~/.rudi/stacks/<id>/`.
-- [x] `rudi install skill:<id>` installs to `~/.rudi/skills/<id>.md`.
+- [x] `rudi install skill:<id>` installs to `~/.rudi/skills/<id>/SKILL.md` (legacy flat files remain readable).
 - [x] `rudi install workflow:<id>` installs to `~/.rudi/workflows/<id>.yaml`.
 - [x] `rudi list workflows` works.
 - [x] `rudi remove workflow:<id>` works.
